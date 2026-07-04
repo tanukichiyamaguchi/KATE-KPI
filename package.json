@@ -4,7 +4,7 @@
   "description": "KATEstageLASH 蒲田西口店 — reservation-based KPI dashboard (static, client-side)",
   "private": true,
   "scripts": {
-    "test": "node tests/validate.js && node tests/kaikei.test.js"
+    "test": "node tests/validate.js && node tests/kaikei.test.js && node tests/merge.test.js"
   },
   "license": "MIT"
 }
