@@ -33,21 +33,21 @@
   <!-- Desktop tabs -->
   <div class="tabs-wrap">
     <nav class="tabs" role="tablist" aria-label="ダッシュボード ビュー" id="tabs">
-      <button class="tab active" role="tab" data-view="overview" aria-selected="true"><span class="t-ico">📊</span>概要</button>
-      <button class="tab" role="tab" data-view="staff" aria-selected="false"><span class="t-ico">👥</span>スタッフ</button>
-      <button class="tab" role="tab" data-view="trend" aria-selected="false"><span class="t-ico">📈</span>傾向</button>
-      <button class="tab" role="tab" data-view="rfm" aria-selected="false"><span class="t-ico">💎</span>顧客 RFM</button>
-      <button class="tab" role="tab" data-view="data" aria-selected="false"><span class="t-ico">⬆</span>データ</button>
+      <button class="tab active" role="tab" id="tab-overview" data-view="overview" aria-controls="view-overview" aria-selected="true"><span class="t-ico">📊</span>概要</button>
+      <button class="tab" role="tab" id="tab-staff" data-view="staff" aria-controls="view-staff" aria-selected="false" tabindex="-1"><span class="t-ico">👥</span>スタッフ</button>
+      <button class="tab" role="tab" id="tab-trend" data-view="trend" aria-controls="view-trend" aria-selected="false" tabindex="-1"><span class="t-ico">📈</span>傾向</button>
+      <button class="tab" role="tab" id="tab-rfm" data-view="rfm" aria-controls="view-rfm" aria-selected="false" tabindex="-1"><span class="t-ico">💎</span>顧客 RFM</button>
+      <button class="tab" role="tab" id="tab-data" data-view="data" aria-controls="view-data" aria-selected="false" tabindex="-1"><span class="t-ico">⬆</span>データ</button>
       <span class="tab-underline" id="tabUnderline"></span>
     </nav>
   </div>
 
   <main id="main">
-    <section class="view active" id="view-overview" role="tabpanel" aria-label="概要"></section>
-    <section class="view" id="view-staff" role="tabpanel" aria-label="スタッフ"></section>
-    <section class="view" id="view-trend" role="tabpanel" aria-label="傾向"></section>
-    <section class="view" id="view-rfm" role="tabpanel" aria-label="顧客 RFM"></section>
-    <section class="view" id="view-data" role="tabpanel" aria-label="データ"></section>
+    <section class="view active" id="view-overview" role="tabpanel" aria-labelledby="tab-overview"></section>
+    <section class="view" id="view-staff" role="tabpanel" aria-labelledby="tab-staff"></section>
+    <section class="view" id="view-trend" role="tabpanel" aria-labelledby="tab-trend"></section>
+    <section class="view" id="view-rfm" role="tabpanel" aria-labelledby="tab-rfm"></section>
+    <section class="view" id="view-data" role="tabpanel" aria-labelledby="tab-data"></section>
   </main>
 
   <footer class="footer">

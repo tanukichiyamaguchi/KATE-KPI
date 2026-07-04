@@ -240,8 +240,8 @@
 
     html += card({
       col: 'col-12', title: '曜日別パフォーマンス', sub: '来店の多い曜日と、定着しやすい曜日を把握',
-      body: '<div class="segmented" id="dowSeg" role="tablist">' +
-        [['visits', '来店数'], ['nextRes', '次回予約率'], ['spend', '客単価'], ['ltv', 'LTV']].map(function (o, i) { return '<button role="tab" data-m="' + o[0] + '"' + (i === 0 ? ' class="active"' : '') + '>' + o[1] + '</button>'; }).join('') +
+      body: '<div class="segmented" id="dowSeg" role="group" aria-label="曜日別に表示する指標">' +
+        [['visits', '来店数'], ['nextRes', '次回予約率'], ['spend', '客単価'], ['ltv', 'LTV']].map(function (o, i) { return '<button type="button" data-m="' + o[0] + '" aria-pressed="' + (i === 0 ? 'true' : 'false') + '"' + (i === 0 ? ' class="active"' : '') + '>' + o[1] + '</button>'; }).join('') +
         '<span class="seg-thumb" id="dowThumb"></span></div>' + chartBox('cDow', 250)
     });
     html += card({ col: 'col-6', title: '月次コホート リピート率', sub: '初回獲得月ごとの2回目到達', tag: '%', body: chartBox('cTCohortR', 220) });
@@ -263,7 +263,7 @@
     });
     // segmented control
     var seg = $('#dowSeg');
-    seg.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; trendMetric = b.dataset.m; Array.prototype.forEach.call(seg.querySelectorAll('button'), function (x) { x.classList.toggle('active', x === b); }); positionThumb(); drawDow(); flush(); });
+    seg.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; trendMetric = b.dataset.m; Array.prototype.forEach.call(seg.querySelectorAll('button'), function (x) { var on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); }); positionThumb(); drawDow(); flush(); });
     positionThumb();
     flush();
   }
@@ -434,7 +434,7 @@
     if (view === state.view && !force) return;
     state.view = view;
     VIEWS.forEach(function (v) { $('#view-' + v).classList.toggle('active', v === view); });
-    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) { var on = t.dataset.view === view; t.classList.toggle('active', on); t.setAttribute('aria-selected', on); });
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) { var on = t.dataset.view === view; t.classList.toggle('active', on); t.setAttribute('aria-selected', on); t.setAttribute('tabindex', on ? '0' : '-1'); });
     Array.prototype.forEach.call(document.querySelectorAll('.botnav button'), function (b) { b.classList.toggle('active', b.dataset.view === view); });
     moveUnderline();
     global.scrollTo({ top: 0, behavior: 'auto' });
@@ -504,7 +504,7 @@
 
     // resize → debounced redraw of active view charts + underline
     var rt;
-    global.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { moveUnderline(); positionThumb(); flush(true); }, 160); });
+    global.addEventListener('resize', function () { clearTimeout(rt); var tp = document.querySelector('.kate-tip'); if (tp) tp.style.opacity = 0; rt = setTimeout(function () { moveUnderline(); positionThumb(); flush(true); }, 160); });
     setTimeout(moveUnderline, 60);
   }
 
