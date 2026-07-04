@@ -193,40 +193,43 @@ h('■ Fixture E: サンプルデータの pooled 値を固定（回帰オラク
 // REG1-3 are P's first-visit customers who return 3+ times each (mature by
 // asOf) => regulars3=3. F1-F14 are one-off filler visits that pad monthly
 // totals but never reach Fres>=3, so they can't be mistaken for regulars.
-// June/July tie on visits (5=5) and shimei (3=3) to test "tie => no pill";
-// revenue strictly increases May<June<July to test "strict => pill".
+// June/July tie on visits (5=5) to test "tie => no pill"; revenue strictly
+// increases May<June<July to test "strict => pill". Monthly spend (=rev/visits)
+// happens to tie May/June at 6000 then jump to 8400 in July, exercising the
+// same tie→strict pattern for the personalBest.spend field.
 h('■ Fixture F: 自己ベスト・累計マイルストーン・育てた常連');
 {
   const rows = [
-    // May 2026: 3 visits (REG1-3 only)
-    rec({ staff: 'P', custKey: 'REG1', date: '2026-05-01', kaikeiTotal: 6000, shimei: '指名予約' }),
+    // May 2026: 3 visits (REG1-3 only) — spend 18000/3=6000
+    rec({ staff: 'P', custKey: 'REG1', date: '2026-05-01', kaikeiTotal: 6000 }),
     rec({ staff: 'P', custKey: 'REG2', date: '2026-05-02', kaikeiTotal: 6000, shohan: 'item', shohanAmount: 1000 }),
     rec({ staff: 'P', custKey: 'REG3', date: '2026-05-03', kaikeiTotal: 6000 }),
-    // June 2026: 5 visits (REG1-3 + 2 fillers) — historical best on visits/shimei
-    rec({ staff: 'P', custKey: 'REG1', date: '2026-06-01', kaikeiTotal: 6000, shimei: '指名あり' }),
-    rec({ staff: 'P', custKey: 'REG2', date: '2026-06-02', kaikeiTotal: 6000, shimei: '指名あり' }),
-    rec({ staff: 'P', custKey: 'REG3', date: '2026-06-03', kaikeiTotal: 6000, shimei: '指名あり' }),
+    // June 2026: 5 visits (REG1-3 + 2 fillers) — historical best on visits; spend
+    // 30000/5=6000 ties May
+    rec({ staff: 'P', custKey: 'REG1', date: '2026-06-01', kaikeiTotal: 6000 }),
+    rec({ staff: 'P', custKey: 'REG2', date: '2026-06-02', kaikeiTotal: 6000 }),
+    rec({ staff: 'P', custKey: 'REG3', date: '2026-06-03', kaikeiTotal: 6000 }),
     rec({ staff: 'P', custKey: 'F1', date: '2026-06-04', kaikeiTotal: 6000, shohan: 'item', shohanAmount: 2000 }),
     rec({ staff: 'P', custKey: 'F2', date: '2026-06-05', kaikeiTotal: 6000, shohan: 'item', shohanAmount: 1500 }),
-    // July 2026: 5 visits (REG1-3 + 2 fillers) — ties June on visits/shimei, but
-    // revenue (42000) strictly exceeds June (30000)
-    rec({ staff: 'P', custKey: 'REG1', date: '2026-07-01', kaikeiTotal: 6000, shimei: '指名あり' }),
-    rec({ staff: 'P', custKey: 'REG2', date: '2026-07-02', kaikeiTotal: 6000, shimei: '指名あり' }),
-    rec({ staff: 'P', custKey: 'REG3', date: '2026-07-03', kaikeiTotal: 6000, shimei: '指名あり' }),
+    // July 2026: 5 visits (REG1-3 + 2 fillers) — ties June on visits, but
+    // revenue (42000) and spend (8400) strictly exceed June (30000 / 6000)
+    rec({ staff: 'P', custKey: 'REG1', date: '2026-07-01', kaikeiTotal: 6000 }),
+    rec({ staff: 'P', custKey: 'REG2', date: '2026-07-02', kaikeiTotal: 6000 }),
+    rec({ staff: 'P', custKey: 'REG3', date: '2026-07-03', kaikeiTotal: 6000 }),
     rec({ staff: 'P', custKey: 'F3', date: '2026-07-04', kaikeiTotal: 12000, shohan: 'item', shohanAmount: 1200 }),
     rec({ staff: 'P', custKey: 'F4', date: '2026-07-05', kaikeiTotal: 12000 }),
     // August 2026 (= asOf month, MUST be excluded from personalBest): 10 visits,
     // every metric maxed out to prove the exclusion actually holds.
-    rec({ staff: 'P', custKey: 'F5', date: '2026-08-01', kaikeiTotal: 50000, shimei: '指名あり', shohan: 'item', shohanAmount: 9000 }),
-    rec({ staff: 'P', custKey: 'F6', date: '2026-08-02', kaikeiTotal: 50000, shimei: '指名あり', shohan: 'item', shohanAmount: 9000 }),
-    rec({ staff: 'P', custKey: 'F7', date: '2026-08-03', kaikeiTotal: 50000, shimei: '指名あり', shohan: 'item', shohanAmount: 9000 }),
-    rec({ staff: 'P', custKey: 'F8', date: '2026-08-04', kaikeiTotal: 50000, shimei: '指名あり', shohan: 'item', shohanAmount: 9000 }),
-    rec({ staff: 'P', custKey: 'F9', date: '2026-08-05', kaikeiTotal: 50000, shimei: '指名あり', shohan: 'item', shohanAmount: 9000 }),
-    rec({ staff: 'P', custKey: 'F10', date: '2026-08-06', kaikeiTotal: 50000, shimei: '指名あり', shohan: 'item', shohanAmount: 9000 }),
-    rec({ staff: 'P', custKey: 'F11', date: '2026-08-07', kaikeiTotal: 50000, shimei: '指名あり', shohan: 'item', shohanAmount: 9000 }),
-    rec({ staff: 'P', custKey: 'F12', date: '2026-08-08', kaikeiTotal: 50000, shimei: '指名あり', shohan: 'item', shohanAmount: 9000 }),
-    rec({ staff: 'P', custKey: 'F13', date: '2026-08-09', kaikeiTotal: 50000, shimei: '指名あり', shohan: 'item', shohanAmount: 9000 }),
-    rec({ staff: 'P', custKey: 'F14', date: '2026-08-10', kaikeiTotal: 50000, shimei: '指名あり', shohan: 'item', shohanAmount: 9000 })
+    rec({ staff: 'P', custKey: 'F5', date: '2026-08-01', kaikeiTotal: 50000, shohan: 'item', shohanAmount: 9000 }),
+    rec({ staff: 'P', custKey: 'F6', date: '2026-08-02', kaikeiTotal: 50000, shohan: 'item', shohanAmount: 9000 }),
+    rec({ staff: 'P', custKey: 'F7', date: '2026-08-03', kaikeiTotal: 50000, shohan: 'item', shohanAmount: 9000 }),
+    rec({ staff: 'P', custKey: 'F8', date: '2026-08-04', kaikeiTotal: 50000, shohan: 'item', shohanAmount: 9000 }),
+    rec({ staff: 'P', custKey: 'F9', date: '2026-08-05', kaikeiTotal: 50000, shohan: 'item', shohanAmount: 9000 }),
+    rec({ staff: 'P', custKey: 'F10', date: '2026-08-06', kaikeiTotal: 50000, shohan: 'item', shohanAmount: 9000 }),
+    rec({ staff: 'P', custKey: 'F11', date: '2026-08-07', kaikeiTotal: 50000, shohan: 'item', shohanAmount: 9000 }),
+    rec({ staff: 'P', custKey: 'F12', date: '2026-08-08', kaikeiTotal: 50000, shohan: 'item', shohanAmount: 9000 }),
+    rec({ staff: 'P', custKey: 'F13', date: '2026-08-09', kaikeiTotal: 50000, shohan: 'item', shohanAmount: 9000 }),
+    rec({ staff: 'P', custKey: 'F14', date: '2026-08-10', kaikeiTotal: 50000, shohan: 'item', shohanAmount: 9000 })
   ];
   const R = engine.compute(rows, { asOf: '2026-08-15' });
   const p = R.staff.find(s => s.name === 'P');
@@ -234,11 +237,8 @@ h('■ Fixture F: 自己ベスト・累計マイルストーン・育てた常�
   const jun = p.monthly.find(m => m.m === '2026-06');
   const jul = p.monthly.find(m => m.m === '2026-07');
 
-  check('May shimeiN', may.shimeiN, 1);
   check('May retailBuyingVisits', may.retailBuyingVisits, 1);
-  check('June shimeiN', jun.shimeiN, 3);
   check('June retailBuyingVisits', jun.retailBuyingVisits, 2);
-  check('July shimeiN（6月と同数=3、タイ）', jul.shimeiN, 3);
   check('July retailBuyingVisits', jul.retailBuyingVisits, 1);
 
   check('personalBest.confirmedMonths（5,6,7月のみ・8月除外）', p.personalBest.confirmedMonths, 3);
@@ -248,14 +248,12 @@ h('■ Fixture F: 自己ベスト・累計マイルストーン・育てた常�
   check('personalBest.rev.v（7月42000が最大）', p.personalBest.rev.v, 42000);
   check('personalBest.rev.m', p.personalBest.rev.m === '2026-07' ? 1 : 0, 1);
   check('latestIsBest.rev（7月は単独最大→true）', p.personalBest.latestIsBest.rev ? 1 : 0, 1);
-  check('personalBest.shimei.v（6月3件が最大）', p.personalBest.shimei.v, 3);
-  check('personalBest.shimei.m', p.personalBest.shimei.m === '2026-06' ? 1 : 0, 1);
-  check('latestIsBest.shimei（7月は6月とタイ→false）', p.personalBest.latestIsBest.shimei ? 1 : 0, 0);
+  check('personalBest.spend.v（7月8400が最大）', p.personalBest.spend.v, 8400);
+  check('personalBest.spend.m', p.personalBest.spend.m === '2026-07' ? 1 : 0, 1);
+  check('latestIsBest.spend（7月は5,6月とタイせず単独最大→true）', p.personalBest.latestIsBest.spend ? 1 : 0, 1);
   check('personalBest.retail.v（6月2件が最大）', p.personalBest.retail.v, 2);
   check('latestIsBest.retail（7月1件は6月未満→false）', p.personalBest.latestIsBest.retail ? 1 : 0, 0);
 
-  check('cumulative.visits（3+5+5+10、8月も含む累計）', p.cumulative.visits, 23);
-  check('cumulative.shimei', p.cumulative.shimei, 17);
   check('cumulative.retailVisits', p.cumulative.retailVisits, 14);
   check('regulars3（REG1-3のみ・fillerは単回来店で対象外）', p.regulars3, 3);
 }
@@ -264,8 +262,8 @@ h('■ Fixture F: 自己ベスト・累計マイルストーン・育てた常�
 // Fixture G — シグナル皆無時の null 化 と 確定月0件時のゲート
 // ============================================================================
 // Staff 'Z': 2 visits, both in the same month as asOf (so 0 confirmed months),
-// and no 指名/店販 data anywhere in this compute() call (anyShimei/anyRetail
-// are dataset-wide flags, so a separate call isolates them from Fixture F).
+// and no 店販データ anywhere in this compute() call (anyRetail is a
+// dataset-wide flag, so a separate call isolates it from Fixture F).
 h('■ Fixture G: シグナル皆無 / 確定月0件のnull化');
 {
   const rows = [
@@ -276,10 +274,8 @@ h('■ Fixture G: シグナル皆無 / 確定月0件のnull化');
   const z = R.staff.find(s => s.name === 'Z');
   check('confirmedMonths（唯一の活動月=当月→0）', z.personalBest.confirmedMonths, 0);
   check('personalBest.visits（確定月0→null）', z.personalBest.visits === null ? 1 : 0, 1);
-  check('personalBest.shimei（指名データ皆無→null）', z.personalBest.shimei === null ? 1 : 0, 1);
+  check('personalBest.spend（確定月0→null）', z.personalBest.spend === null ? 1 : 0, 1);
   check('personalBest.retail（店販データ皆無→null）', z.personalBest.retail === null ? 1 : 0, 1);
-  check('cumulative.visits（確定月ゲートの対象外）', z.cumulative.visits, 2);
-  check('cumulative.shimei（指名データ皆無→null）', z.cumulative.shimei === null ? 1 : 0, 1);
   check('cumulative.retailVisits（店販データ皆無→null）', z.cumulative.retailVisits === null ? 1 : 0, 1);
   check('regulars3（単回来店のみ→0）', z.regulars3, 0);
 }

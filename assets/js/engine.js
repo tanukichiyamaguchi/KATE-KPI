@@ -22,7 +22,6 @@
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var HPB_ROUTE = 'HOT PEPPER Beauty';
   function isHPB(r) { return r.route === HPB_ROUTE; }   // excluded from cancel-rate math
-  function isShimei(r) { return !!(r.shimei && String(r.shimei).indexOf('なし') === -1); }   // `指名予約`/`指名あり` → true, `指名なし` → false
 
   // ---- small helpers --------------------------------------------------------
   // Build a Date only if the components are a real, in-range calendar date within
@@ -414,7 +413,7 @@
           nextCnt: nextCnt, visN: vis.length, next2Cnt: next2, vis2N: vis2.length,
           nextResImmature: immature,
           retailRatio: rst.attachRate, retailAmount: rst.amount, retailBuyers: rst.buyers,
-          shimeiN: vis.filter(isShimei).length, retailBuyingVisits: rst.buyingVisits,
+          retailBuyingVisits: rst.buyingVisits,
           durMin: vis.reduce(function (s, r) { return s + (r.dur || 0); }, 0)
         };
       });
@@ -436,10 +435,9 @@
       }) : null;
     }
 
-    // Whether this dataset has any 指名/店販 signal at all — gates whether the
+    // Whether this dataset has any 店販 signal at all — gates whether the
     // corresponding personal-best/milestone fields below are numbers or null
-    // (a salon that never records nominations shouldn't show a false "0件").
-    var anyShimei = visitedRows.some(isShimei);
+    // (a salon that never records retail sales shouldn't show a false "0件").
     var anyRetail = visitedRows.some(function (r) { return r.hasRetail; });
     var currentYm = ym(asOf);   // the in-progress month — excluded from personal-best comparisons
 
@@ -502,18 +500,16 @@
         confirmedMonths: confirmedActive.length,
         visits: pickBest(confirmedActive, function (r) { return r.actual; }),
         rev: pickBest(confirmedActive, function (r) { return r.revActual; }),
-        shimei: anyShimei ? pickBest(confirmedActive, function (r) { return r.shimeiN; }) : null,
+        spend: pickBest(confirmedActive, function (r) { return r.spend || 0; }),
         retail: anyRetail ? pickBest(confirmedActive, function (r) { return r.retailBuyingVisits; }) : null,
         latestIsBest: {
           visits: isLatestBest(confirmedActive, function (r) { return r.actual; }),
           rev: isLatestBest(confirmedActive, function (r) { return r.revActual; }),
-          shimei: anyShimei && isLatestBest(confirmedActive, function (r) { return r.shimeiN; }),
+          spend: isLatestBest(confirmedActive, function (r) { return r.spend || 0; }),
           retail: anyRetail && isLatestBest(confirmedActive, function (r) { return r.retailBuyingVisits; })
         }
       };
       var cumulative = {
-        visits: mrows.reduce(function (s, r) { return s + r.actual; }, 0),
-        shimei: anyShimei ? mrows.reduce(function (s, r) { return s + r.shimeiN; }, 0) : null,
         retailVisits: anyRetail ? mrows.reduce(function (s, r) { return s + r.retailBuyingVisits; }, 0) : null
       };
       // 育てた常連: customers this staff first served who went on to become mature
