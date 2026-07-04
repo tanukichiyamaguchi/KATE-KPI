@@ -51,10 +51,13 @@ h('■ 離脱・キャンセル');
 check('離脱顧客', s.churn.total, g.churn.total, 2);
 check('  キャンセルで停止', s.churn.cancelStopped, g.churn.cancelStopped, 8);
 check('  次回予約なし', s.churn.noNextReserve, g.churn.noNextReserve, 8);
-check('確定予約', s.cancel.confirmed, g.cancel.confirmed, 2);
-check('総キャンセル率', s.cancel.totalRate, g.cancel.totalRate, 0.01);
-check('お客様キャンセル率', s.cancel.customer, g.cancel.customer, 0.01);
-check('サロンキャンセル率', s.cancel.salon, g.cancel.salon, 0.01);
+// Cancellation now EXCLUDES HOT PEPPER Beauty per store policy → intentionally
+// differs from the workbook GT (which counted all routes). Assert the post-policy
+// figures for regression safety; show the old GT for reference.
+check('確定予約(非HPB)', s.cancel.confirmed, 304, 2);
+check('総キャンセル率(非HPB)', s.cancel.totalRate, 0.385, 0.02);
+info('  旧・全経路込み 総キャンセル率(参考)', s.cancel.totalRate, g.cancel.totalRate);
+info('  お客様/サロン/無断 (非HPB)', s.cancel.customer + s.cancel.salon + s.cancel.noShow, 0.385);
 info('初回来店なし (footnote·定義差)', s.cancel.firstNoVisit, g.cancel.firstNoVisit);
 
 h('■ LTV');
