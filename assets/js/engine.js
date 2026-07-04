@@ -252,7 +252,10 @@
       salon: confirmed.length ? cancelCounts.salon / confirmed.length : 0,
       noShow: confirmed.length ? cancelCounts.noShow / confirmed.length : 0,
       customerCount: cancelCounts.customer, salonCount: cancelCounts.salon, noShowCount: cancelCounts.noShow,
-      firstNoVisit: firstNoVisit
+      firstNoVisit: firstNoVisit,
+      // POS/会計明細 sources record only completed checkouts — no cancellation or
+      // upcoming-reservation rows — so a 0% rate there means "not tracked", not "zero".
+      hasInfo: rows.some(function (r) { return r.isCancel || r.isWaiting; })
     };
 
     // ---- Route analysis -----------------------------------------------------

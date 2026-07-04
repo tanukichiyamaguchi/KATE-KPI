@@ -77,7 +77,11 @@
     var rt = s.retail;
     html += statTile('yen', '予約ベース客単価', F.int(s.avgSpendReservation), '¥', '実績客単価 ' + yen(s.avgSpendActual), 'sparkSpend');
     html += statTile('ltv', '顧客LTV（現状）', F.int(s.ltv.current), '¥', '<span class="chip up">↑ 予測 ' + yen(s.ltv.predicted) + '</span> 期待来店 ' + s.ltv.expectedVisits + '回', null);
-    html += statTile('cancel', '総キャンセル率', pct(s.cancel.totalRate * 100, 1), '%', 'HOT PEPPER Beauty を除く ／ 確定 ' + s.cancel.confirmed + '件', 'sparkCancel');
+    if (s.cancel.hasInfo) {
+      html += statTile('cancel', '総キャンセル率', pct(s.cancel.totalRate * 100, 1), '%', 'HOT PEPPER Beauty を除く ／ 確定 ' + s.cancel.confirmed + '件', 'sparkCancel');
+    } else {
+      html += statTile('cancel', '総キャンセル率', '—', '', 'この データにはキャンセル情報が含まれていません（会計実績のみ）', null);
+    }
     html += statTile('retail', '店販顧客比率', pct(rt.customerRatio * 100, 1), '%', '店販購入 ' + rt.buyers + '件 ／ 会計 ' + s.actualVisits + '件', null);
 
     // Retention meters + monthly revenue
@@ -113,7 +117,7 @@
     });
     html += card({ col: 'col-4', title: '集客経路', sub: '有効予約に占める構成', body: chartBox('cRoute', 210) });
     html += card({ col: 'col-3', title: '来店回数の構成', sub: '回数別', body: '<div id="cVisitComp"></div>' });
-    html += card({ col: 'col-6', title: 'キャンセル内訳', sub: 'HOT PEPPER Beauty を除く（確定 ' + s.cancel.confirmed + '件）', body: '<div id="cCancel"></div>' });
+    html += card({ col: 'col-6', title: 'キャンセル内訳', sub: s.cancel.hasInfo ? 'HOT PEPPER Beauty を除く（確定 ' + s.cancel.confirmed + '件）' : '会計実績のみのデータ', body: s.cancel.hasInfo ? '<div id="cCancel"></div>' : '<div class="empty-note">このデータには予約ステータス（キャンセル）が含まれていないため、キャンセル率は算出できません。<br>キャンセルも分析するには、<b>「予約データ」</b>（ステータス列つき）をご利用ください。</div>' });
 
     mount('overview', head + '<div class="grid">' + html + '</div>');
 
@@ -393,7 +397,7 @@
   // ============================ DATA =======================================
   function renderData() {
     var A = state.analytics, m = A.meta;
-    var head = '<div class="view-title">データ入力</div><div class="view-lead">Googleスプレッドシートに予約データを入れて連携するか、ファイル（CSV / Excel）を入れるだけで、すべての指標を自動で再計算します。</div>';
+    var head = '<div class="view-title">データ入力</div><div class="view-lead">Googleスプレッドシート連携、またはファイル（CSV / Excel）を入れるだけで全指標を自動再計算します。<b>「予約データ」</b>（ステータス列つき）と、<b>「会計明細」</b>（会計日・金額・店販つき）の両形式に対応。会計明細からは<b>店販売上</b>も自動集計します（文字コードは Shift-JIS / UTF-8 を自動判別）。</div>';
     var html = '';
     // Google Sheets link (primary)
     var linked = !!state.sheetUrl;
@@ -417,8 +421,8 @@
     html += card({
       col: 'col-12', title: 'ファイルから読み込む', sub: '非公開のデータはこちら（ブラウザ内でのみ処理）',
       body: '<div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="ファイルをアップロード">' +
-        '<div class="dropzone-ico">' + svgIco('upload') + '</div><h3>予約データをドロップ、またはタップして選択</h3>' +
-        '<p>対応形式：<b>.xlsx</b> / <b>.csv</b>　（「予約データ」シートの見出し行を含めてください）</p>' +
+        '<div class="dropzone-ico">' + svgIco('upload') + '</div><h3>予約データ／会計明細をドロップ、またはタップして選択</h3>' +
+        '<p>対応形式：<b>.xlsx</b> / <b>.csv</b>　（「予約データ」または「会計明細」の見出し行を含めてください／Shift-JIS対応）</p>' +
         '<button class="pill accent" id="pickBtn" type="button">ファイルを選択</button>' +
         '<button class="pill" id="resetBtn" type="button" style="margin-left:8px">サンプルに戻す</button></div>'
     });
@@ -512,6 +516,7 @@
     // count-up any stat tiles
     Array.prototype.forEach.call(document.querySelectorAll('#view-' + state.view + ' .cu'), function (n) {
       var to = parseFloat(n.dataset.to), unit = n.dataset.unit;
+      if (!isFinite(to)) return;   // non-numeric placeholder (e.g. '—') → leave as-is
       C.countUp(n, to, { fmt: unit === 'yen' ? function (v) { return F.int(v); } : (unit === 'pct' ? function (v) { return v.toFixed(1); } : F.int) });
     });
   }

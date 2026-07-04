@@ -112,17 +112,25 @@
   }
 
   // ---- Array-of-arrays → records ------------------------------------------
+  // Two supported layouts: 予約データ (one row / reservation, has ステータス) and
+  // 会計明細 (one row / accounting line-item, has 会計日+金額). The latter is
+  // grouped by 会計ID into visit records so the same engine can drive it.
+  function isYoyakuHeader(h) { return h.indexOf('ステータス') !== -1 || h.indexOf('予約番号') !== -1; }
+  function isKaikeiHeader(h) { return h.indexOf('会計ID') !== -1 || (h.indexOf('会計日') !== -1 && h.indexOf('金額') !== -1); }
+
   function fromAOA(aoa) {
     if (!aoa || !aoa.length) throw new Error('データが空です。');
-    // Locate the header row (contains ステータス or 予約番号) within the first 8 rows
-    var headerIdx = -1;
+    // Locate the header row within the first 8 rows (予約データ or 会計明細)
+    var headerIdx = -1, kaikei = false;
     for (var r = 0; r < Math.min(8, aoa.length); r++) {
       var joined = aoa[r].map(clean);
-      if (joined.indexOf('ステータス') !== -1 || joined.indexOf('予約番号') !== -1) { headerIdx = r; break; }
+      if (isYoyakuHeader(joined)) { headerIdx = r; break; }
+      if (isKaikeiHeader(joined)) { headerIdx = r; kaikei = true; break; }
     }
-    if (headerIdx === -1) throw new Error('「ステータス」列が見つかりません。予約データシートの見出し行を確認してください。');
+    if (headerIdx === -1) throw new Error('見出し行が見つかりません。「予約データ」（ステータス列）または「会計明細」（会計日・金額列）を含むCSV/Excelをご利用ください。');
 
     var headers = aoa[headerIdx].map(clean);
+    if (kaikei) return fromKaikei(aoa, headerIdx, headers);
     var colOf = {};
     headers.forEach(function (h, idx) {
       var f = HEADER_MAP[h];
@@ -153,6 +161,83 @@
     return records;
   }
 
+  // ---- 会計明細 (POS line-items) → visit records --------------------------
+  // Each 会計ID is one paid visit. We sum 金額 across its line items for the
+  // checkout total, and the 区分=店販 lines give the retail (店販) name & amount.
+  var KAIKEI_ITEM_COL = 'メニュー・店販・割引・サービス・オプション';
+  function fromKaikei(aoa, headerIdx, headers) {
+    var col = {};
+    headers.forEach(function (h, i) { if (!(h in col)) col[h] = i; });   // first occurrence wins
+    function cell(row, name) { var i = col[name]; return i == null ? '' : clean(row[i]); }
+
+    // group line items by 会計ID (fallback: 会計日+time+row so a blank ID still groups alone)
+    var groups = {}, order = [], MAX_ROWS = 100000;
+    for (var i = headerIdx + 1; i < aoa.length; i++) {
+      var line = aoa[i]; if (!line) continue;
+      var tx = cell(line, '会計ID');
+      var dateRaw = cell(line, '会計日');
+      if (!tx && !dateRaw) continue;                         // skip blank rows
+      var key = tx || (dateRaw + '|' + cell(line, '会計時間') + '|' + i);
+      if (!groups[key]) { if (order.length >= MAX_ROWS) break; groups[key] = []; order.push(key); }
+      groups[key].push(line);
+    }
+
+    function firstNonEmpty(lines, name) {
+      for (var j = 0; j < lines.length; j++) { var v = cell(lines[j], name); if (v) return v; }
+      return '';
+    }
+    var records = [];
+    for (var g = 0; g < order.length; g++) {
+      var lines = groups[order[g]];
+      var total = 0, shohanAmt = 0, shohanNames = [], shohanCats = [];
+      lines.forEach(function (ln) {
+        total += toNum(cell(ln, '金額')) || 0;
+        if (cell(ln, '区分') === '店販') {
+          shohanAmt += toNum(cell(ln, '金額')) || 0;
+          var it = cell(ln, KAIKEI_ITEM_COL); if (it) shohanNames.push(it);
+          var ct = cell(ln, 'カテゴリ'); if (ct) shohanCats.push(ct);
+        }
+      });
+      var kana = firstNonEmpty(lines, 'お客様名（フリガナ）');
+      var name = firstNonEmpty(lines, 'お客様名');
+      var custNo = firstNonEmpty(lines, 'お客様番号');
+      var shinki = firstNonEmpty(lines, '新規再来');
+      var rec = {
+        status: '会計済み',
+        date: toISO(cell(lines[0], '会計日')),
+        staff: firstNonEmpty(lines, 'スタッフ') || null,
+        route: firstNonEmpty(lines, '予約経路') || null,
+        shimei: firstNonEmpty(lines, '指名') || null,
+        gender: firstNonEmpty(lines, '性別') || null,
+        kana: kana || null, name: name || null, phone: null,
+        kaikeiTotal: total, yoyakuTotal: total, payPlanned: total,
+        shohan: shohanNames.length ? shohanNames.join(' / ') : null,
+        shohanCat: shohanCats.length ? shohanCats.join(' / ') : null,
+        shohanAmount: shohanAmt || null,
+        first: shinki === '新規' ? 'はい' : (shinki === '再来' ? 'いいえ' : null),
+        menu: null, menuCat: null, coupon: null, couponCat: null, pay: null,
+        start: null, end: null, dur: null, usedGift: null, usedPoint: null
+      };
+      var kn = normName(kana), nm = normName(name), cn = clean(custNo);
+      rec.custKey = cn ? 'c:' + cn : (kn ? 'k:' + kn : (nm ? 'n:' + nm : 'r:' + g));
+      records.push(rec);
+    }
+    if (!records.length) throw new Error('有効な会計明細が見つかりませんでした。');
+    return records;
+  }
+
+  // Decode an uploaded file's bytes. HotPepper/POS exports are usually Shift-JIS;
+  // Google-published CSVs are UTF-8. Try UTF-8, fall back to Shift-JIS on garble.
+  function decodeBuffer(buf) {
+    var bytes = new Uint8Array(buf);
+    if (typeof TextDecoder === 'undefined') return String.fromCharCode.apply(null, bytes);
+    var utf8 = new TextDecoder('utf-8').decode(bytes);
+    if (utf8.indexOf('�') !== -1) {                     // invalid UTF-8 → likely Shift-JIS
+      try { return new TextDecoder('shift_jis').decode(bytes); } catch (e) { /* fall through */ }
+    }
+    return utf8;
+  }
+
   // ---- File entry point ---------------------------------------------------
   function parseFile(file) {
     return new Promise(function (resolve, reject) {
@@ -172,9 +257,9 @@
         reader.readAsArrayBuffer(file);
       } else {
         reader.onload = function (e) {
-          try { resolve(fromAOA(parseCSV(e.target.result))); } catch (err) { reject(err); }
+          try { resolve(fromAOA(parseCSV(decodeBuffer(e.target.result)))); } catch (err) { reject(err); }
         };
-        reader.readAsText(file, 'utf-8');
+        reader.readAsArrayBuffer(file);
       }
     });
   }
@@ -183,13 +268,13 @@
       var aoa = global.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[i]], { header: 1, raw: true, defval: null });
       for (var r = 0; r < Math.min(8, aoa.length); r++) {
         var row = (aoa[r] || []).map(clean);
-        if (row.indexOf('ステータス') !== -1 || row.indexOf('予約番号') !== -1) return wb.SheetNames[i];
+        if (isYoyakuHeader(row) || isKaikeiHeader(row)) return wb.SheetNames[i];
       }
     }
     return wb.SheetNames[0];
   }
 
-  var api = { parseFile: parseFile, parseCSV: parseCSV, fromAOA: fromAOA, HEADER_MAP: HEADER_MAP };
+  var api = { parseFile: parseFile, parseCSV: parseCSV, fromAOA: fromAOA, fromKaikei: fromKaikei, decodeBuffer: decodeBuffer, HEADER_MAP: HEADER_MAP };
   global.KATE = global.KATE || {};
   global.KATE.ingest = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
