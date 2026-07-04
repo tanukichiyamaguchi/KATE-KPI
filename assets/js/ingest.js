@@ -130,7 +130,7 @@
     if (headerIdx === -1) throw new Error('見出し行が見つかりません。「予約データ」（ステータス列）または「会計明細」（会計日・金額列）を含むCSV/Excelをご利用ください。');
 
     var headers = aoa[headerIdx].map(clean);
-    if (kaikei) return fromKaikei(aoa, headerIdx, headers);
+    if (kaikei) return { records: fromKaikei(aoa, headerIdx, headers), format: 'kaikei' };
     var colOf = {};
     headers.forEach(function (h, idx) {
       var f = HEADER_MAP[h];
@@ -158,7 +158,7 @@
       records.push(rec);
     }
     if (!records.length) throw new Error('有効な予約行が見つかりませんでした。');
-    return records;
+    return { records: records, format: 'yoyaku' };
   }
 
   // ---- 会計明細 (POS line-items) → visit records --------------------------
@@ -216,7 +216,8 @@
         shohanAmount: shohanAmt || null,
         first: shinki === '新規' ? 'はい' : (shinki === '再来' ? 'いいえ' : null),
         menu: null, menuCat: null, coupon: null, couponCat: null, pay: null,
-        start: null, end: null, dur: null, usedGift: null, usedPoint: null
+        start: null, end: null, dur: null, usedGift: null, usedPoint: null,
+        _time: toNum(cell(lines[0], '会計時間'))   // checkout time-of-day; merge-pairing only, not read by the engine
       };
       var kn = normName(kana), nm = normName(name), cn = clean(custNo);
       rec.custKey = cn ? 'c:' + cn : (kn ? 'k:' + kn : (nm ? 'n:' + nm : 'r:' + g));
@@ -224,6 +225,136 @@
     }
     if (!records.length) throw new Error('有効な会計明細が見つかりませんでした。');
     return records;
+  }
+
+  // ---- Phase 2: merge 予約データ + 会計明細 --------------------------------
+  // Deterministic join on normalized フリガナ (falling back to 氏名) + 来店日／
+  // 会計日 — no fuzzy matching. Revenue stays authoritative from the 予約データ
+  // side (会計時合計金額); the 会計明細 side only contributes what 予約データ
+  // lacks (店販明細・指名・性別・初回フラグ). Neither input array is mutated —
+  // every record that reaches the output is a fresh shallow copy.
+  function shallowCopy(o) {
+    var c = {};
+    for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) c[k] = o[k];
+    return c;
+  }
+  function personKey(kana, name) {
+    var k = normName(kana); if (k) return k;
+    var n = normName(name); return n || null;
+  }
+  function maskKana(s) {
+    s = clean(s);
+    return s ? s.charAt(0) + '●●' : '';
+  }
+  function mergeSources(yoyakuRecords, kaikeiRecords) {
+    // Group 会計明細 rows by person+date, sorted by 会計時間 within the day.
+    var kaikeiByKey = {};
+    kaikeiRecords.forEach(function (r) {
+      if (!r.date) return;
+      var p = personKey(r.kana, r.name); if (!p) return;
+      var key = p + '|' + r.date;
+      (kaikeiByKey[key] = kaikeiByKey[key] || []).push(r);
+    });
+    Object.keys(kaikeiByKey).forEach(function (key) {
+      kaikeiByKey[key].sort(function (a, b) { return (a._time || 0) - (b._time || 0); });
+    });
+
+    // Group 予約データ 会計済み rows by the same key, sorted by 開始時間, keeping
+    // each row's original index so we can rebuild the output in original order.
+    // Also index each person's visited dates for the ±1-day duplicate check below.
+    var yoyakuGroups = {}, personVisitDates = {};
+    yoyakuRecords.forEach(function (r, idx) {
+      if (r.status !== '会計済み' || !r.date) return;
+      var p = personKey(r.kana, r.name); if (!p) return;
+      var key = p + '|' + r.date;
+      (yoyakuGroups[key] = yoyakuGroups[key] || []).push({ idx: idx, rec: r });
+      (personVisitDates[p] = personVisitDates[p] || []).push(r.date);
+    });
+    Object.keys(yoyakuGroups).forEach(function (key) {
+      yoyakuGroups[key].sort(function (a, b) { return (a.rec.start || 0) - (b.rec.start || 0); });
+    });
+
+    // ---- Pass 1: positional pairing within each (person, date) key ---------
+    var enriched = {};   // yoyaku original-index -> enriched copy
+    var kaikeiConsumed = {};   // key -> how many kaikei rows at that key got paired
+    var matched = 0, amountMismatchCount = 0, amountMismatchTotal = 0, samples = [];
+    Object.keys(yoyakuGroups).forEach(function (key) {
+      var yList = yoyakuGroups[key], kList = kaikeiByKey[key] || [];
+      var n = Math.min(yList.length, kList.length);
+      kaikeiConsumed[key] = n;
+      for (var i = 0; i < n; i++) {
+        var y = yList[i].rec, k = kList[i];
+        var copy = shallowCopy(y);
+        if (k.shohan && !copy.shohan) copy.shohan = k.shohan;
+        if (k.shohanCat && !copy.shohanCat) copy.shohanCat = k.shohanCat;
+        if (k.shohanAmount != null && copy.shohanAmount == null) copy.shohanAmount = k.shohanAmount;
+        if (!copy.shimei && k.shimei) copy.shimei = k.shimei;
+        if (!copy.gender && k.gender) copy.gender = k.gender;
+        if (!copy.first && k.first) copy.first = k.first;
+        enriched[yList[i].idx] = copy;
+        matched++;
+        if (y.kaikeiTotal != null && k.kaikeiTotal != null && Math.abs(y.kaikeiTotal - k.kaikeiTotal) > 0.5) {
+          amountMismatchCount++; amountMismatchTotal += Math.abs(y.kaikeiTotal - k.kaikeiTotal);
+        }
+        if (samples.length < 10) samples.push({ date: y.date, kana: maskKana(y.kana || y.name), type: '結合' });
+      }
+    });
+    var outYoyaku = yoyakuRecords.map(function (r, idx) { return enriched[idx] || shallowCopy(r); });
+    var unmatchedYoyakuCount = 0;
+    yoyakuRecords.forEach(function (r, idx) { if (r.status === '会計済み' && !enriched[idx]) unmatchedYoyakuCount++; });
+
+    // ---- Pass 2: leftover 会計明細 rows → independent 会計済み records, unless --
+    // a same-person 予約データ 会計済み exists within ±1 day (likely the same
+    // visit recorded twice — dropped rather than double-counted).
+    var extraKaikei = [], unmatchedKaikeiCount = 0, suspectedDup = 0;
+    Object.keys(kaikeiByKey).forEach(function (key) {
+      var kList = kaikeiByKey[key], consumed = kaikeiConsumed[key] || 0;
+      for (var i = consumed; i < kList.length; i++) {
+        var k = kList[i];
+        var p = personKey(k.kana, k.name);
+        var dates = p ? personVisitDates[p] : null;
+        var dup = false;
+        if (dates) {
+          for (var j = 0; j < dates.length; j++) {
+            if (Math.abs((new Date(dates[j]) - new Date(k.date)) / 86400000) <= 1) { dup = true; break; }
+          }
+        }
+        if (dup) { suspectedDup++; }
+        else {
+          unmatchedKaikeiCount++; extraKaikei.push(shallowCopy(k));
+          if (samples.length < 10) samples.push({ date: k.date, kana: maskKana(k.kana || k.name), type: '未突合(会計)' });
+        }
+      }
+    });
+
+    var records = outYoyaku.concat(extraKaikei);
+
+    // ---- Re-key custKey using kana↔name reconciliation from matched pairs ---
+    // (a customer with kana on one source and only 氏名 on the other would
+    // otherwise split into two "different" customers downstream in the engine).
+    var kanaByName = {};
+    Object.keys(enriched).forEach(function (idx) {
+      var r = enriched[idx];
+      var nm = normName(r.name), kn = normName(r.kana);
+      if (nm && kn) kanaByName[nm] = kn;
+    });
+    records.forEach(function (r) {
+      var kn = normName(r.kana);
+      if (!kn) { var nm = normName(r.name); if (nm && kanaByName[nm]) kn = kanaByName[nm]; }
+      if (kn) r.custKey = 'k:' + kn;
+      else if (normName(r.name)) r.custKey = 'n:' + normName(r.name) + '|' + (r.phone || '');
+    });
+
+    var kaikeiTotal = kaikeiRecords.length;
+    return {
+      records: records,
+      report: {
+        kaikeiTotal: kaikeiTotal, matched: matched, matchRate: kaikeiTotal ? matched / kaikeiTotal : 0,
+        unmatchedKaikei: unmatchedKaikeiCount, unmatchedYoyaku: unmatchedYoyakuCount,
+        amountMismatch: { count: amountMismatchCount, totalDiff: Math.round(amountMismatchTotal) },
+        suspectedDup: suspectedDup, samples: samples
+      }
+    };
   }
 
   // Decode an uploaded file's bytes. HotPepper/POS exports are usually Shift-JIS;
@@ -274,7 +405,7 @@
     return wb.SheetNames[0];
   }
 
-  var api = { parseFile: parseFile, parseCSV: parseCSV, fromAOA: fromAOA, fromKaikei: fromKaikei, decodeBuffer: decodeBuffer, HEADER_MAP: HEADER_MAP };
+  var api = { parseFile: parseFile, parseCSV: parseCSV, fromAOA: fromAOA, fromKaikei: fromKaikei, mergeSources: mergeSources, decodeBuffer: decodeBuffer, HEADER_MAP: HEADER_MAP };
   global.KATE = global.KATE || {};
   global.KATE.ingest = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

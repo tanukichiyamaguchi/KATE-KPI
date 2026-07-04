@@ -10,7 +10,13 @@
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var VIEWS = ['overview', 'staff', 'trend', 'rfm', 'data'];
 
-  var state = { data: null, analytics: null, view: 'overview', source: 'サンプルデータ', fileName: null, sheetUrl: null };
+  // sources.{yoyaku,kaikei} are `{ records, fileName, via }|null` — the two
+  // upload/sheet slots that feed applySources(). `source`/`fileName` below are
+  // the *displayed* label, derived from whichever slot(s) are loaded.
+  var state = {
+    data: null, analytics: null, view: 'overview', source: 'サンプルデータ', fileName: null,
+    sheetUrl: null, sheetUrlKaikei: null, sources: { yoyaku: null, kaikei: null }, mergeReport: null
+  };
   var activeCharts = [];   // redraw closures for the mounted view (resize/theme)
 
   // ---- formatting ----------------------------------------------------------
@@ -425,37 +431,85 @@
   }
 
   // ============================ DATA =======================================
+  // Each slot ('yoyaku'|'kaikei') independently holds { records, fileName, via }|null
+  // in state.sources; applySources() combines whatever is loaded. Both slots
+  // filled → merged via ingest.mergeSources(); either alone → used as-is;
+  // neither → the bundled sample data.
+  function slotMeta(slot) {
+    return slot === 'kaikei'
+      ? { label: '会計明細', urlId: 'sheetUrlKaikei', linkId: 'sheetLinkBtnKaikei', unlinkId: 'sheetUnlinkBtnKaikei', dropId: 'dropKaikei', fileId: 'fileKaikei', pickId: 'pickKaikei', sheetUrl: state.sheetUrlKaikei }
+      : { label: '予約データ', urlId: 'sheetUrlYoyaku', linkId: 'sheetLinkBtnYoyaku', unlinkId: 'sheetUnlinkBtnYoyaku', dropId: 'dropYoyaku', fileId: 'fileYoyaku', pickId: 'pickYoyaku', sheetUrl: state.sheetUrl };
+  }
+  function slotStatusLine(slot) {
+    var s = state.sources[slot];
+    if (!s) return '<div class="status-line"><i style="background:var(--ink-muted)"></i>未読み込み</div>';
+    return '<div class="status-line" style="color:var(--status-good)"><i style="background:var(--status-good)"></i>読み込み済み・' + F.int(s.records.length) + '件' + (s.fileName ? '・' + esc(s.fileName) : '（' + esc(s.via) + '）') + '</div>';
+  }
   function renderData() {
     var A = state.analytics, m = A.meta;
-    var head = '<div class="view-title">データ入力</div><div class="view-lead">Googleスプレッドシート連携、またはファイル（CSV / Excel）を入れるだけで全指標を自動再計算します。<b>「予約データ」</b>（ステータス列つき）と、<b>「会計明細」</b>（会計日・金額・店販つき）の両形式に対応。会計明細からは<b>店販売上</b>も自動集計します（文字コードは Shift-JIS / UTF-8 を自動判別）。</div>';
+    var head = '<div class="view-title">データ入力</div><div class="view-lead">Googleスプレッドシート連携、またはファイル（CSV / Excel）を入れるだけで全指標を自動再計算します。<b>「予約データ」</b>（ステータス列つき）と、<b>「会計明細」</b>（会計日・金額・店販つき）の両形式に対応。<b>両方を読み込むと自動で結合</b>し、キャンセル率と店販売上を同じ画面で確認できます（文字コードは Shift-JIS / UTF-8 を自動判別）。</div>';
     var html = '';
-    // Google Sheets link (primary)
-    var linked = !!state.sheetUrl;
+    // Google Sheets link — one row per slot
     html += card({
-      col: 'col-12', title: 'スプレッドシート連携', sub: 'Googleスプレッドシートに予約データを入れておけば、URLを貼るだけで自動で反映されます',
-      body: '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
-        '<input type="url" id="sheetUrl" class="sheet-input" inputmode="url" placeholder="https://docs.google.com/spreadsheets/d/…" value="' + esc(state.sheetUrl || '') + '">' +
-        '<button class="pill accent" id="sheetLinkBtn" type="button">' + (linked ? '今すぐ更新' : '連携して読み込む') + '</button>' +
-        (linked ? '<button class="pill" id="sheetUnlinkBtn" type="button">解除</button>' : '') +
-        '</div>' +
-        (linked ? '<div class="status-line" style="margin-top:10px;color:var(--status-good)"><i style="background:var(--status-good)"></i>連携中。ページを開くたびに最新のスプレッドシートを読み込みます。</div>' : '') +
+      col: 'col-12', title: 'スプレッドシート連携', sub: 'Googleスプレッドシートに入れておけば、URLを貼るだけで自動で反映されます（両方貼ると自動結合）',
+      body: ['yoyaku', 'kaikei'].map(function (slot) {
+        var sm = slotMeta(slot), linked = !!sm.sheetUrl;
+        return '<div style="padding:' + (slot === 'kaikei' ? '14px 0 0' : '0 0 14px') + (slot === 'yoyaku' ? ';border-bottom:1px solid var(--hairline)' : '') + '">' +
+          '<div class="note-inline" style="margin-bottom:6px;font-weight:600;color:var(--ink-primary)">' + sm.label + '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<input type="url" id="' + sm.urlId + '" class="sheet-input" inputmode="url" placeholder="https://docs.google.com/spreadsheets/d/…" value="' + esc(sm.sheetUrl || '') + '">' +
+          '<button class="pill accent" id="' + sm.linkId + '" type="button">' + (linked ? '今すぐ更新' : '連携して読み込む') + '</button>' +
+          (linked ? '<button class="pill" id="' + sm.unlinkId + '" type="button">解除</button>' : '') +
+          '</div>' +
+          (linked ? '<div class="status-line" style="margin-top:8px;color:var(--status-good)"><i style="background:var(--status-good)"></i>連携中。ページを開くたびに最新の内容を読み込みます。</div>' : '') +
+          '</div>';
+      }).join('') +
         '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12.5px;color:var(--ink-secondary);font-weight:600">連携のしかた・注意点</summary>' +
         '<div class="how" style="margin-top:8px"><ul>' +
-        '<li>スプレッドシートの1行目を「予約データ」シートと同じ<b>日本語の見出し</b>にしてください（下のテンプレートが使えます）。</li>' +
+        '<li>スプレッドシートの1行目を、対応する見出し（「予約データ」または「会計明細」）と同じ<b>日本語の見出し</b>にしてください（下のテンプレートが使えます）。</li>' +
         '<li><b>確実な方法：</b>スプレッドシートで <code>ファイル → 共有 → ウェブに公開 → 「カンマ区切り形式(.csv)」</code> を選び、表示されたURLをここに貼り付け。</li>' +
         '<li>または、共有を<code>「リンクを知っている全員（閲覧者）」</code>にして、通常の編集URLを貼り付け。</li>' +
         '<li><b>⚠ プライバシー：</b>ウェブに公開・共有したスプレッドシートは、URLを知る人が閲覧できる状態になります。氏名・電話番号などを含む場合はご注意ください。非公開で扱いたい場合は下のファイルアップロードをお使いください。</li>' +
         '<li>テンプレート：<code>data/template.csv</code>（このリポジトリ）をスプレッドシートに<code>ファイル → インポート</code>すると、見出し付きで始められます。</li>' +
         '</ul></div></details>'
     });
-    html += card({
-      col: 'col-12', title: 'ファイルから読み込む', sub: '非公開のデータはこちら（ブラウザ内でのみ処理）',
-      body: '<div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="ファイルをアップロード">' +
-        '<div class="dropzone-ico">' + svgIco('upload') + '</div><h3>予約データ／会計明細をドロップ、またはタップして選択</h3>' +
-        '<p>対応形式：<b>.xlsx</b> / <b>.csv</b>　（「予約データ」または「会計明細」の見出し行を含めてください／Shift-JIS対応）</p>' +
-        '<button class="pill accent" id="pickBtn" type="button">ファイルを選択</button>' +
-        '<button class="pill" id="resetBtn" type="button" style="margin-left:8px">サンプルに戻す</button></div>'
+    // File upload — one dropzone per slot
+    ['yoyaku', 'kaikei'].forEach(function (slot) {
+      var sm = slotMeta(slot);
+      html += card({
+        col: 'col-6', title: sm.label + 'を読み込む', sub: '非公開のデータはこちら（ブラウザ内でのみ処理）',
+        body: '<div class="dropzone" id="' + sm.dropId + '" tabindex="0" role="button" aria-label="' + sm.label + 'をアップロード">' +
+          '<div class="dropzone-ico">' + svgIco('upload') + '</div><h3>' + sm.label + 'をドロップ、またはタップして選択</h3>' +
+          '<p>対応形式：<b>.xlsx</b> / <b>.csv</b>（Shift-JIS対応）</p>' +
+          '<button class="pill accent" id="' + sm.pickId + '" type="button">ファイルを選択</button></div>' +
+          '<div style="margin-top:10px">' + slotStatusLine(slot) + '</div>'
+      });
     });
+    html += card({ col: 'col-12', body: '<button class="pill" id="resetBtn" type="button">全データをクリアしてサンプルに戻す</button>' });
+    // Merge report — only when both slots are loaded
+    if (state.mergeReport) {
+      var mr = state.mergeReport;
+      if (mr.matched === 0) {
+        html += card({
+          col: 'col-12', title: '突合レポート（予約データ ⇄ 会計明細）',
+          body: '<div class="status-line" style="color:var(--status-critical)"><i style="background:var(--status-critical)"></i>結合0件 — フリガナ表記または対象期間が一致していない可能性があります。会計明細は結合されず、予約データ単独で表示しています。</div>'
+        });
+      } else {
+        html += card({
+          col: 'col-12', title: '突合レポート（予約データ ⇄ 会計明細）',
+          sub: '会計明細 ' + F.int(mr.kaikeiTotal) + '件中 ' + F.int(mr.matched) + '件を予約データと結合（結合率 ' + pct(mr.matchRate * 100, 1) + '）',
+          body: '<div class="mini-stats" style="margin-bottom:10px">' +
+            miniStat(F.int(mr.unmatchedKaikei) + '件', '未突合（会計明細）') +
+            miniStat(F.int(mr.unmatchedYoyaku) + '件', '未突合（予約データ）') +
+            miniStat(F.int(mr.amountMismatch.count) + '件', '金額不一致（差額 ' + yen(mr.amountMismatch.totalDiff) + '）') +
+            miniStat(F.int(mr.suspectedDup) + '件', '重複疑い（除外済み）') +
+            '</div>' +
+            (mr.samples.length ? '<div class="table-wrap"><table class="kate-table"><thead><tr><th>日付</th><th>フリガナ</th><th>種別</th></tr></thead><tbody>' +
+              mr.samples.map(function (s) { return '<tr><td>' + esc(s.date) + '</td><td>' + esc(s.kana) + '</td><td>' + esc(s.type) + '</td></tr>'; }).join('') +
+              '</tbody></table></div>' : '')
+        });
+      }
+    }
     html += card({
       col: 'col-6', title: '現在のデータ', sub: 'ブラウザ内でのみ処理されます',
       body: '<div class="datainfo">' +
@@ -490,54 +544,86 @@
   }
 
   function wireUpload() {
-    var dz = $('#dropzone'), input = $('#fileInput');
-    var sheetInput = $('#sheetUrl'), linkBtn = $('#sheetLinkBtn'), unlinkBtn = $('#sheetUnlinkBtn');
-    if (linkBtn) linkBtn.addEventListener('click', function () { var u = (sheetInput.value || '').trim(); if (u) linkSheet(u); else toast('スプレッドシートのURLを入力してください', 'err'); });
+    wireSlot('yoyaku'); wireSlot('kaikei');
+    var resetBtn = $('#resetBtn');
+    if (resetBtn) resetBtn.addEventListener('click', function (e) { e.stopPropagation(); resetAll(); toast('サンプルデータに戻しました', 'ok'); });
+  }
+  function wireSlot(slot) {
+    var sm = slotMeta(slot);
+    var sheetInput = $('#' + sm.urlId), linkBtn = $('#' + sm.linkId), unlinkBtn = $('#' + sm.unlinkId);
+    if (linkBtn) linkBtn.addEventListener('click', function () { var u = (sheetInput.value || '').trim(); if (u) linkSheet(u, slot); else toast('スプレッドシートのURLを入力してください', 'err'); });
     if (sheetInput) sheetInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); if (linkBtn) linkBtn.click(); } });
-    if (unlinkBtn) unlinkBtn.addEventListener('click', unlinkSheet);
-    if ($('#pickBtn')) $('#pickBtn').addEventListener('click', function (e) { e.stopPropagation(); input.click(); });
-    if ($('#resetBtn')) $('#resetBtn').addEventListener('click', function (e) { e.stopPropagation(); loadSample(); toast('サンプルデータに戻しました', 'ok'); });
+    if (unlinkBtn) unlinkBtn.addEventListener('click', function () { unlinkSheet(slot); });
+    var dz = $('#' + sm.dropId), input = $('#' + sm.fileId), pickBtn = $('#' + sm.pickId);
+    if (!dz || !input) return;
+    if (pickBtn) pickBtn.addEventListener('click', function (e) { e.stopPropagation(); input.click(); });
     dz.addEventListener('click', function () { input.click(); });
     dz.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
     ['dragenter', 'dragover'].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add('drag'); }); });
     ['dragleave', 'drop'].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); if (ev === 'dragleave' && dz.contains(e.relatedTarget)) return; dz.classList.remove('drag'); }); });
-    dz.addEventListener('drop', function (e) { var f = e.dataTransfer.files[0]; if (f) handleFile(f); });
-    input.onchange = function () { if (input.files[0]) handleFile(input.files[0]); input.value = ''; };
+    dz.addEventListener('drop', function (e) { var f = e.dataTransfer.files[0]; if (f) handleFile(f, slot); });
+    input.onchange = function () { if (input.files[0]) handleFile(input.files[0], slot); input.value = ''; };
   }
-  function applyRecords(recs, source, fileName, sheetUrl) {
-    var A = global.KATE.engine.compute(recs);
-    state.data = recs; state.analytics = A; state.source = source; state.fileName = fileName || null; state.sheetUrl = sheetUrl || null;
+  // Every data-commit path funnels through here: whichever slot(s) are filled
+  // in state.sources drive the recompute (merged when both, single-source
+  // otherwise, bundled sample data when neither).
+  function applySources() {
+    var y = state.sources.yoyaku, k = state.sources.kaikei;
+    var recs, source, fileName, mergeReport = null, computeOpts = {};
+    if (y && k) {
+      var merged = global.KATE.ingest.mergeSources(y.records, k.records);
+      mergeReport = merged.report;
+      if (merged.report.matched > 0) { recs = merged.records; source = '統合データ（予約＋会計）'; fileName = null; }
+      else { recs = y.records; source = y.via; fileName = y.fileName; }   // 0件結合 → 統合を中止し予約データ単独
+    } else if (y) { recs = y.records; source = y.via; fileName = y.fileName; }
+    else if (k) { recs = k.records; source = k.via; fileName = k.fileName; }
+    else { recs = global.KATE.SAMPLE_RESERVATIONS; source = 'サンプルデータ'; fileName = null; computeOpts = { asOf: '2026-07-03' }; }
+    var A = global.KATE.engine.compute(recs, computeOpts);
+    state.data = recs; state.analytics = A; state.source = source; state.fileName = fileName; state.mergeReport = mergeReport;
     updateChrome(); renderAll(); route(state.view, true);
     return A;
   }
-  function linkSheet(url, opts) {
+  function linkSheet(url, slot, opts) {
     opts = opts || {};
     if (!url) return;
     if (!opts.silent) toast('スプレッドシートを読み込み中…');
     global.KATE.sheets.fetchCsv(url).then(function (text) {
-      var recs = global.KATE.ingest.fromAOA(global.KATE.ingest.parseCSV(text));
-      var A = applyRecords(recs, 'スプレッドシート連携', null, url);
-      try { localStorage.setItem('kate-sheet-url', url); } catch (e) {}
+      var parsed = global.KATE.ingest.fromAOA(global.KATE.ingest.parseCSV(text));
+      var format = parsed.format, recs = parsed.records;
+      state.sources[format] = { records: recs, fileName: null, via: 'スプレッドシート連携' };
+      if (format === 'kaikei') state.sheetUrlKaikei = url; else state.sheetUrl = url;
+      try { localStorage.setItem(format === 'kaikei' ? 'kate-sheet-url-kaikei' : 'kate-sheet-url', url); } catch (e) {}
+      var A = applySources();
+      var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
-      if (!opts.silent) toast('✓ スプレッドシートから ' + F.int(recs.length) + '件を読み込みました' + warn, warn ? 'err' : 'ok');
+      if (!opts.silent) toast('✓ スプレッドシートから ' + F.int(recs.length) + '件を読み込みました' + reroute + warn, warn ? 'err' : 'ok');
     }).catch(function (err) {
       console.warn('sheet load failed', err);
       if (!opts.silent) toast('⚠ ' + (err.message || '読み込みに失敗しました'), 'err');
     });
   }
-  function unlinkSheet() {
-    state.sheetUrl = null; try { localStorage.removeItem('kate-sheet-url'); } catch (e) {}
-    loadSample(); route('data', true); toast('連携を解除し、サンプルに戻しました', 'ok');
+  function unlinkSheet(slot) {
+    if (slot === 'kaikei') { state.sheetUrlKaikei = null; try { localStorage.removeItem('kate-sheet-url-kaikei'); } catch (e) {} }
+    else { state.sheetUrl = null; try { localStorage.removeItem('kate-sheet-url'); } catch (e) {} }
+    state.sources[slot] = null;
+    applySources(); route('data', true); toast(slotMeta(slot).label + 'の連携を解除しました', 'ok');
   }
-  function handleFile(file) {
+  function handleFile(file, slot) {
     toast('読み込み中…');
-    global.KATE.ingest.parseFile(file).then(function (recs) {
-      var A = global.KATE.engine.compute(recs);
-      state.data = recs; state.analytics = A; state.source = 'アップロード'; state.fileName = file.name;
-      updateChrome(); renderAll(); route(state.view, true);
+    global.KATE.ingest.parseFile(file).then(function (parsed) {
+      var format = parsed.format, recs = parsed.records;
+      state.sources[format] = { records: recs, fileName: file.name, via: 'アップロード' };
+      var A = applySources();
+      var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
-      toast('✓ ' + F.int(recs.length) + '件を再計算しました' + warn, warn ? 'err' : 'ok');
+      toast('✓ ' + F.int(recs.length) + '件を再計算しました' + reroute + warn, warn ? 'err' : 'ok');
     }).catch(function (err) { console.error(err); toast('⚠ ' + (err.message || '読み込みに失敗しました'), 'err'); });
+  }
+  function resetAll() {
+    state.sources = { yoyaku: null, kaikei: null };
+    state.sheetUrl = null; state.sheetUrlKaikei = null;
+    try { localStorage.removeItem('kate-sheet-url'); localStorage.removeItem('kate-sheet-url-kaikei'); } catch (e) {}
+    applySources();
   }
 
   // ============================ shell ======================================
@@ -598,24 +684,19 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.className = 'toast'; }, 2600);
   }
 
-  function loadSample() {
-    var recs = global.KATE.SAMPLE_RESERVATIONS;
-    state.data = recs; state.analytics = global.KATE.engine.compute(recs, { asOf: '2026-07-03' });
-    state.source = 'サンプルデータ'; state.fileName = null;
-    updateChrome(); renderAll();
-  }
-
   // ---- boot ----------------------------------------------------------------
   function boot() {
     var saved; try { saved = localStorage.getItem('kate-theme'); } catch (e) {}
     setTheme(saved || (global.matchMedia && global.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
     injectNavIcons();
-    loadSample();
+    applySources();   // no sources loaded yet → falls back to the bundled sample data
 
-    // Auto-reconnect a previously linked spreadsheet (always pull the latest)
-    var savedSheet = null; try { savedSheet = localStorage.getItem('kate-sheet-url'); } catch (e) {}
-    if (savedSheet) { state.sheetUrl = savedSheet; linkSheet(savedSheet, { silent: true }); }
+    // Auto-reconnect previously linked spreadsheets (always pull the latest)
+    var savedYoyaku = null, savedKaikei = null;
+    try { savedYoyaku = localStorage.getItem('kate-sheet-url'); savedKaikei = localStorage.getItem('kate-sheet-url-kaikei'); } catch (e) {}
+    if (savedYoyaku) { state.sheetUrl = savedYoyaku; linkSheet(savedYoyaku, 'yoyaku', { silent: true }); }
+    if (savedKaikei) { state.sheetUrlKaikei = savedKaikei; linkSheet(savedKaikei, 'kaikei', { silent: true }); }
 
     // nav
     Array.prototype.forEach.call(document.querySelectorAll('.tab, .botnav button'), function (b) {
