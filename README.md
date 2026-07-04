@@ -36,8 +36,8 @@
 
 ### 2. GitHub Pages で公開する（自動デプロイ）
 `main` へ push すると `.github/workflows/pages.yml` が自動でPagesへデプロイします。
-**一度だけ** リポジトリの **Settings → Pages → Source を「GitHub Actions」** に設定してください。
-（ブランチ配信を使う場合は、対象ブランチの `/ (root)` を選ぶだけでもOK。`.nojekyll` 同梱。）
+Pages の有効化もワークフローが自動で行うため（`enablement: true`）、**設定作業は不要**です。
+数分後に `https://<ユーザー名>.github.io/KATE-KPI/` で公開されます。（`.nojekyll` 同梱）
 
 ### 3. Googleスプレッドシートと連携する（おすすめ）
 スプレッドシートに予約データを入れ、`データ` タブでその **URL を貼るだけ**。以後、ページを
