@@ -105,6 +105,8 @@
         menuCat: r.menuCat, menu: r.menu, coupon: r.coupon, couponCat: r.couponCat,
         name: r.name || '(無名)', gender: r.gender, first: r.first,
         custKey: r.custKey || (r.name || '') + '|' + (r.phone || ''),
+        start: typeof r.start === 'number' && isFinite(r.start) ? r.start : null,
+        dur: typeof r.dur === 'number' && isFinite(r.dur) ? r.dur : null,
         yoyaku: num(r.yoyakuTotal), planned: num(r.payPlanned), kaikei: num(r.kaikeiTotal),
         shohan: r.shohan || null, shohanAmt: num(r.shohanAmount),
         hasRetail: !!(r.shohan && String(r.shohan).trim()) || num(r.shohanAmount) > 0,
@@ -344,6 +346,16 @@
       };
     });
 
+    // ---- 新規/再来ミックス月次 (M19) ------------------------------------------
+    // Per-VISIT ordinal (not the customer's first-*effective*-month binning used
+    // by `monthly.new` above), so a customer whose very first interaction was a
+    // future booking doesn't get miscounted as "new" in some other month.
+    var newMix = months.map(function (mo) {
+      var vis = visitedRows.filter(function (r) { return r.ym === mo; });
+      var newN = vis.filter(function (r) { return r._ord === 1; }).length;
+      return { m: mo, new: newN, repeat: vis.length - newN };
+    });
+
     // ---- Cohort (first-visit month → 2nd-visit reach) -----------------------
     // A cohort month whose customers haven't yet had 45 days to return is dropped
     // (completed-checkout sources only) rather than shown as a misleadingly low bar.
@@ -523,6 +535,39 @@
       return { coupon: cp, n: g.length, repeat: g.filter(function (c) { return c.Fres >= 2; }).length / g.length, ltv: Math.round(g.reduce(function (s, c) { return s + c.M; }, 0) / g.length) };
     }).sort(function (a, b) { return b.n - a.n; }).slice(0, 12);
 
+    // ---- Trend: 人気メニュー・クーポン依存度 (M20 準備) -------------------------
+    var byMenu = groupBy(visitedRows.filter(function (r) { return r.menu; }), function (r) { return r.menu; });
+    var menuTop = Object.keys(byMenu).map(function (name) {
+      var g = byMenu[name];
+      return { menu: name, n: g.length, amount: g.reduce(function (s, r) { return s + r.kaikei; }, 0) };
+    }).sort(function (a, b) { return b.n - a.n; }).slice(0, 8);
+    var nextResMenuVisits = visitedRows.filter(function (r) { return r.menu && r.menu.indexOf('次回予約') !== -1; }).length;
+    var nextResMenuRatio = visitedRows.length ? nextResMenuVisits / visitedRows.length : null;
+    var couponedVisits = visitedRows.filter(function (r) { return r.coupon && String(r.coupon).trim(); }).length;
+    var couponRatio = visitedRows.length ? couponedVisits / visitedRows.length : null;
+
+    // ---- 施術/店販 月次金額分解 (M20) ------------------------------------------
+    // serviceAmt = kaikeiTotal - shohanAmt (every line item is already summed into
+    // kaikeiTotal, retail included, so no separate raw field is needed).
+    var serviceRetailMonthly = retail.hasAmount ? months.map(function (mo) {
+      var vis = visitedRows.filter(function (r) { return r.ym === mo; });
+      var retailAmt = vis.reduce(function (s, r) { return s + r.shohanAmt; }, 0);
+      var total = vis.reduce(function (s, r) { return s + r.kaikei; }, 0);
+      return { m: mo, service: Math.round(total - retailAmt), retail: Math.round(retailAmt) };
+    }) : null;
+
+    // ---- Trend: 時間帯×曜日 ヒートマップ (P4-3) --------------------------------
+    // Hour from `start` (yoyaku: reservation start HHMM; kaikei-only: checkout
+    // time HHMM — see ingest.js fromKaikei). Clamped to the observed 9-20 band
+    // rather than silently dropped, so no visit goes missing from the map.
+    var HOURS = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+    function clampHour(h) { return h < 9 ? 9 : h > 20 ? 20 : h; }
+    var hourDow = [1, 2, 3, 4, 5, 6, 0].map(function (d) {
+      return HOURS.map(function (h) {
+        return visitedRows.filter(function (r) { return r.dow === d && r.start != null && clampHour(Math.floor(r.start / 100)) === h; }).length;
+      });
+    });
+
     // ---- RFM ----------------------------------------------------------------
     var rfmCusts = visitedCusts.map(function (c) {
       var Rp = rScore(c.R), Fp = fScore(c.Fvis), Mp = mScore(c.M);
@@ -572,10 +617,14 @@
         maturity: { applied: !hasFuture, days: REPEAT_MATURITY_DAYS, matureCustomers: matureN, totalCustomers: baseN },
         funnel: funnel, churn: churn, cancel: cancel, route: route, retail: retail,
         ltv: { current: Math.round(ltv.current), predicted: Math.round(ltv.predicted), expectedVisits: round(ltv.expectedVisits, 2), observedVisits: round(ltv.observedVisits, 2) },
-        monthly: monthly, cohort: cohort, visitCountBreakdown: visitCountBreakdown
+        monthly: monthly, cohort: cohort, visitCountBreakdown: visitCountBreakdown, newMix: newMix, serviceRetailMonthly: serviceRetailMonthly
       },
       staff: staff,
-      trend: { dayOfWeek: dayOfWeek, monthlyCohort: monthlyCohort, coupons: coupons },
+      trend: {
+        dayOfWeek: dayOfWeek, monthlyCohort: monthlyCohort, coupons: coupons,
+        menuTop: menuTop, nextResMenuRatio: nextResMenuRatio, couponRatio: couponRatio,
+        hourDow: hourDow, hourLabels: HOURS.map(function (h) { return h + '時'; })
+      },
       rfm: { total: rfmTotal, segments: segments, map: map, customers: rfmCusts },
       _segmentsMeta: SEGMENTS
     };
