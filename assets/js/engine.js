@@ -22,6 +22,7 @@
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   var HPB_ROUTE = 'HOT PEPPER Beauty';
   function isHPB(r) { return r.route === HPB_ROUTE; }   // excluded from cancel-rate math
+  function isShimei(r) { return !!(r.shimei && String(r.shimei).indexOf('なし') === -1); }   // `指名予約`/`指名あり` → true, `指名なし` → false
 
   // ---- small helpers --------------------------------------------------------
   // Build a Date only if the components are a real, in-range calendar date within
@@ -395,13 +396,21 @@
           nextRes2: immature || !vis2.length ? null : next2 / vis2.length,   // 2回目来店の次回予約取得率
           nextCnt: nextCnt, visN: vis.length, next2Cnt: next2, vis2N: vis2.length,
           nextResImmature: immature,
-          retailRatio: rst.attachRate, retailAmount: rst.amount, retailBuyers: rst.buyers
+          retailRatio: rst.attachRate, retailAmount: rst.amount, retailBuyers: rst.buyers,
+          shimeiN: vis.filter(isShimei).length, retailBuyingVisits: rst.buyingVisits
         };
       });
     }
     var custVisitSet = {};
     visitedCusts.forEach(function (c) { custVisitSet[c.key] = true; });
     function custHasVisit(k) { return !!custVisitSet[k]; }
+
+    // Whether this dataset has any 指名/店販 signal at all — gates whether the
+    // corresponding personal-best/milestone fields below are numbers or null
+    // (a salon that never records nominations shouldn't show a false "0件").
+    var anyShimei = visitedRows.some(isShimei);
+    var anyRetail = visitedRows.some(function (r) { return r.hasRetail; });
+    var currentYm = ym(asOf);   // the in-progress month — excluded from personal-best comparisons
 
     var staff = staffNames.map(function (name) {
       var mrows = staffMonthly(name);
@@ -423,7 +432,11 @@
         newPerMonth: active.length ? round(active.reduce(function (s, r) { return s + r.new; }, 0) / active.length, 1) : 0,
         cancel: (function () { var num = active.reduce(function (s, r) { return s + r.cancelCnt; }, 0); var den = active.reduce(function (s, r) { return s + r.cancelDen; }, 0); return den ? num / den : 0; })(),
         nextRes: (function () { var num = mature.reduce(function (s, r) { return s + r.nextCnt; }, 0); var den = mature.reduce(function (s, r) { return s + r.visN; }, 0); return den ? num / den : null; })(),
-        nextRes2: (function () { var num = mature.reduce(function (s, r) { return s + r.next2Cnt; }, 0); var den = mature.reduce(function (s, r) { return s + r.vis2N; }, 0); return den ? num / den : null; })()
+        nextRes2: (function () { var num = mature.reduce(function (s, r) { return s + r.next2Cnt; }, 0); var den = mature.reduce(function (s, r) { return s + r.vis2N; }, 0); return den ? num / den : null; })(),
+        // Denominators for the min-N gate on 次の一手 (P3-4) — Σ mature-month visits,
+        // not months, since a candidate needs enough *visits* behind it to be trustworthy.
+        nextResN: mature.reduce(function (s, r) { return s + r.visN; }, 0),
+        nextRes2N: mature.reduce(function (s, r) { return s + r.vis2N; }, 0)
       };
       var staffVis = rows.filter(function (r) { return r.staff === name && r.isVisited; });
       var retail = retailStats(staffVis);
@@ -438,9 +451,48 @@
         });
         return { m: mo, new: counts[1], v2: counts[2], v3: counts[3], v4: counts[4] };
       });
+      // ---- Self-growth (Phase 3): 自己ベスト・累計マイルストーン・育てた常連 --------
+      // "Confirmed" months exclude the in-progress current month, so a half-finished
+      // month can't either set or block a personal-best record.
+      var confirmedActive = active.filter(function (r) { return r.m !== currentYm; });
+      function pickBest(list, valueFn) {
+        var best = null;
+        list.forEach(function (r) { var v = valueFn(r); if (best === null || v > best.v) best = { v: v, m: r.m }; });
+        return best;
+      }
+      // True only on a *strict* new record set in the most recent confirmed month
+      // (a tie doesn't count — B-review A3: ties shouldn't earn the "record" pill).
+      function isLatestBest(list, valueFn) {
+        if (list.length < 2) return false;
+        var lastV = valueFn(list[list.length - 1]);
+        return list.slice(0, -1).every(function (r) { return valueFn(r) < lastV; });
+      }
+      var personalBest = {
+        confirmedMonths: confirmedActive.length,
+        visits: pickBest(confirmedActive, function (r) { return r.actual; }),
+        rev: pickBest(confirmedActive, function (r) { return r.revActual; }),
+        shimei: anyShimei ? pickBest(confirmedActive, function (r) { return r.shimeiN; }) : null,
+        retail: anyRetail ? pickBest(confirmedActive, function (r) { return r.retailBuyingVisits; }) : null,
+        latestIsBest: {
+          visits: isLatestBest(confirmedActive, function (r) { return r.actual; }),
+          rev: isLatestBest(confirmedActive, function (r) { return r.revActual; }),
+          shimei: anyShimei && isLatestBest(confirmedActive, function (r) { return r.shimeiN; }),
+          retail: anyRetail && isLatestBest(confirmedActive, function (r) { return r.retailBuyingVisits; })
+        }
+      };
+      var cumulative = {
+        visits: mrows.reduce(function (s, r) { return s + r.actual; }, 0),
+        shimei: anyShimei ? mrows.reduce(function (s, r) { return s + r.shimeiN; }, 0) : null,
+        retailVisits: anyRetail ? mrows.reduce(function (s, r) { return s + r.retailBuyingVisits; }, 0) : null
+      };
+      // 育てた常連: customers this staff first served who went on to become mature
+      // regulars (Fres>=3), using the same 45-day maturity gate as store-level fixation.
+      var regulars3 = matureCusts.filter(function (c) { return c.firstVisitStaff === name && c.Fres >= 3; }).length;
+
       return {
         name: name, avg: avg, acquired: acqAll.length, matureAcquired: acqMature.length,
-        reach2: reach(2), reach3: reach(3), reach4: reach(4), retail: retail, monthly: mrows, composition: comp
+        reach2: reach(2), reach3: reach(3), reach4: reach(4), retail: retail, monthly: mrows, composition: comp,
+        personalBest: personalBest, cumulative: cumulative, regulars3: regulars3
       };
     });
 

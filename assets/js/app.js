@@ -55,6 +55,23 @@
   function svgIco(name) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || '') + '</svg>'; }
   function injectNavIcons() { Array.prototype.forEach.call(document.querySelectorAll('.t-ico[data-ico]'), function (s) { if (!s.firstChild) s.innerHTML = svgIco(s.dataset.ico); }); }
 
+  // ---- career milestones (Phase 3 — self-growth, never compared between staff) --
+  var MILESTONES = {
+    visits: [50, 100, 250, 500, 1000, 2000],
+    shimei: [5, 10, 25, 50, 100],
+    retail: [3, 5, 10, 25, 50],
+    regulars: [5, 10, 25, 50, 100]
+  };
+  function milestoneProgress(value, thresholds) {
+    for (var i = 0; i < thresholds.length; i++) {
+      if (value < thresholds[i]) {
+        var prev = i ? thresholds[i - 1] : 0;
+        return { next: thresholds[i], frac: (value - prev) / (thresholds[i] - prev), maxed: false };
+      }
+    }
+    return { next: thresholds[thresholds.length - 1], frac: 1, maxed: true };
+  }
+
   // ---- card + chart mount helpers -----------------------------------------
   function card(opts) {
     // opts: {title, sub, tag, col, body(html), id}
@@ -226,17 +243,25 @@
       var col = cvar(STAFF_COLOR[st.name] || '--series-6');
       var matureNote = A.meta.completedOnly
         ? '<span data-kpi="staff-' + esc(st.name) + '-mature-n">・成熟母数 ' + st.matureAcquired + '人</span>' : '';
+      var regMile = milestoneProgress(st.regulars3, MILESTONES.regulars);
+      var regNote = '・育てた常連 <b data-kpi="staff-' + esc(st.name) + '-regulars3">' + F.int(st.regulars3) + '人</b>' +
+        (regMile.maxed ? '（最高節目達成）' : '（次の節目 ' + F.int(regMile.next) + '人）');
+      var mile2Kind = st.cumulative.shimei != null ? 'shimei' : (st.cumulative.retailVisits != null ? 'retail' : null);
       html += card({
         col: 'col-6', hoverable: true,
         body: '<div class="staff-head"><div class="staff-avatar" style="background:' + col + '">' + esc(st.name[0].toUpperCase()) + '</div>' +
-          '<div><div class="staff-name">' + esc(st.name) + '<span>実績 ' + st.avg.months + 'ヶ月 ・ 獲得顧客 ' + st.acquired + '人' + matureNote + '</span></div></div></div>' +
+          '<div><div class="staff-name">' + esc(st.name) + '<span>実績 ' + st.avg.months + 'ヶ月 ・ 獲得顧客 ' + st.acquired + '人' + matureNote + regNote + '</span></div></div></div>' +
           '<div class="staff-metrics">' +
           sm(F.int(st.avg.visitsPerMonth), '平均来店 / 月') + sm(yen(st.avg.revPerMonth), '平均売上 / 月') +
           sm(yen(st.avg.spend), '平均客単価') + sm(pct(st.retail.customerRatio * 100, 1), '店販顧客比率', 'staff-' + esc(st.name) + '-retail') +
           '</div>' +
           '<div id="stMeter' + i + '" style="margin-top:16px"></div>' +
           '<div id="stMeter2_' + i + '"></div>' +
-          sgPanel(st, asOfMonth)
+          '<div id="stMile1_' + i + '" style="margin-top:10px"></div>' +
+          (mile2Kind ? '<div id="stMile2_' + i + '"></div>' : '') +
+          personalBestBlock(st) +
+          sgPanel(st, asOfMonth) +
+          '<div class="next-hint" data-kpi="staff-' + esc(st.name) + '-next-hint">' + esc(nextHintText(st)) + '</div>'
       });
     });
 
@@ -257,6 +282,25 @@
       draw('stMeter2_' + i, function (el) {
         C.meter(el, { label: '2回目 次回予約取得率', value: st.avg.nextRes2 || 0, display: st.avg.nextRes2 == null ? '—' : pct(st.avg.nextRes2 * 100), color: cvar(STAFF_COLOR[st.name]), target: 0.6, sub: '目安 60%（2回目来店の再予約）' });
       });
+      draw('stMile1_' + i, function (el) {
+        var mp = milestoneProgress(st.cumulative.visits, MILESTONES.visits);
+        C.meter(el, {
+          label: '累計担当来店', value: mp.frac, display: F.int(st.cumulative.visits) + '件', color: cvar(STAFF_COLOR[st.name]),
+          sub: mp.maxed ? '最高節目達成' : '次の節目 ' + F.int(mp.next) + '件まで あと ' + F.int(mp.next - st.cumulative.visits) + '件'
+        });
+      });
+      var mile2Kind = st.cumulative.shimei != null ? 'shimei' : (st.cumulative.retailVisits != null ? 'retail' : null);
+      if (mile2Kind) {
+        draw('stMile2_' + i, function (el) {
+          var val = mile2Kind === 'shimei' ? st.cumulative.shimei : st.cumulative.retailVisits;
+          var label = mile2Kind === 'shimei' ? '累計指名' : '累計店販成約';
+          var mp = milestoneProgress(val, MILESTONES[mile2Kind]);
+          C.meter(el, {
+            label: label, value: mp.frac, display: F.int(val) + '件', color: cvar(STAFF_COLOR[st.name]),
+            sub: mp.maxed ? '最高節目達成' : '次の節目 ' + F.int(mp.next) + '件まで あと ' + F.int(mp.next - val) + '件'
+          });
+        });
+      }
     });
     var seriesRes = staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.monthly.map(function (m) { return m.res; }) }; });
     draw('cStaffRes', function (el) { C.columns(el, { groups: months, series: seriesRes, valueFmt: function (v) { return v + '件'; }, height: 240 }); });
@@ -315,6 +359,42 @@
       sgRow('来店 / 月', st, function (m) { return m.actual; }, function (v) { return F.int(v) + '件'; }, asOfMonth) +
       sgRow('次回予約取得率', st, function (m) { return m.nextRes == null ? null : m.nextRes * 100; }, function (v) { return v.toFixed(0) + '%'; }, asOfMonth) +
       '</div>';
+  }
+
+  // 自己ベスト（月間の最高記録・自分の過去比のみ／他スタッフとは比較しない）
+  function personalBestBlock(st) {
+    var pb = st.personalBest;
+    if (pb.confirmedMonths < 2) {
+      return '<div class="self-growth"><div class="sg-title">自己ベスト</div>' +
+        '<div class="empty-note">記録を集めています。確定した月次データが2ヶ月分たまると表示されます。</div></div>';
+    }
+    function cell(label, best, isLatest, fmt, dataKpi) {
+      if (!best) return '';
+      return '<div class="staff-metric"' + (dataKpi ? ' data-kpi="' + dataKpi + '"' : '') + '>' +
+        '<b>' + fmt(best.v) + '</b><span>' + label + '（' + monthShort(best.m) + '）' + (isLatest ? '<span class="pb-tag">自己ベスト更新</span>' : '') + '</span></div>';
+    }
+    var cells = cell('月間来店', pb.visits, pb.latestIsBest.visits, function (v) { return F.int(v) + '件'; }) +
+      cell('月間売上', pb.rev, pb.latestIsBest.rev, function (v) { return yen(v); }) +
+      cell('月間指名', pb.shimei, pb.latestIsBest.shimei, function (v) { return F.int(v) + '件'; }) +
+      cell('月間店販成約', pb.retail, pb.latestIsBest.retail, function (v) { return F.int(v) + '件'; });
+    return '<div class="self-growth"><div class="sg-title">自己ベスト</div><div class="staff-metrics" style="margin-top:10px">' + cells + '</div></div>';
+  }
+
+  // 次の一手：目安との差が最も大きい「成熟済み」の指標を1件だけ提案。競争ではなく
+  // 本人の伸びしろに焦点を当てるため、他スタッフとの比較は一切行わない。母数が
+  // 小さい（20未満）候補は不安定なので提案対象から除外する。
+  function nextHintText(st) {
+    var candidates = [];
+    if (st.matureAcquired >= 20 && st.reach2 != null) candidates.push({ label: 'リピート（2回目のご来店）', value: st.reach2 * 100, target: 70 });
+    if (st.avg.nextResN >= 20 && st.avg.nextRes != null) candidates.push({ label: '次回予約の獲得', value: st.avg.nextRes * 100, target: 60 });
+    if (st.avg.nextRes2N >= 20 && st.avg.nextRes2 != null) candidates.push({ label: '2回目のお客様の再予約', value: st.avg.nextRes2 * 100, target: 60 });
+    if (st.matureAcquired >= 20 && st.reach3 != null) candidates.push({ label: '常連化（3回以上のご来店）', value: st.reach3 * 100, target: 30 });
+    if (!candidates.length) return 'データが揃うと、具体的な提案が表示されます。';
+    candidates.forEach(function (c) { c.gap = c.target - c.value; });
+    var positive = candidates.filter(function (c) { return c.gap > 0; }).sort(function (a, b) { return b.gap - a.gap; });
+    if (!positive.length) return 'すべての目安を達成しています。この水準の維持が次の目標です。';
+    var top = positive[0];
+    return '次の一手：' + top.label + 'が ' + Math.round(top.value) + '%（目安 ' + top.target + '%）。ここが一番の伸びしろです。';
   }
 
   // ============================ TREND ======================================
