@@ -330,7 +330,7 @@
     var r = state.analytics.rfm;
     var rows = r.customers.slice().sort(function (a, b) { var k = rfmSort.key; return (a[k] - b[k]) * rfmSort.dir; }).slice(0, 120);
     var cols = [['name', 'お名前'], ['R', 'R (日)'], ['F', 'F (回)'], ['M', 'M (¥)'], ['seg', 'セグメント']];
-    var thead = '<thead><tr>' + cols.map(function (c) { return '<th data-k="' + c[0] + '"' + (rfmSort.key === c[0] ? ' class="sorted' + (rfmSort.dir > 0 ? ' asc' : '') + '"' : '') + '>' + c[1] + '</th>'; }).join('') + '</tr></thead>';
+    var thead = '<thead><tr>' + cols.map(function (c) { return '<th data-k="' + c[0] + '" tabindex="0" role="button" aria-label="' + c[1] + 'で並べ替え"' + (rfmSort.key === c[0] ? ' aria-sort="' + (rfmSort.dir > 0 ? 'ascending' : 'descending') + '" class="sorted' + (rfmSort.dir > 0 ? ' asc' : '') + '"' : '') + '>' + c[1] + '</th>'; }).join('') + '</tr></thead>';
     var tbody = '<tbody>' + rows.map(function (c) {
       var col = cvar(SEG_COLOR[c.seg] || '--series-6');
       return '<tr><td>' + esc(c.name) + '</td><td>' + c.R + '</td><td>' + c.F + '</td><td>' + F.int(c.M) + '</td>' +
@@ -338,7 +338,9 @@
     }).join('') + '</tbody>';
     var table = $('#rfmTable'); table.innerHTML = thead + tbody;
     Array.prototype.forEach.call(table.querySelectorAll('th'), function (th) {
-      th.addEventListener('click', function () { var k = th.dataset.k; if (rfmSort.key === k) rfmSort.dir *= -1; else { rfmSort.key = k; rfmSort.dir = k === 'name' ? 1 : -1; } buildRfmTable(); });
+      function sort() { var k = th.dataset.k; if (rfmSort.key === k) rfmSort.dir *= -1; else { rfmSort.key = k; rfmSort.dir = k === 'name' ? 1 : -1; } buildRfmTable(); var nth = document.querySelector('#rfmTable th[data-k="' + k + '"]'); if (nth) nth.focus(); }
+      th.addEventListener('click', sort);
+      th.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); } });
     });
   }
 

@@ -43,22 +43,35 @@
   function clean(s) { return String(s == null ? '' : s).replace(/^﻿/, '').trim(); }
   function normName(s) { return clean(s).replace(/[\s　]/g, ''); }
 
+  function isoIf(y, mo, day) {   // return ISO only for a real in-range calendar date
+    if (y < 1900 || y > 2200 || mo < 1 || mo > 12 || day < 1 || day > 31) return null;
+    var d = new Date(y, mo - 1, day);
+    if (d.getFullYear() !== y || d.getMonth() !== mo - 1 || d.getDate() !== day) return null;
+    return y + '-' + String(mo).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+  }
   function toISO(v) {
     if (v == null || v === '') return null;
-    if (v instanceof Date && !isNaN(v)) return v.getFullYear() + '-' + String(v.getMonth() + 1).padStart(2, '0') + '-' + String(v.getDate()).padStart(2, '0');
-    var s = String(v).trim();
+    if (v instanceof Date && !isNaN(v)) return isoIf(v.getFullYear(), v.getMonth() + 1, v.getDate());
+    var s = String(v).trim().normalize('NFKC');
     var m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-    if (m) return m[1] + '-' + String(+m[2]).padStart(2, '0') + '-' + String(+m[3]).padStart(2, '0');
-    if (/^\d{8}$/.test(s)) return s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8);
+    if (m) return isoIf(+m[1], +m[2], +m[3]);
+    if (/^\d{8}$/.test(s)) return isoIf(+s.slice(0, 4), +s.slice(4, 6), +s.slice(6, 8));
     // Excel serial date fallback
     var n = Number(s);
     if (isFinite(n) && n > 20000 && n < 60000) {
       var d = new Date(Math.round((n - 25569) * 86400000));
-      return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+      return isoIf(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
     }
     return null;
   }
-  function toNum(v) { if (v == null || v === '') return null; var n = Number(String(v).replace(/[,¥\s]/g, '')); return isFinite(n) ? n : null; }
+  // NFKC folds full-width digits/¥; strip everything but digits, sign, decimal.
+  function toNum(v) {
+    if (v == null || v === '') return null;
+    var s = String(v).normalize('NFKC').replace(/[^0-9.\-]/g, '');
+    if (s === '' || s === '-' || s === '.') return null;
+    var n = Number(s);
+    return isFinite(n) ? n : null;
+  }
 
   // ---- CSV parser (RFC-4180-ish: quotes, escaped quotes, embedded newlines) -
   function parseCSV(text) {
@@ -100,8 +113,9 @@
     var missing = REQUIRED.filter(function (f) { return !(f in colOf); });
     if (missing.length) throw new Error('必須列が不足しています: ' + missing.join(', '));
 
-    var records = [];
+    var records = [], MAX_ROWS = 100000;
     for (var i = headerIdx + 1; i < aoa.length; i++) {
+      if (records.length >= MAX_ROWS) break;        // guard against pathological uploads
       var line = aoa[i];
       var status = clean(line[colOf.status]);
       if (!status) continue;                        // skip blank rows

@@ -42,7 +42,7 @@
 
   --ink-primary: #241522;
   --ink-secondary: #5A4A54;
-  --ink-muted: #8A7C84;
+  --ink-muted: #6F6570;   /* darkened from #8A7C84 to clear WCAG AA on small text */
 
   --accent: #6D3E9E;          /* plum — all legible interactive state */
   --accent-2: #8A57A9;
@@ -272,7 +272,7 @@ a { color: var(--accent); }
 .hero-inner { position: relative; display: grid; grid-template-columns: 1.25fr 1fr; gap: 26px; align-items: center; }
 @media (max-width: 780px) { .hero-inner { grid-template-columns: 1fr; gap: 20px; } }
 .hero-eyebrow { font-family: var(--font-serif); font-style: italic; letter-spacing: .14em; text-transform: uppercase; font-size: 12px; opacity: .9; }
-.hero-value { font-family: var(--font-serif); font-weight: 600; font-size: clamp(42px, 8.6vw, 64px); line-height: 1.05; letter-spacing: -0.02em; margin: 8px 0 4px; font-variant-numeric: tabular-nums; }
+.hero-value { font-family: var(--font-serif); font-weight: 600; font-size: clamp(30px, 8.4vw, 64px); line-height: 1.05; letter-spacing: -0.02em; margin: 8px 0 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .hero-value .unit { font-size: .34em; font-weight: 600; color: var(--rose-gold); margin-left: 6px; letter-spacing: 0; }
 .hero-caption { font-size: 13px; opacity: .92; max-width: 42ch; }
 .hero-split { margin-top: 18px; }
@@ -382,6 +382,10 @@ a { color: var(--accent); }
 .segmented button { appearance: none; border: 0; background: transparent; cursor: pointer; padding: 6px 13px; font-size: 12.5px; font-weight: 600; color: var(--ink-secondary); border-radius: 999px; transition: color .2s; white-space: nowrap; z-index: 1; }
 .segmented button.active { color: #fff; }
 .segmented .seg-thumb { position: absolute; top: 3px; bottom: 3px; background: var(--accent); border-radius: 999px; transition: transform .2s var(--ease-emphasized), width .2s var(--ease-emphasized); z-index: 0; }
+@media (max-width: 520px) {
+  .segmented { display: flex; width: 100%; }
+  .segmented button { flex: 1; padding: 7px 6px; font-size: 12px; }
+}
 
 /* ---- Table ----------------------------------------------------------------*/
 .table-wrap { overflow-x: auto; margin: 0 -6px; position: relative; -webkit-overflow-scrolling: touch; }

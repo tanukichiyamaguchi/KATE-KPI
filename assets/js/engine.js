@@ -22,16 +22,26 @@
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
 
   // ---- small helpers --------------------------------------------------------
+  // Build a Date only if the components are a real, in-range calendar date within
+  // a sane year band. Rejects overflow (month 13, day 32) and wild years so one bad
+  // row can't blow up the month axis.
+  function mkDate(y, mo, day) {
+    if (y < 1900 || y > 2200 || mo < 1 || mo > 12 || day < 1 || day > 31) return null;
+    var d = new Date(y, mo - 1, day);
+    return (d.getFullYear() === y && d.getMonth() === mo - 1 && d.getDate() === day) ? d : null;
+  }
   function parseDate(v) {
     if (!v) return null;
     if (v instanceof Date) return isNaN(v) ? null : v;
     var s = String(v).trim();
     var m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
-    if (/^\d{8}$/.test(s)) return new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8));
+    if (m) return mkDate(+m[1], +m[2], +m[3]);
+    if (/^\d{8}$/.test(s)) return mkDate(+s.slice(0, 4), +s.slice(4, 6), +s.slice(6, 8));
     var d = new Date(s);
     return isNaN(d) ? null : d;
   }
+  function maxDate(arr) { return arr.reduce(function (m, d) { return d > m ? d : m; }); }
+  function minDate(arr) { return arr.reduce(function (m, d) { return d < m ? d : m; }); }
   function ym(d) { return d ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') : null; }
   function dayDiff(a, b) { return Math.round((a - b) / 86400000); }
   function num(v) { return typeof v === 'number' && isFinite(v) ? v : 0; }
@@ -102,7 +112,7 @@
 
     // As-of date = latest actual visit (the dataset's "now"), overridable.
     var visitedDates = rows.filter(function (r) { return r.isVisited && r.date; }).map(function (r) { return r.date; });
-    var asOf = options.asOf ? parseDate(options.asOf) : (visitedDates.length ? new Date(Math.max.apply(null, visitedDates)) : new Date());
+    var asOf = (options.asOf && parseDate(options.asOf)) || (visitedDates.length ? maxDate(visitedDates) : new Date());
 
     rows.forEach(function (r) {
       r.isFuture = r.isWaiting && r.date && r.date > asOf;   // upcoming booking (見込み)
@@ -114,10 +124,11 @@
     // Analysis period from data (guard degenerate datasets with no parseable dates)
     var allDates = rows.filter(function (r) { return r.date; }).map(function (r) { return r.date; });
     if (!allDates.length) allDates = [asOf];
-    var minD = new Date(Math.min.apply(null, allDates));
+    var minD = minDate(allDates);
     var maxEff = rows.filter(function (r) { return r.isEffective && r.date; }).map(function (r) { return r.date; });
-    var maxD = new Date(Math.max.apply(null, maxEff.length ? maxEff : allDates));
+    var maxD = maxDate(maxEff.length ? maxEff : allDates);
     var months = monthsBetween(new Date(minD.getFullYear(), minD.getMonth(), 1), maxD);
+    if (months.length > 240) months = months.slice(-240);   // belt-and-suspenders cap
 
     // ---- Customer aggregation ----------------------------------------------
     var byCust = groupBy(rows, function (r) { return r.custKey; });
