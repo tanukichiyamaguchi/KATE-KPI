@@ -157,6 +157,7 @@
         lastVisit: lastVisit,
         firstEffDate: firstEff ? firstEff.date : null,
         firstEffMonth: firstEff ? firstEff.ym : null,
+        firstVisitDate: firstVisit ? firstVisit.date : null,
         firstVisitMonth: firstVisit ? firstVisit.ym : null,
         firstVisitStaff: firstVisit ? firstVisit.staff : (firstEff ? firstEff.staff : null),
         firstVisitDow: firstVisit ? firstVisit.dow : null,
@@ -184,11 +185,26 @@
     // meaningless and get trimmed from the trend below.
     var hasFuture = futureRows.length > 0;
     var MATURITY_DAYS = 30;
-    function monthImmature(mo) {
+    function monthImmatureBy(mo, days) {
       if (hasFuture) return false;                 // future data → no censoring
       var p = mo.split('-'); var end = new Date(+p[0], +p[1], 0);   // last day of month
-      return dayDiff(asOf, end) < MATURITY_DAYS;
+      return dayDiff(asOf, end) < days;
     }
+    function monthImmature(mo) { return monthImmatureBy(mo, MATURITY_DAYS); }
+
+    // Repeat/retention metrics need a *customer*-level maturity gate, distinct from
+    // the month-level one above: a customer whose first visit was only a few days
+    // ago hasn't had time to come back, so counting them as "not yet repeated"
+    // understates the true rate. Only matters for completed-checkout sources
+    // (no future rows) — 予約データ already knows about upcoming bookings.
+    var REPEAT_MATURITY_DAYS = 45;
+    function custMature(c) {
+      if (hasFuture) return true;
+      return !!(c.firstVisitDate && dayDiff(asOf, c.firstVisitDate) >= REPEAT_MATURITY_DAYS);
+    }
+    var matureCusts = visitedCusts.filter(custMature);
+    var matureN = matureCusts.length;
+
     var revenueActual = visitedRows.reduce(function (s, r) { return s + r.kaikei; }, 0);
     var revenueExpected = futureRows.reduce(function (s, r) { return s + r.yoyaku; }, 0);
     var actualVisits = visitedRows.length;
@@ -198,29 +214,43 @@
     // ---- 店販 (retail / product sales) -------------------------------------
     // Amount metrics require a 会計時店販金額 column; buyer ratio works from the
     // product name alone. `retailStats` is reused for the whole store and per staff.
-    function retailStats(vRows, denomVisits) {
-      var buyers = vRows.filter(function (r) { return r.hasRetail; });
-      var amt = buyers.reduce(function (s, r) { return s + r.shohanAmt; }, 0);
+    function uniqCount(arr, keyFn) {
+      var seen = {}, n = 0;
+      arr.forEach(function (x) { var k = keyFn(x); if (!seen[k]) { seen[k] = 1; n++; } });
+      return n;
+    }
+    function retailStats(vRows) {
+      var buyingRows = vRows.filter(function (r) { return r.hasRetail; });
+      var buyingVisits = buyingRows.length;
+      var amt = buyingRows.reduce(function (s, r) { return s + r.shohanAmt; }, 0);
       var hasAmount = vRows.some(function (r) { return r.shohanAmt > 0; });
       var rev = vRows.reduce(function (s, r) { return s + r.kaikei; }, 0);
+      var buyers = uniqCount(buyingRows, function (r) { return r.custKey; });      // 店販購入顧客（人）
+      var visitCustomers = uniqCount(vRows, function (r) { return r.custKey; });   // 来店顧客（人）
       return {
-        buyers: buyers.length,
-        customerRatio: denomVisits ? buyers.length / denomVisits : 0,   // 店販顧客比率（会計に店販が含まれた割合）
+        buyers: buyers,
+        visitCustomers: visitCustomers,
+        buyingVisits: buyingVisits,
+        customerRatio: visitCustomers ? buyers / visitCustomers : 0,   // 店販顧客比率（人ベース）
+        attachRate: vRows.length ? buyingVisits / vRows.length : 0,     // 店販付帯率（会計ベース）
         hasAmount: hasAmount,
         amount: hasAmount ? amt : null,                                  // 店販金額
         revenueRatio: hasAmount && rev ? amt / rev : null,               // 店販売上比率
-        avgSpend: hasAmount && buyers.length ? Math.round(amt / buyers.length) : null  // 店販単価
+        avgSpend: hasAmount && buyingVisits ? Math.round(amt / buyingVisits) : null  // 店販単価（会計ベース）
       };
     }
-    var retail = retailStats(visitedRows, actualVisits);
+    var retail = retailStats(visitedRows);
 
-    // ---- Retention funnel (reservation-based, base = visited customers) -----
+    // ---- Retention funnel (reservation-based, base = mature visited customers) -
+    // Base is `matureCusts`, not all visited customers: for completed-checkout
+    // sources a very recent first-timer hasn't had time to repeat, so including
+    // them would understate every rate below (see custMature above).
     var funnel = [1, 2, 3, 4, 5].map(function (n) {
-      var people = visitedCusts.filter(function (c) { return c.Fres >= n; }).length;
-      return { n: n, people: people, reach: baseN ? people / baseN : 0 };
+      var people = matureCusts.filter(function (c) { return c.Fres >= n; }).length;
+      return { n: n, people: people, reach: matureN ? people / matureN : 0 };
     });
-    var repeatRate = baseN ? funnel[1].people / baseN : 0;
-    var fixationRate = baseN ? funnel[2].people / baseN : 0;
+    var repeatRate = matureN ? funnel[1].people / matureN : 0;
+    var fixationRate = matureN ? funnel[2].people / matureN : 0;
 
     // ---- Next-reservation rate (per visit) ----------------------------------
     // A visit "secured a next reservation" if the customer has any later effective reservation.
@@ -244,10 +274,10 @@
     });
     var visitCycleMedianDays = median(gaps);
 
-    // ---- Churn (visited customers with no next effective reservation) -------
-    var churned = visitedCusts.filter(function (c) { return c.Fres < 2; });
+    // ---- Churn (mature visited customers with no next effective reservation) -
+    var churned = matureCusts.filter(function (c) { return c.Fres < 2; });
     var cancelStopped = churned.filter(function (c) { return c.hasAnyCancel; }).length;
-    var churn = { total: churned.length, cancelStopped: cancelStopped, noNextReserve: churned.length - cancelStopped, base: baseN };
+    var churn = { total: churned.length, cancelStopped: cancelStopped, noNextReserve: churned.length - cancelStopped, base: matureN };
 
     // ---- Cancellation (HOT PEPPER Beauty excluded per store policy) ----------
     // The salon can't control HPB-side cancellations, so HPB reservations are
@@ -299,12 +329,14 @@
       var fut = mrows.filter(function (r) { return r.isFuture; });
       var conf = mrows.filter(function (r) { return r.isConfirmed && !isHPB(r); });
       var canc = mrows.filter(function (r) { return r.isCancel && !isHPB(r); });
-      var rev = vis.reduce(function (s, r) { return s + r.kaikei; }, 0) + fut.reduce(function (s, r) { return s + r.yoyaku; }, 0);
+      var revActual = vis.reduce(function (s, r) { return s + r.kaikei; }, 0);
+      var revExpected = fut.reduce(function (s, r) { return s + r.yoyaku; }, 0);
       var res = vis.length + fut.length;
       var nextCnt = vis.filter(function (r) { return r.date && visitGotNext(r); }).length;
       return {
-        m: mo, res: res, actual: vis.length, exp: fut.length, rev: rev,
-        spend: res ? Math.round(rev / res) : 0,
+        m: mo, res: res, actual: vis.length, exp: fut.length, rev: revActual + revExpected,
+        revActual: revActual, revExpected: revExpected,
+        spend: vis.length ? Math.round(revActual / vis.length) : 0,   // 実績客単価のみ（0来店月は0＝スパークライン安全）
         new: newByMonth[mo] || 0,
         cancel: conf.length ? canc.length / conf.length : null,
         nextRes: vis.length ? nextCnt / vis.length : null
@@ -312,10 +344,12 @@
     });
 
     // ---- Cohort (first-visit month → 2nd-visit reach) -----------------------
+    // A cohort month whose customers haven't yet had 45 days to return is dropped
+    // (completed-checkout sources only) rather than shown as a misleadingly low bar.
     var byCohort = groupBy(visitedCusts.filter(function (c) { return c.firstVisitMonth; }), function (c) { return c.firstVisitMonth; });
     var cohort = months.map(function (mo) {
       var g = byCohort[mo] || [];
-      if (!g.length) return null;
+      if (!g.length || monthImmatureBy(mo, REPEAT_MATURITY_DAYS)) return null;
       var reach2 = g.filter(function (c) { return c.Fres >= 2; }).length / g.length;
       return { m: mo, n: g.length, reach2: reach2 };
     }).filter(Boolean);
@@ -342,23 +376,26 @@
         var conf = mr.filter(function (r) { return r.isConfirmed; });
         var canc = mr.filter(function (r) { return r.isCancel && !isHPB(r) && r.custKey && custHasVisit(r.custKey); });
         var confVisitors = conf.filter(function (r) { return (r.isVisited || custHasVisit(r.custKey)) && !isHPB(r); });
-        var rev = vis.reduce(function (s, r) { return s + r.kaikei; }, 0) + fut.reduce(function (s, r) { return s + r.yoyaku; }, 0);
+        var revActual = vis.reduce(function (s, r) { return s + r.kaikei; }, 0);
+        var rev = revActual + fut.reduce(function (s, r) { return s + r.yoyaku; }, 0);
         var res = vis.length + fut.length;
         var newN = customers.filter(function (c) { return c.firstVisitStaff === name && c.firstVisitMonth === mo; }).length;
         var nextCnt = vis.filter(function (r) { return r.date && visitGotNext(r); }).length;
         var vis2 = vis.filter(function (r) { return r._ord === 2; });
         var next2 = vis2.filter(function (r) { return visitGotNext(r); }).length;
-        var rst = retailStats(vis, vis.length);
+        var rst = retailStats(vis);
         var immature = monthImmature(mo);          // right-censored recent month → not measurable
         return {
-          m: mo, res: res, actual: vis.length, exp: fut.length, rev: rev,
-          spend: vis.length ? Math.round(rev / res || 0) : (res ? Math.round(rev / res) : 0),
+          m: mo, res: res, actual: vis.length, exp: fut.length, rev: rev, revActual: revActual,
+          spend: vis.length ? Math.round(revActual / vis.length) : null,   // 実績客単価のみ（将来予約金額は含めない）
           new: newN,
           cancel: confVisitors.length ? canc.length / confVisitors.length : null,
+          cancelCnt: canc.length, cancelDen: confVisitors.length,
           nextRes: immature || !vis.length ? null : nextCnt / vis.length,
           nextRes2: immature || !vis2.length ? null : next2 / vis2.length,   // 2回目来店の次回予約取得率
+          nextCnt: nextCnt, visN: vis.length, next2Cnt: next2, vis2N: vis2.length,
           nextResImmature: immature,
-          retailRatio: rst.customerRatio, retailAmount: rst.amount, retailBuyers: rst.buyers
+          retailRatio: rst.attachRate, retailAmount: rst.amount, retailBuyers: rst.buyers
         };
       });
     }
@@ -369,20 +406,27 @@
     var staff = staffNames.map(function (name) {
       var mrows = staffMonthly(name);
       var active = mrows.filter(function (r) { return r.actual > 0; });
-      var acq = customers.filter(function (c) { return c.firstVisitStaff === name && c.hasVisit; });
-      function reach(n) { return acq.length ? acq.filter(function (c) { return c.Fres >= n; }).length / acq.length : 0; }
+      // `acqAll` is the headline "獲得顧客" count (never right-censored); `acqMature`
+      // is the maturity-gated subset used for the reach2/3/4 denominators so a wave
+      // of very recent first-timers doesn't drag those rates down artificially.
+      var acqAll = customers.filter(function (c) { return c.firstVisitStaff === name && c.hasVisit; });
+      var acqMature = acqAll.filter(custMature);
+      // null (not 0) when there's no mature base yet — a brand-new staff hasn't
+      // "failed" to retain anyone, there just hasn't been time to find out.
+      function reach(n) { return acqMature.length ? acqMature.filter(function (c) { return c.Fres >= n; }).length / acqMature.length : null; }
+      var mature = active.filter(function (r) { return !r.nextResImmature; });
       var avg = {
         months: active.length,
         visitsPerMonth: active.length ? round(active.reduce(function (s, r) { return s + r.actual; }, 0) / active.length, 1) : 0,
         revPerMonth: active.length ? Math.round(active.reduce(function (s, r) { return s + r.rev; }, 0) / active.length) : 0,
-        spend: (function () { var v = active.reduce(function (s, r) { return s + r.actual; }, 0); var rv = active.reduce(function (s, r) { return s + r.rev; }, 0); return v ? Math.round(rv / v) : 0; })(),
+        spend: (function () { var v = active.reduce(function (s, r) { return s + r.actual; }, 0); var rv = active.reduce(function (s, r) { return s + r.revActual; }, 0); return v ? Math.round(rv / v) : 0; })(),
         newPerMonth: active.length ? round(active.reduce(function (s, r) { return s + r.new; }, 0) / active.length, 1) : 0,
-        cancel: (function () { var c = active.filter(function (r) { return r.cancel != null; }); return c.length ? c.reduce(function (s, r) { return s + r.cancel; }, 0) / c.length : 0; })(),
-        nextRes: (function () { var c = active.filter(function (r) { return r.nextRes != null; }); return c.length ? c.reduce(function (s, r) { return s + r.nextRes; }, 0) / c.length : null; })(),
-        nextRes2: (function () { var c = active.filter(function (r) { return r.nextRes2 != null; }); return c.length ? c.reduce(function (s, r) { return s + r.nextRes2; }, 0) / c.length : null; })()
+        cancel: (function () { var num = active.reduce(function (s, r) { return s + r.cancelCnt; }, 0); var den = active.reduce(function (s, r) { return s + r.cancelDen; }, 0); return den ? num / den : 0; })(),
+        nextRes: (function () { var num = mature.reduce(function (s, r) { return s + r.nextCnt; }, 0); var den = mature.reduce(function (s, r) { return s + r.visN; }, 0); return den ? num / den : null; })(),
+        nextRes2: (function () { var num = mature.reduce(function (s, r) { return s + r.next2Cnt; }, 0); var den = mature.reduce(function (s, r) { return s + r.vis2N; }, 0); return den ? num / den : null; })()
       };
       var staffVis = rows.filter(function (r) { return r.staff === name && r.isVisited; });
-      var retail = retailStats(staffVis, staffVis.length);
+      var retail = retailStats(staffVis);
       // visit-count composition per month
       var comp = mrows.map(function (r, i) {
         var mo = r.m;
@@ -394,7 +438,10 @@
         });
         return { m: mo, new: counts[1], v2: counts[2], v3: counts[3], v4: counts[4] };
       });
-      return { name: name, avg: avg, acquired: acq.length, reach2: reach(2), reach3: reach(3), reach4: reach(4), retail: retail, monthly: mrows, composition: comp };
+      return {
+        name: name, avg: avg, acquired: acqAll.length, matureAcquired: acqMature.length,
+        reach2: reach(2), reach3: reach(3), reach4: reach(4), retail: retail, monthly: mrows, composition: comp
+      };
     });
 
     // ---- Trend: day-of-week -------------------------------------------------
@@ -470,6 +517,7 @@
         customers: baseN,
         repeatRate: round(repeatRate * 100, 1), fixationRate: round(fixationRate * 100, 1),
         nextReserveRate: round(nextReserveRate * 100, 1), visitCycleMedianDays: visitCycleMedianDays,
+        maturity: { applied: !hasFuture, days: REPEAT_MATURITY_DAYS, matureCustomers: matureN, totalCustomers: baseN },
         funnel: funnel, churn: churn, cancel: cancel, route: route, retail: retail,
         ltv: { current: Math.round(ltv.current), predicted: Math.round(ltv.predicted), expectedVisits: round(ltv.expectedVisits, 2), observedVisits: round(ltv.observedVisits, 2) },
         monthly: monthly, cohort: cohort, visitCountBreakdown: visitCountBreakdown
