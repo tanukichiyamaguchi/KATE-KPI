@@ -177,6 +177,18 @@
     // ---- Store: revenue & counts -------------------------------------------
     var visitedRows = rows.filter(function (r) { return r.isVisited; });
     var futureRows = rows.filter(function (r) { return r.isFuture; });
+    // When the source has upcoming reservations (予約データ), a recent visit's
+    // "next reservation" is already knowable. When it does NOT (会計明細 = completed
+    // checkouts only), recent months are right-censored: not enough time has passed
+    // for the follow-up visit to appear, so those months' next-reservation rates are
+    // meaningless and get trimmed from the trend below.
+    var hasFuture = futureRows.length > 0;
+    var MATURITY_DAYS = 30;
+    function monthImmature(mo) {
+      if (hasFuture) return false;                 // future data → no censoring
+      var p = mo.split('-'); var end = new Date(+p[0], +p[1], 0);   // last day of month
+      return dayDiff(asOf, end) < MATURITY_DAYS;
+    }
     var revenueActual = visitedRows.reduce(function (s, r) { return s + r.kaikei; }, 0);
     var revenueExpected = futureRows.reduce(function (s, r) { return s + r.yoyaku; }, 0);
     var actualVisits = visitedRows.length;
@@ -337,13 +349,15 @@
         var vis2 = vis.filter(function (r) { return r._ord === 2; });
         var next2 = vis2.filter(function (r) { return visitGotNext(r); }).length;
         var rst = retailStats(vis, vis.length);
+        var immature = monthImmature(mo);          // right-censored recent month → not measurable
         return {
           m: mo, res: res, actual: vis.length, exp: fut.length, rev: rev,
           spend: vis.length ? Math.round(rev / res || 0) : (res ? Math.round(rev / res) : 0),
           new: newN,
           cancel: confVisitors.length ? canc.length / confVisitors.length : null,
-          nextRes: vis.length ? nextCnt / vis.length : null,
-          nextRes2: vis2.length ? next2 / vis2.length : null,       // 2回目来店の次回予約取得率
+          nextRes: immature || !vis.length ? null : nextCnt / vis.length,
+          nextRes2: immature || !vis2.length ? null : next2 / vis2.length,   // 2回目来店の次回予約取得率
+          nextResImmature: immature,
           retailRatio: rst.customerRatio, retailAmount: rst.amount, retailBuyers: rst.buyers
         };
       });
@@ -364,7 +378,7 @@
         spend: (function () { var v = active.reduce(function (s, r) { return s + r.actual; }, 0); var rv = active.reduce(function (s, r) { return s + r.rev; }, 0); return v ? Math.round(rv / v) : 0; })(),
         newPerMonth: active.length ? round(active.reduce(function (s, r) { return s + r.new; }, 0) / active.length, 1) : 0,
         cancel: (function () { var c = active.filter(function (r) { return r.cancel != null; }); return c.length ? c.reduce(function (s, r) { return s + r.cancel; }, 0) / c.length : 0; })(),
-        nextRes: (function () { var c = active.filter(function (r) { return r.nextRes != null; }); return c.length ? c.reduce(function (s, r) { return s + r.nextRes; }, 0) / c.length : 0; })(),
+        nextRes: (function () { var c = active.filter(function (r) { return r.nextRes != null; }); return c.length ? c.reduce(function (s, r) { return s + r.nextRes; }, 0) / c.length : null; })(),
         nextRes2: (function () { var c = active.filter(function (r) { return r.nextRes2 != null; }); return c.length ? c.reduce(function (s, r) { return s + r.nextRes2; }, 0) / c.length : null; })()
       };
       var staffVis = rows.filter(function (r) { return r.staff === name && r.isVisited; });
@@ -444,6 +458,7 @@
         months: months, staffNames: staffNames,
         totalRows: rows.length,
         undatedRows: rows.filter(function (r) { return !r.date; }).length,   // rows whose 来店日 couldn't be parsed
+        completedOnly: !hasFuture,   // 会計明細など、これからの予約が無い（＝直近月は打ち切り）
         generatedAt: options.now || null
       },
       store: {

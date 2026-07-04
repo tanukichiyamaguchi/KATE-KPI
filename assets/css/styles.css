@@ -345,6 +345,18 @@ svg { display: block; }
 .staff-metric b { font-family: var(--font-display); font-size: 21px; font-weight: 600; letter-spacing: -0.02em; display: block; font-variant-numeric: tabular-nums; }
 .staff-metric span { font-size: 11.5px; color: var(--ink-muted); }
 
+/* ---- Self-growth panel (vs the staff member's own past average) -----------*/
+.self-growth { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--hairline); }
+.sg-title { font-size: 11.5px; font-weight: 600; color: var(--ink-secondary); margin-bottom: 8px; letter-spacing: .01em; }
+.sg-row { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: 12.5px; }
+.sg-row > span { color: var(--ink-muted); min-width: 92px; }
+.sg-row > b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-primary); }
+.sg-row > .sg-na { font-weight: 500; color: var(--ink-muted); }
+.sg-row > em { margin-left: auto; font-style: normal; font-size: 11.5px; font-weight: 600; }
+.sg-up { color: var(--status-good); }
+.sg-down { color: var(--ink-secondary); }
+.sg-flat { color: var(--ink-muted); }
+
 /* ---- Segmented control ----------------------------------------------------*/
 .segmented { display: inline-flex; padding: 2px; background: var(--surface-2); border-radius: 10px; gap: 2px; position: relative; }
 .segmented button { appearance: none; border: 0; background: transparent; cursor: pointer; padding: 6px 14px; font-size: 12.5px; font-weight: 500; color: var(--ink-secondary); border-radius: 8px; transition: color .2s; white-space: nowrap; z-index: 1; font-family: var(--font-sans); }

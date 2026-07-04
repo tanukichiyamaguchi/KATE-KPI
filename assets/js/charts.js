@@ -132,32 +132,41 @@
       t.textContent = lx; svg.appendChild(t);
     });
 
+    function defined(v) { return v != null && isFinite(v); }
     series.forEach(function (s, si) {
       var color = s.color || seriesColor(si);
       if (!s.values || !s.values.length) return;   // skip empty series
-      var pts = s.values.map(function (v, i) { return [xat(i), yat(v)]; });
-      if (opts.area !== false && !s.dashed) {
+      // null / non-finite values become gaps (missing data), not points at zero
+      var pts = s.values.map(function (v, i) { return defined(v) ? [xat(i), yat(v)] : null; });
+      var shown = pts.filter(Boolean);
+      if (!shown.length) return;                    // nothing to plot for this series
+      var hasGap = pts.some(function (p) { return !p; });
+      if (opts.area !== false && !s.dashed && !hasGap) {
         var gid = 'grad' + si + '-' + Math.floor(xat(0));
         var defs = svgEl('defs');
         var lg2 = svgEl('linearGradient', { id: gid, x1: 0, y1: 0, x2: 0, y2: 1 });
         lg2.appendChild(svgEl('stop', { offset: '0%', 'stop-color': color, 'stop-opacity': 0.18 }));
         lg2.appendChild(svgEl('stop', { offset: '100%', 'stop-color': color, 'stop-opacity': 0.01 }));
         defs.appendChild(lg2); svg.appendChild(defs);
-        var ad = 'M' + pts.map(function (p) { return p[0] + ',' + p[1]; }).join('L') + 'L' + xat(n - 1) + ',' + yat(0) + 'L' + xat(0) + ',' + yat(0) + 'Z';
+        var ad = 'M' + shown.map(function (p) { return p[0] + ',' + p[1]; }).join('L') + 'L' + shown[shown.length - 1][0] + ',' + yat(0) + 'L' + shown[0][0] + ',' + yat(0) + 'Z';
         var area = svgEl('path', { d: ad, fill: 'url(#' + gid + ')', opacity: 0 });
         svg.appendChild(area); animateAttr(area, 'opacity', 0, 1, 600, 300 + si * 80);
       }
-      var d = 'M' + pts.map(function (p) { return p[0] + ',' + p[1]; }).join('L');
+      // build the line, lifting the pen across gaps
+      var d = '', pen = false;
+      pts.forEach(function (p) { if (!p) { pen = false; return; } d += (pen ? 'L' : 'M') + p[0] + ',' + p[1]; pen = true; });
       var path = svgEl('path', { d: d, fill: 'none', stroke: color, 'stroke-width': 2.4, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
       if (s.dashed) path.setAttribute('stroke-dasharray', '5 5');
       svg.appendChild(path);
-      if (!noAnim()) {
+      if (!noAnim() && !hasGap) {
         var len = path.getTotalLength ? path.getTotalLength() : plotW;
         path.style.strokeDasharray = s.dashed ? '5 5' : len; path.style.strokeDashoffset = s.dashed ? 0 : len;
         if (!s.dashed) { path.getBoundingClientRect(); path.style.transition = 'stroke-dashoffset 900ms cubic-bezier(.22,.61,.36,1) ' + (si * 90) + 'ms'; path.style.strokeDashoffset = 0; }
       }
+      // dots at each real point (helps read sparse / gapped series)
+      shown.forEach(function (p) { svg.appendChild(svgEl('circle', { cx: p[0], cy: p[1], r: 2.6, fill: color })); });
       // end marker + label
-      var last = pts[pts.length - 1];
+      var last = shown[shown.length - 1];
       var ring = svgEl('circle', { cx: last[0], cy: last[1], r: 4.5, fill: color, stroke: ink.surface(), 'stroke-width': 2 });
       svg.appendChild(ring);
       if (s.endLabel !== false && !s.dashed) {
@@ -178,8 +187,10 @@
       var i = Math.max(0, Math.min(n - 1, Math.round((mx - padL) / (plotW / Math.max(1, n - 1)))));
       focus.setAttribute('x1', xat(i)); focus.setAttribute('x2', xat(i)); focus.setAttribute('opacity', 1);
       var rows = series.map(function (s, si) {
-        dots[si].setAttribute('cx', xat(i)); dots[si].setAttribute('cy', yat(s.values[i])); dots[si].setAttribute('opacity', 1);
-        return '<div class="kate-tip-row"><i style="background:' + (s.color || seriesColor(si)) + '"></i><span>' + esc(s.name) + '</span><b>' + (opts.valueFmt || fmtCompact)(s.values[i]) + '</b></div>';
+        var v = s.values[i];
+        if (!defined(v)) { dots[si].setAttribute('opacity', 0); return '<div class="kate-tip-row"><i style="background:' + (s.color || seriesColor(si)) + '"></i><span>' + esc(s.name) + '</span><b>—</b></div>'; }
+        dots[si].setAttribute('cx', xat(i)); dots[si].setAttribute('cy', yat(v)); dots[si].setAttribute('opacity', 1);
+        return '<div class="kate-tip-row"><i style="background:' + (s.color || seriesColor(si)) + '"></i><span>' + esc(s.name) + '</span><b>' + (opts.valueFmt || fmtCompact)(v) + '</b></div>';
       }).join('');
       showTip('<div class="kate-tip-title">' + esc(xs[i]) + '</div>' + rows, ev.clientX, box.top + yat(maxV));
     }
