@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#6D3E9E">
+<meta name="description" content="Atelier Éclat — KATE 予約データを入れるだけで、店舗の状況がひと目でわかる。サロン向けKPIダッシュボード。">
+<title>Atelier Éclat · KATE サロン ダッシュボード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+<div class="app">
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">Ké</div>
+      <div class="brand-txt">
+        <b><span lang="en">KATE</span> ダッシュボード</b>
+        <span class="kicker" lang="en">Atelier Éclat</span>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span class="asof" id="asof" title="集計基準日"></span>
+      <span class="badge-soft" id="dataBadge"><span class="dot"></span><span id="dataBadgeText">サンプルデータ</span></span>
+      <button class="pill icon-only" id="themeToggle" aria-label="テーマ切り替え" title="ライト / ダーク切り替え">
+        <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Desktop tabs -->
+  <div class="tabs-wrap">
+    <nav class="tabs" role="tablist" aria-label="ダッシュボード ビュー" id="tabs">
+      <button class="tab active" role="tab" id="tab-overview" data-view="overview" aria-controls="view-overview" aria-selected="true"><span class="t-ico">📊</span>概要</button>
+      <button class="tab" role="tab" id="tab-staff" data-view="staff" aria-controls="view-staff" aria-selected="false" tabindex="-1"><span class="t-ico">👥</span>スタッフ</button>
+      <button class="tab" role="tab" id="tab-trend" data-view="trend" aria-controls="view-trend" aria-selected="false" tabindex="-1"><span class="t-ico">📈</span>傾向</button>
+      <button class="tab" role="tab" id="tab-rfm" data-view="rfm" aria-controls="view-rfm" aria-selected="false" tabindex="-1"><span class="t-ico">💎</span>顧客 RFM</button>
+      <button class="tab" role="tab" id="tab-data" data-view="data" aria-controls="view-data" aria-selected="false" tabindex="-1"><span class="t-ico">⬆</span>データ</button>
+      <span class="tab-underline" id="tabUnderline"></span>
+    </nav>
+  </div>
+
+  <main id="main">
+    <section class="view active" id="view-overview" role="tabpanel" aria-labelledby="tab-overview"></section>
+    <section class="view" id="view-staff" role="tabpanel" aria-labelledby="tab-staff"></section>
+    <section class="view" id="view-trend" role="tabpanel" aria-labelledby="tab-trend"></section>
+    <section class="view" id="view-rfm" role="tabpanel" aria-labelledby="tab-rfm"></section>
+    <section class="view" id="view-data" role="tabpanel" aria-labelledby="tab-data"></section>
+  </main>
+
+  <footer class="footer">
+    <div><b lang="en">Atelier Éclat</b> · <span lang="en">KATE</span> サロン向け 予約ベースKPIダッシュボード</div>
+    <div>予約データはブラウザ内でのみ処理され、どこにも送信されません。</div>
+  </footer>
+</div>
+
+<!-- Mobile bottom navigation -->
+<nav class="botnav" aria-label="主要ナビゲーション" id="botnav">
+  <button data-view="overview" class="active" aria-label="概要"><span class="t-ico">📊</span>概要</button>
+  <button data-view="staff" aria-label="スタッフ"><span class="t-ico">👥</span>スタッフ</button>
+  <button data-view="trend" aria-label="傾向"><span class="t-ico">📈</span>傾向</button>
+  <button data-view="rfm" aria-label="顧客RFM"><span class="t-ico">💎</span>顧客</button>
+  <button data-view="data" aria-label="データ"><span class="t-ico">⬆</span>データ</button>
+</nav>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none">
+
+<script src="assets/js/vendor/xlsx.mini.min.js"></script>
+<script src="assets/js/sample-data.js"></script>
+<script src="assets/js/engine.js"></script>
+<script src="assets/js/ingest.js"></script>
+<script src="assets/js/sheets.js"></script>
+<script src="assets/js/charts.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

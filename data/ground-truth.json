@@ -1,0 +1,432 @@
+{
+ "asOf": "2026-07-03",
+ "periodStart": "2026-02",
+ "periodEnd": "2026-08",
+ "store": {
+  "revenueTotal": 4550365,
+  "revenueActual": 3415585,
+  "revenueExpected": 1134780,
+  "effectiveReservations": 701,
+  "actualVisits": 551,
+  "expectedFuture": 150,
+  "staleExcluded": 56,
+  "avgSpendReservation": 6491,
+  "avgSpendActual": 6199,
+  "repeatRate": 59.8,
+  "fixationRate": 18.4,
+  "nextReserveRate": 57.9,
+  "visitCycleMedianDays": 37,
+  "funnel": [
+   {
+    "n": 1,
+    "people": 358,
+    "reach": 1.0
+   },
+   {
+    "n": 2,
+    "people": 214,
+    "reach": 0.598
+   },
+   {
+    "n": 3,
+    "people": 66,
+    "reach": 0.184
+   },
+   {
+    "n": 4,
+    "people": 25,
+    "reach": 0.07
+   },
+   {
+    "n": 5,
+    "people": 12,
+    "reach": 0.034
+   }
+  ],
+  "churn": {
+   "total": 144,
+   "cancelStopped": 61,
+   "noNextReserve": 83,
+   "base": 358
+  },
+  "cancel": {
+   "confirmed": 773,
+   "totalRate": 0.287,
+   "customer": 0.125,
+   "salon": 0.159,
+   "noShow": 0.0026,
+   "firstNoVisit": 67
+  },
+  "route": [
+   {
+    "name": "HOT PEPPER Beauty",
+    "eff": 390,
+    "cancel": 0.224
+   },
+   {
+    "name": "直接来店",
+    "eff": 269,
+    "cancel": 0.358
+   },
+   {
+    "name": "電話(自社)",
+    "eff": 98,
+    "cancel": 0.68
+   }
+  ],
+  "ltv": {
+   "current": 9541,
+   "predicted": 11880,
+   "expectedVisits": 1.92,
+   "observedVisits": 1.54
+  },
+  "monthly": [
+   {
+    "m": "2026-02",
+    "res": 76,
+    "actual": 76,
+    "exp": 0,
+    "rev": 330420,
+    "spend": 4348,
+    "new": 76,
+    "cancel": 0.232,
+    "nextRes": 0.566
+   },
+   {
+    "m": "2026-03",
+    "res": 105,
+    "actual": 105,
+    "exp": 0,
+    "rev": 593481,
+    "spend": 5652,
+    "new": 76,
+    "cancel": 0.239,
+    "nextRes": 0.476
+   },
+   {
+    "m": "2026-04",
+    "res": 90,
+    "actual": 90,
+    "exp": 0,
+    "rev": 535852,
+    "spend": 5954,
+    "new": 44,
+    "cancel": 0.333,
+    "nextRes": 0.522
+   },
+   {
+    "m": "2026-05",
+    "res": 98,
+    "actual": 98,
+    "exp": 0,
+    "rev": 655430,
+    "spend": 6688,
+    "new": 51,
+    "cancel": 0.368,
+    "nextRes": 0.592
+   },
+   {
+    "m": "2026-06",
+    "res": 166,
+    "actual": 166,
+    "exp": 0,
+    "rev": 1162451,
+    "spend": 7003,
+    "new": 103,
+    "cancel": 0.239,
+    "nextRes": 0.651
+   },
+   {
+    "m": "2026-07",
+    "res": 129,
+    "actual": 16,
+    "exp": 113,
+    "rev": 960221,
+    "spend": 7444,
+    "new": 8,
+    "cancel": 0.429,
+    "nextRes": 0.813
+   },
+   {
+    "m": "2026-08",
+    "res": 37,
+    "actual": 0,
+    "exp": 37,
+    "rev": 312510,
+    "spend": 8446,
+    "new": 0,
+    "cancel": null,
+    "nextRes": null
+   }
+  ],
+  "cohort": [
+   {
+    "m": "2026-02",
+    "n": 76,
+    "reach2": 0.566
+   },
+   {
+    "m": "2026-03",
+    "n": 76,
+    "reach2": 0.526
+   },
+   {
+    "m": "2026-04",
+    "n": 44,
+    "reach2": 0.636
+   },
+   {
+    "m": "2026-05",
+    "n": 51,
+    "reach2": 0.667
+   },
+   {
+    "m": "2026-06",
+    "n": 103,
+    "reach2": 0.612
+   },
+   {
+    "m": "2026-07",
+    "n": 8,
+    "reach2": 0.75
+   }
+  ],
+  "visitCountBreakdown": [
+   {
+    "label": "1回目（新規）",
+    "count": 358,
+    "spend": 6105
+   },
+   {
+    "label": "2回目",
+    "count": 141,
+    "spend": 5791
+   },
+   {
+    "label": "3回目",
+    "count": 38,
+    "spend": 7623
+   },
+   {
+    "label": "4回目以上",
+    "count": 14,
+    "spend": 8836
+   }
+  ]
+ },
+ "staff": {
+  "avg": [
+   {
+    "name": "aoi",
+    "months": 2,
+    "visitsPerMonth": 39.5,
+    "revPerMonth": 445926,
+    "spend": 6886,
+    "newPerMonth": 36.5,
+    "cancel": 0.276,
+    "nextRes": 0.777
+   },
+   {
+    "name": "momo",
+    "months": 6,
+    "visitsPerMonth": 78.7,
+    "revPerMonth": 557667,
+    "spend": 6270,
+    "newPerMonth": 47.5,
+    "cancel": 0.236,
+    "nextRes": 0.602
+   }
+  ],
+  "repeat": [
+   {
+    "name": "aoi",
+    "acquired": 73,
+    "reach2": 0.589,
+    "reach3": 0.0,
+    "reach4": 0.0
+   },
+   {
+    "name": "momo",
+    "acquired": 285,
+    "reach2": 0.6,
+    "reach3": 0.232,
+    "reach4": 0.088
+   }
+  ]
+ },
+ "trend": {
+  "dayOfWeek": [
+   {
+    "d": "月",
+    "visits": 61,
+    "nextRes": 0.426,
+    "spend": 6452,
+    "ltv": 9358
+   },
+   {
+    "d": "火",
+    "visits": 59,
+    "nextRes": 0.61,
+    "spend": 6375,
+    "ltv": 9411
+   },
+   {
+    "d": "水",
+    "visits": 88,
+    "nextRes": 0.648,
+    "spend": 6862,
+    "ltv": 11175
+   },
+   {
+    "d": "木",
+    "visits": 65,
+    "nextRes": 0.554,
+    "spend": 6116,
+    "ltv": 9061
+   },
+   {
+    "d": "金",
+    "visits": 71,
+    "nextRes": 0.535,
+    "spend": 6142,
+    "ltv": 9679
+   },
+   {
+    "d": "土",
+    "visits": 100,
+    "nextRes": 0.63,
+    "spend": 5647,
+    "ltv": 10297
+   },
+   {
+    "d": "日",
+    "visits": 107,
+    "nextRes": 0.589,
+    "spend": 6016,
+    "ltv": 8001
+   }
+  ]
+ },
+ "rfm": {
+  "segments": [
+   {
+    "seg": "最優良顧客",
+    "people": 3,
+    "ratio": 0.008,
+    "r": 4.0,
+    "f": 5.0,
+    "m": 46860,
+    "action": "VIP維持・特別優遇で関係を最大化"
+   },
+   {
+    "seg": "高ロイヤル顧客",
+    "people": 8,
+    "ratio": 0.022,
+    "r": 15.1,
+    "f": 4.0,
+    "m": 27635,
+    "action": "継続来店・アップセルで単価向上"
+   },
+   {
+    "seg": "優良顧客",
+    "people": 0,
+    "ratio": 0.0,
+    "r": 0,
+    "f": 0,
+    "m": 0,
+    "action": "再来を促し最優良へ引き上げ"
+   },
+   {
+    "seg": "安全顧客",
+    "people": 13,
+    "ratio": 0.036,
+    "r": 11.2,
+    "f": 3.0,
+    "m": 20339,
+    "action": "次回予約を徹底し定着を確実に"
+   },
+   {
+    "seg": "要注意顧客",
+    "people": 14,
+    "ratio": 0.039,
+    "r": 45.4,
+    "f": 3.0,
+    "m": 18445,
+    "action": "離反前にフォロー・特典で再来促進"
+   },
+   {
+    "seg": "新規顧客",
+    "people": 123,
+    "ratio": 0.344,
+    "r": 12.1,
+    "f": 1.2,
+    "m": 8628,
+    "action": "2回目特典で早期リピート化"
+   },
+   {
+    "seg": "離反間近顧客",
+    "people": 127,
+    "ratio": 0.355,
+    "r": 61.0,
+    "f": 1.5,
+    "m": 8547,
+    "action": "リマインド・再来オファーで引き戻し"
+   },
+   {
+    "seg": "休眠顧客",
+    "people": 0,
+    "ratio": 0.0,
+    "r": 0,
+    "f": 0,
+    "m": 0,
+    "action": "復帰クーポンで掘り起こし"
+   },
+   {
+    "seg": "離脱顧客",
+    "people": 70,
+    "ratio": 0.196,
+    "r": 124.5,
+    "f": 1.2,
+    "m": 5493,
+    "action": "再アプローチ（優先度低）"
+   }
+  ],
+  "map": [
+   [
+    0,
+    0,
+    0,
+    0,
+    3
+   ],
+   [
+    0,
+    0,
+    2,
+    2,
+    4
+   ],
+   [
+    0,
+    4,
+    10,
+    6,
+    7
+   ],
+   [
+    13,
+    34,
+    26,
+    15,
+    15
+   ],
+   [
+    57,
+    35,
+    32,
+    43,
+    50
+   ]
+  ]
+ }
+}
