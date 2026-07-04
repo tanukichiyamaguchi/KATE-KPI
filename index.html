@@ -3,25 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#6D3E9E">
-<meta name="description" content="KATEstageLASH 蒲田西口店 — 予約データを入れるだけで、店舗の状況がひと目でわかるKPIダッシュボード。">
-<title>KATEstageLASH 蒲田西口店 · KPIダッシュボード</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800;900&display=swap">
+<meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="description" content="KATE stage LASH 蒲田西口店 — 予約データを入れるだけで、店舗の状況がひと目でわかるKPIダッシュボード。">
+<title>KATE stage LASH 蒲田西口店 · KPIダッシュボード</title>
 <link rel="stylesheet" href="assets/css/styles.css">
 </head>
 <body>
 <div class="app">
   <!-- Top bar -->
   <header class="topbar">
-    <div class="brand">
-      <div class="brand-mark" aria-hidden="true">K</div>
-      <div class="brand-txt">
-        <b lang="en">KATEstageLASH</b>
-        <span>蒲田西口店 ダッシュボード</span>
-      </div>
-    </div>
+    <a class="brand" href="#overview" aria-label="KATE stage LASH 蒲田西口店 ダッシュボード">
+      <span class="wordmark" lang="en" aria-hidden="true"><b>KATE</b><i>stage</i><b>LASH</b></span>
+      <span class="brand-sub">蒲田西口店 ダッシュボード</span>
+    </a>
     <div class="topbar-actions">
       <span class="asof" id="asof" title="集計基準日"></span>
       <span class="badge-soft" id="dataBadge"><span class="dot"></span><span id="dataBadgeText">サンプルデータ</span></span>
@@ -34,11 +29,11 @@
   <!-- Desktop tabs -->
   <div class="tabs-wrap">
     <nav class="tabs" role="tablist" aria-label="ダッシュボード ビュー" id="tabs">
-      <button class="tab active" role="tab" id="tab-overview" data-view="overview" aria-controls="view-overview" aria-selected="true"><span class="t-ico">📊</span>概要</button>
-      <button class="tab" role="tab" id="tab-staff" data-view="staff" aria-controls="view-staff" aria-selected="false" tabindex="-1"><span class="t-ico">👥</span>スタッフ</button>
-      <button class="tab" role="tab" id="tab-trend" data-view="trend" aria-controls="view-trend" aria-selected="false" tabindex="-1"><span class="t-ico">📈</span>傾向</button>
-      <button class="tab" role="tab" id="tab-rfm" data-view="rfm" aria-controls="view-rfm" aria-selected="false" tabindex="-1"><span class="t-ico">💎</span>顧客 RFM</button>
-      <button class="tab" role="tab" id="tab-data" data-view="data" aria-controls="view-data" aria-selected="false" tabindex="-1"><span class="t-ico">⬆</span>データ</button>
+      <button class="tab active" role="tab" id="tab-overview" data-view="overview" aria-controls="view-overview" aria-selected="true"><span class="t-ico" data-ico="overview"></span>概要</button>
+      <button class="tab" role="tab" id="tab-staff" data-view="staff" aria-controls="view-staff" aria-selected="false" tabindex="-1"><span class="t-ico" data-ico="staff"></span>スタッフ</button>
+      <button class="tab" role="tab" id="tab-trend" data-view="trend" aria-controls="view-trend" aria-selected="false" tabindex="-1"><span class="t-ico" data-ico="trend"></span>傾向</button>
+      <button class="tab" role="tab" id="tab-rfm" data-view="rfm" aria-controls="view-rfm" aria-selected="false" tabindex="-1"><span class="t-ico" data-ico="rfm"></span>顧客 RFM</button>
+      <button class="tab" role="tab" id="tab-data" data-view="data" aria-controls="view-data" aria-selected="false" tabindex="-1"><span class="t-ico" data-ico="data"></span>データ</button>
       <span class="tab-underline" id="tabUnderline"></span>
     </nav>
   </div>
@@ -52,18 +47,18 @@
   </main>
 
   <footer class="footer">
-    <div><b lang="en">KATEstageLASH</b> 蒲田西口店 · 予約ベースKPIダッシュボード</div>
+    <div><b lang="en">KATE stage LASH</b> 蒲田西口店 · 予約ベースKPIダッシュボード</div>
     <div>予約データはブラウザ内でのみ処理され、どこにも送信されません。</div>
   </footer>
 </div>
 
 <!-- Mobile bottom navigation -->
 <nav class="botnav" aria-label="主要ナビゲーション" id="botnav">
-  <button data-view="overview" class="active" aria-label="概要"><span class="t-ico">📊</span>概要</button>
-  <button data-view="staff" aria-label="スタッフ"><span class="t-ico">👥</span>スタッフ</button>
-  <button data-view="trend" aria-label="傾向"><span class="t-ico">📈</span>傾向</button>
-  <button data-view="rfm" aria-label="顧客RFM"><span class="t-ico">💎</span>顧客</button>
-  <button data-view="data" aria-label="データ"><span class="t-ico">⬆</span>データ</button>
+  <button data-view="overview" class="active" aria-label="概要"><span class="t-ico" data-ico="overview"></span>概要</button>
+  <button data-view="staff" aria-label="スタッフ"><span class="t-ico" data-ico="staff"></span>スタッフ</button>
+  <button data-view="trend" aria-label="傾向"><span class="t-ico" data-ico="trend"></span>傾向</button>
+  <button data-view="rfm" aria-label="顧客RFM"><span class="t-ico" data-ico="rfm"></span>顧客</button>
+  <button data-view="data" aria-label="データ"><span class="t-ico" data-ico="data"></span>データ</button>
 </nav>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

@@ -20,6 +20,8 @@
   var WAITING = '受付待ち';        // upcoming, not yet visited
   var CANCELS = { 'サロンキャンセル': 'salon', 'お客様キャンセル': 'customer', '無断キャンセル': 'noShow' };
   var WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+  var HPB_ROUTE = 'HOT PEPPER Beauty';
+  function isHPB(r) { return r.route === HPB_ROUTE; }   // excluded from cancel-rate math
 
   // ---- small helpers --------------------------------------------------------
   // Build a Date only if the components are a real, in-range calendar date within
@@ -207,10 +209,12 @@
     var cancelStopped = churned.filter(function (c) { return c.hasAnyCancel; }).length;
     var churn = { total: churned.length, cancelStopped: cancelStopped, noNextReserve: churned.length - cancelStopped, base: baseN };
 
-    // ---- Cancellation -------------------------------------------------------
-    var confirmed = rows.filter(function (r) { return r.isConfirmed; });
+    // ---- Cancellation (HOT PEPPER Beauty excluded per store policy) ----------
+    // The salon can't control HPB-side cancellations, so HPB reservations are
+    // excluded from every cancellation-rate numerator AND denominator.
+    var confirmed = rows.filter(function (r) { return r.isConfirmed && !isHPB(r); });
     var cancelCounts = { salon: 0, customer: 0, noShow: 0 };
-    rows.forEach(function (r) { if (r.cancelType) cancelCounts[r.cancelType]++; });
+    rows.forEach(function (r) { if (r.cancelType && !isHPB(r)) cancelCounts[r.cancelType]++; });
     var totalCancel = cancelCounts.salon + cancelCounts.customer + cancelCounts.noShow;
     var firstNoVisit = customers.filter(function (c) { return !c.hasVisit && byCust[c.key].some(function (r) { return r.isCancel; }); }).length;
     var cancel = {
@@ -250,8 +254,8 @@
       var mrows = rows.filter(function (r) { return r.ym === mo; });
       var vis = mrows.filter(function (r) { return r.isVisited; });
       var fut = mrows.filter(function (r) { return r.isFuture; });
-      var conf = mrows.filter(function (r) { return r.isConfirmed; });
-      var canc = mrows.filter(function (r) { return r.isCancel; });
+      var conf = mrows.filter(function (r) { return r.isConfirmed && !isHPB(r); });
+      var canc = mrows.filter(function (r) { return r.isCancel && !isHPB(r); });
       var rev = vis.reduce(function (s, r) { return s + r.kaikei; }, 0) + fut.reduce(function (s, r) { return s + r.yoyaku; }, 0);
       var res = vis.length + fut.length;
       var nextCnt = vis.filter(function (r) { return r.date && visitGotNext(r); }).length;
@@ -293,8 +297,8 @@
         var vis = mr.filter(function (r) { return r.isVisited; });
         var fut = mr.filter(function (r) { return r.isFuture; });
         var conf = mr.filter(function (r) { return r.isConfirmed; });
-        var canc = mr.filter(function (r) { return r.isCancel && r.custKey && custHasVisit(r.custKey); });
-        var confVisitors = conf.filter(function (r) { return r.isVisited || custHasVisit(r.custKey); });
+        var canc = mr.filter(function (r) { return r.isCancel && !isHPB(r) && r.custKey && custHasVisit(r.custKey); });
+        var confVisitors = conf.filter(function (r) { return (r.isVisited || custHasVisit(r.custKey)) && !isHPB(r); });
         var rev = vis.reduce(function (s, r) { return s + r.kaikei; }, 0) + fut.reduce(function (s, r) { return s + r.yoyaku; }, 0);
         var res = vis.length + fut.length;
         var newN = customers.filter(function (c) { return c.firstVisitStaff === name && c.firstVisitMonth === mo; }).length;

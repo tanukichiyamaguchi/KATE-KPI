@@ -32,6 +32,22 @@
     '要注意顧客': '--status-warning', '新規顧客': '--accent', '離反間近顧客': '--status-serious', '休眠顧客': '--status-serious', '離脱顧客': '--status-critical'
   };
 
+  // ---- line icons (SF-Symbols-like, stroke = currentColor) ----------------
+  var ICONS = {
+    overview: '<rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/>',
+    staff: '<circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.7 3.1-6.2 7-6.2s7 2.5 7 6.2"/>',
+    trend: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    rfm: '<circle cx="9" cy="8.5" r="3"/><path d="M3.4 19c0-3 2.5-5.2 5.6-5.2S14.6 16 14.6 19"/><path d="M16.2 5.8a3 3 0 0 1 .2 5.9"/><path d="M17.8 13.4c2.4.4 3.9 2.1 3.9 4.6"/>',
+    data: '<path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M4.5 15v3a2.5 2.5 0 0 0 2.5 2.5h10a2.5 2.5 0 0 0 2.5-2.5v-3"/>',
+    reservations: '<rect x="3.2" y="4.8" width="17.6" height="15.5" rx="2.2"/><path d="M3.2 9.4h17.6M8 3v3.4M16 3v3.4"/>',
+    yen: '<path d="M8 6.5l4 5 4-5"/><path d="M12 11.5V18"/><path d="M9 13.7h6M9 16h6"/>',
+    ltv: '<path d="M12 3l3.6 4.6L12 21 8.4 7.6 12 3z"/><path d="M8.4 7.6h7.2"/>',
+    cancel: '<circle cx="12" cy="12" r="8.6"/><path d="M9 9l6 6M15 9l-6 6"/>',
+    upload: '<path d="M12 16V5"/><path d="M7.5 9.5 12 5l4.5 4.5"/><path d="M5 15v3.2A2.8 2.8 0 0 0 7.8 21h8.4a2.8 2.8 0 0 0 2.8-2.8V15"/>'
+  };
+  function svgIco(name) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || '') + '</svg>'; }
+  function injectNavIcons() { Array.prototype.forEach.call(document.querySelectorAll('.t-ico[data-ico]'), function (s) { if (!s.firstChild) s.innerHTML = svgIco(s.dataset.ico); }); }
+
   // ---- card + chart mount helpers -----------------------------------------
   function card(opts) {
     // opts: {title, sub, tag, col, body(html), id}
@@ -57,12 +73,12 @@
 
     // Hero
     var actPct = s.revenueTotal ? s.revenueActual / s.revenueTotal * 100 : 0;
-    html += '<div class="hero reveal"><div class="hero-sheen"></div><div class="hero-inner">' +
+    html += '<div class="hero reveal"><div class="hero-inner">' +
       '<div><div class="hero-eyebrow" lang="en">Reservation-based Revenue</div>' +
       '<div class="hero-value" id="heroVal">¥0</div>' +
       '<div class="hero-caption">会計済みの実績に、これからの予約（受付待ち）の見込みを合わせた<b>予約ベース売上</b>です。' + esc(s.customers) + '人の来店顧客・' + esc(A.meta.periodStart) + '〜' + esc(A.meta.periodEnd) + '。</div>' +
       '<div class="hero-split"><div class="hero-split-bar"><i class="actual" id="heroActual"></i><i class="expected" id="heroExpected"></i></div>' +
-      '<div class="hero-split-legend"><span><i style="background:rgba(255,255,255,.95)"></i>会計済み <b>' + yen(s.revenueActual) + '</b></span><span><i class="expected-key"></i>受付待ち（見込み） <b>' + yen(s.revenueExpected) + '</b></span></div></div></div>' +
+      '<div class="hero-split-legend"><span><i class="actual-key"></i>会計済み <b>' + yen(s.revenueActual) + '</b></span><span><i class="expected-key"></i>受付待ち（見込み） <b>' + yen(s.revenueExpected) + '</b></span></div></div></div>' +
       '<div class="hero-metrics">' +
       heroMetric(s.effectiveReservations, '件', '有効予約数') +
       heroMetric(F.int(s.avgSpendReservation), '¥', '予約ベース客単価', true) +
@@ -72,10 +88,10 @@
 
     // Stat tiles
     var ltvDelta = s.ltv.predicted - s.ltv.current;
-    html += statTile('🎟️', '有効予約数', F.int(s.effectiveReservations), '件', '会計済 ' + s.actualVisits + ' ／ 予定 ' + s.expectedFuture + '（滞留 ' + s.staleExcluded + ' 除外）', 'sparkRes');
-    html += statTile('💴', '予約ベース客単価', F.int(s.avgSpendReservation), '¥', '実績客単価 ' + yen(s.avgSpendActual), 'sparkSpend');
-    html += statTile('💠', '顧客LTV（現状）', F.int(s.ltv.current), '¥', '<span class="chip up">▲ 予測 ' + yen(s.ltv.predicted) + '</span> 期待来店 ' + s.ltv.expectedVisits + '回', null);
-    html += statTile('🚫', '総キャンセル率', pct(s.cancel.totalRate * 100, 1), '%', '確定 ' + s.cancel.confirmed + '件 ／ 初回来店なし ' + s.cancel.firstNoVisit + '件', 'sparkCancel');
+    html += statTile('reservations', '有効予約数', F.int(s.effectiveReservations), '件', '会計済 ' + s.actualVisits + ' ／ 予定 ' + s.expectedFuture + '（滞留 ' + s.staleExcluded + ' 除外）', 'sparkRes');
+    html += statTile('yen', '予約ベース客単価', F.int(s.avgSpendReservation), '¥', '実績客単価 ' + yen(s.avgSpendActual), 'sparkSpend');
+    html += statTile('ltv', '顧客LTV（現状）', F.int(s.ltv.current), '¥', '<span class="chip up">↑ 予測 ' + yen(s.ltv.predicted) + '</span> 期待来店 ' + s.ltv.expectedVisits + '回', null);
+    html += statTile('cancel', '総キャンセル率', pct(s.cancel.totalRate * 100, 1), '%', 'HOT PEPPER Beauty を除く ／ 確定 ' + s.cancel.confirmed + '件', 'sparkCancel');
 
     // Retention meters + monthly revenue
     html += card({
@@ -100,7 +116,7 @@
 
     // Route + cancel + visit-count
     html += card({ col: 'col-4', title: '集客経路', sub: '有効予約に占める構成', body: chartBox('cRoute', 210) });
-    html += card({ col: 'col-4', title: 'キャンセル内訳', sub: '確定予約 ' + s.cancel.confirmed + '件に対する割合', body: chartBox('cCancel', 210) });
+    html += card({ col: 'col-4', title: 'キャンセル内訳', sub: 'HOT PEPPER Beauty を除く（確定 ' + s.cancel.confirmed + '件）', body: '<div id="cCancel"></div>' });
     html += card({ col: 'col-4', title: '来店回数の構成', sub: '延べ来店を回数別に分解', body: '<div id="cVisitComp"></div>' });
 
     mount('overview', '<div class="grid">' + html + '</div>');
@@ -113,7 +129,7 @@
     tileSpark('sparkCancel', s.monthly.filter(function (m) { return m.cancel != null; }).map(function (m) { return m.cancel * 100; }));
 
     draw('mRepeat', function (el) { C.meter(el, { label: 'リピート率（2回到達）', value: s.repeatRate / 100, display: pct(s.repeatRate), target: 0.5, sub: '目安 50%' }); });
-    draw('mNext', function (el) { C.meter(el, { label: '次回予約取得率 ★', value: s.nextReserveRate / 100, display: pct(s.nextReserveRate), target: 0.55, sub: '来店時に次の予約を取った割合' }); });
+    draw('mNext', function (el) { C.meter(el, { label: '次回予約取得率', value: s.nextReserveRate / 100, display: pct(s.nextReserveRate), target: 0.55, sub: '来店時に次の予約を取った割合' }); });
     draw('mFix', function (el) { C.meter(el, { label: '固定化率（3回以上）', value: s.fixationRate / 100, display: pct(s.fixationRate), target: 0.2, sub: '目安 20%' }); });
 
     draw('cRevenue', function (el) {
@@ -145,12 +161,14 @@
       });
     });
     draw('cCancel', function (el) {
-      C.donut(el, {
-        segments: [
-          { label: 'お客様都合', value: s.cancel.customerCount, color: cvar('--series-1') },
-          { label: 'サロン都合', value: s.cancel.salonCount, color: cvar('--series-2') },
-          { label: '無断', value: s.cancel.noShowCount, color: cvar('--series-3') }
-        ], centerValue: pct(s.cancel.totalRate * 100, 1), centerLabel: '総キャンセル率', valueFmt: function (v) { return v + '件'; }, height: 210
+      var tot = s.cancel.customerCount + s.cancel.salonCount + s.cancel.noShowCount;
+      C.hbars(el, {
+        max: tot || 1,
+        items: [
+          { label: 'サロン都合', value: s.cancel.salonCount, sub: pct((s.cancel.salon) * 100, 1), color: cvar('--series-2') },
+          { label: 'お客様都合', value: s.cancel.customerCount, sub: pct((s.cancel.customer) * 100, 1), color: cvar('--series-5') },
+          { label: '無断', value: s.cancel.noShowCount, sub: pct((s.cancel.noShow) * 100, 1), color: cvar('--series-7') }
+        ], valueFmt: function (v) { return v + '件'; }
       });
     });
     draw('cVisitComp', function (el) {
@@ -167,7 +185,7 @@
   function statTile(ico, label, value, unit, foot, sparkId) {
     return card({
       col: 'col-3', hoverable: true,
-      body: '<div class="stat"><div class="stat-top"><span class="stat-ico">' + ico + '</span><span class="stat-label">' + label + '</span></div>' +
+      body: '<div class="stat"><div class="stat-top"><span class="stat-ico">' + svgIco(ico) + '</span><span class="stat-label">' + label + '</span></div>' +
         '<div class="stat-value">' + (unit === '¥' ? '¥' : '') + '<span class="cu" data-to="' + (typeof value === 'string' ? value.replace(/[^\d.]/g, '') : value) + '" data-unit="' + (unit === '¥' ? 'yen' : (unit === '%' ? 'pct' : 'int')) + '">' + value + '</span>' + (unit && unit !== '¥' ? '<span class="unit">' + unit + '</span>' : '') + '</div>' +
         (sparkId ? '<div class="spark" id="' + sparkId + '"></div>' : '') +
         '<div class="stat-foot">' + foot + '</div></div>'
@@ -352,10 +370,9 @@
     // Google Sheets link (primary)
     var linked = !!state.sheetUrl;
     html += card({
-      col: 'col-12', title: '📊 スプレッドシート連携', sub: 'Googleスプレッドシートに予約データを入れておけば、URLを貼るだけで自動で反映されます',
+      col: 'col-12', title: 'スプレッドシート連携', sub: 'Googleスプレッドシートに予約データを入れておけば、URLを貼るだけで自動で反映されます',
       body: '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
-        '<input type="url" id="sheetUrl" inputmode="url" placeholder="https://docs.google.com/spreadsheets/d/…" value="' + esc(state.sheetUrl || '') + '" ' +
-        'style="flex:1;min-width:220px;height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--border-strong);background:var(--surface-1);color:var(--ink-primary);font-size:13px;font-family:var(--font-sans)">' +
+        '<input type="url" id="sheetUrl" class="sheet-input" inputmode="url" placeholder="https://docs.google.com/spreadsheets/d/…" value="' + esc(state.sheetUrl || '') + '">' +
         '<button class="pill accent" id="sheetLinkBtn" type="button">' + (linked ? '今すぐ更新' : '連携して読み込む') + '</button>' +
         (linked ? '<button class="pill" id="sheetUnlinkBtn" type="button">解除</button>' : '') +
         '</div>' +
@@ -370,9 +387,9 @@
         '</ul></div></details>'
     });
     html += card({
-      col: 'col-12', title: '📁 ファイルから読み込む', sub: '非公開のデータはこちら（ブラウザ内でのみ処理）',
+      col: 'col-12', title: 'ファイルから読み込む', sub: '非公開のデータはこちら（ブラウザ内でのみ処理）',
       body: '<div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="ファイルをアップロード">' +
-        '<div class="dropzone-ico">⬆️</div><h3>予約データをドロップ、またはタップして選択</h3>' +
+        '<div class="dropzone-ico">' + svgIco('upload') + '</div><h3>予約データをドロップ、またはタップして選択</h3>' +
         '<p>対応形式：<b>.xlsx</b> / <b>.csv</b>　（「予約データ」シートの見出し行を含めてください）</p>' +
         '<button class="pill accent" id="pickBtn" type="button">ファイルを選択</button>' +
         '<button class="pill" id="resetBtn" type="button" style="margin-left:8px">サンプルに戻す</button></div>'
@@ -527,6 +544,7 @@
     var saved; try { saved = localStorage.getItem('kate-theme'); } catch (e) {}
     setTheme(saved || (global.matchMedia && global.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
+    injectNavIcons();
     loadSample();
 
     // Auto-reconnect a previously linked spreadsheet (always pull the latest)
