@@ -12,22 +12,7 @@
  * Palette validated CVD-safe (light ΔE 42 / dark ΔE 36) via the dataviz tool.
  * ==========================================================================*/
 
-/* ---- Editorial Latin faces (JP falls to native Hiragino/Noto) -------------*/
-@font-face {
-  font-family: 'Fraunces'; font-style: normal; font-weight: 300 900;
-  font-display: swap; src: url('../fonts/fraunces-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF,U+2000-206F,U+2070-209F,U+20A0-20BF,U+2212;
-}
-@font-face {
-  font-family: 'Fraunces'; font-style: italic; font-weight: 300 900;
-  font-display: swap; src: url('../fonts/fraunces-latin-italic.woff2') format('woff2');
-  unicode-range: U+0000-00FF,U+2000-206F,U+20A0-20BF;
-}
-@font-face {
-  font-family: 'InterVar'; font-style: normal; font-weight: 100 900;
-  font-display: swap; src: url('../fonts/inter-latin.woff2') format('woff2');
-  unicode-range: U+0000-00FF,U+2000-206F,U+2070-209F,U+20A0-20BF,U+2212;
-}
+/* ---- Typeface: Noto Sans JP (Google Fonts, JP + Latin) --------------------*/
 
 /* ---- Tokens: LIGHT (default) ---------------------------------------------*/
 :root {
@@ -84,9 +69,9 @@
   --ease-standard: cubic-bezier(.22,.61,.36,1);
   --ease-emphasized: cubic-bezier(.34,1.56,.64,1);
 
-  --font-serif: 'Fraunces', "Hiragino Mincho ProN", "Yu Mincho", serif;
-  --font-sans: 'InterVar', "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: 'InterVar', ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-sans: "Noto Sans JP", "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-serif: var(--font-sans);   /* display now uses Noto Sans JP (heavier weight) */
+  --font-mono: "Noto Sans JP", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
   /* chart-facing aliases (charts.js reads these) */
   --text-primary: var(--ink-primary);
@@ -157,7 +142,7 @@ a { color: var(--accent); }
 ::selection { background: var(--accent-soft); color: var(--ink-primary); }
 .tnum { font-variant-numeric: tabular-nums; }
 .serif { font-family: var(--font-serif); }
-.kicker { font-family: var(--font-serif); font-style: italic; letter-spacing: .12em; text-transform: uppercase; font-size: 12px; color: var(--rose-gold-ink); }
+.kicker { font-family: var(--font-sans); font-weight: 600; letter-spacing: .14em; text-transform: uppercase; font-size: 11px; color: var(--rose-gold-ink); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
 /* ---- App shell ------------------------------------------------------------*/
@@ -271,8 +256,8 @@ a { color: var(--accent); }
 @keyframes sheen { to { left: 110%; } }
 .hero-inner { position: relative; display: grid; grid-template-columns: 1.25fr 1fr; gap: 26px; align-items: center; }
 @media (max-width: 780px) { .hero-inner { grid-template-columns: 1fr; gap: 20px; } }
-.hero-eyebrow { font-family: var(--font-serif); font-style: italic; letter-spacing: .14em; text-transform: uppercase; font-size: 12px; opacity: .9; }
-.hero-value { font-family: var(--font-serif); font-weight: 600; font-size: clamp(30px, 8.4vw, 64px); line-height: 1.05; letter-spacing: -0.02em; margin: 8px 0 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.hero-eyebrow { font-family: var(--font-sans); font-weight: 600; letter-spacing: .14em; text-transform: uppercase; font-size: 11.5px; opacity: .9; }
+.hero-value { font-family: var(--font-sans); font-weight: 800; font-size: clamp(30px, 8.4vw, 62px); line-height: 1.05; letter-spacing: -0.02em; margin: 8px 0 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .hero-value .unit { font-size: .34em; font-weight: 600; color: var(--rose-gold); margin-left: 6px; letter-spacing: 0; }
 .hero-caption { font-size: 13px; opacity: .92; max-width: 42ch; }
 .hero-split { margin-top: 18px; }
@@ -428,7 +413,7 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13px; min-
 .section-title { display: flex; align-items: center; gap: 12px; margin: 30px 2px 2px; font-size: 12px; font-weight: 700; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .08em; }
 .section-title .kicker { text-transform: uppercase; }
 .section-title::after { content: ""; flex: 1; height: 1px; background: var(--border); }
-.view-title { font-family: var(--font-serif); font-weight: 600; font-size: clamp(24px, 4vw, 30px); letter-spacing: -0.01em; margin: 22px 0 2px; }
+.view-title { font-family: var(--font-sans); font-weight: 800; font-size: clamp(23px, 4vw, 29px); letter-spacing: -0.01em; margin: 22px 0 2px; }
 .view-lead { color: var(--ink-secondary); font-size: 13.5px; margin-bottom: 8px; }
 .mini-stats { display: flex; gap: 20px; flex-wrap: wrap; }
 .mini-stat b { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }

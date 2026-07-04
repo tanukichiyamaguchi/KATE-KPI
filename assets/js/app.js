@@ -10,7 +10,7 @@
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var VIEWS = ['overview', 'staff', 'trend', 'rfm', 'data'];
 
-  var state = { data: null, analytics: null, view: 'overview', source: 'サンプルデータ', fileName: null };
+  var state = { data: null, analytics: null, view: 'overview', source: 'サンプルデータ', fileName: null, sheetUrl: null };
   var activeCharts = [];   // redraw closures for the mounted view (resize/theme)
 
   // ---- formatting ----------------------------------------------------------
@@ -347,10 +347,30 @@
   // ============================ DATA =======================================
   function renderData() {
     var A = state.analytics, m = A.meta;
-    var head = '<div class="view-title">データ入力</div><div class="view-lead">「予約データ」シートの形式のファイル（CSV / Excel）を入れるだけで、すべての指標を自動で再計算します。</div>';
+    var head = '<div class="view-title">データ入力</div><div class="view-lead">Googleスプレッドシートに予約データを入れて連携するか、ファイル（CSV / Excel）を入れるだけで、すべての指標を自動で再計算します。</div>';
     var html = '';
+    // Google Sheets link (primary)
+    var linked = !!state.sheetUrl;
     html += card({
-      col: 'col-12',
+      col: 'col-12', title: '📊 スプレッドシート連携', sub: 'Googleスプレッドシートに予約データを入れておけば、URLを貼るだけで自動で反映されます',
+      body: '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+        '<input type="url" id="sheetUrl" inputmode="url" placeholder="https://docs.google.com/spreadsheets/d/…" value="' + esc(state.sheetUrl || '') + '" ' +
+        'style="flex:1;min-width:220px;height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--border-strong);background:var(--surface-1);color:var(--ink-primary);font-size:13px;font-family:var(--font-sans)">' +
+        '<button class="pill accent" id="sheetLinkBtn" type="button">' + (linked ? '今すぐ更新' : '連携して読み込む') + '</button>' +
+        (linked ? '<button class="pill" id="sheetUnlinkBtn" type="button">解除</button>' : '') +
+        '</div>' +
+        (linked ? '<div class="status-line" style="margin-top:10px;color:var(--status-good)"><i style="background:var(--status-good)"></i>連携中。ページを開くたびに最新のスプレッドシートを読み込みます。</div>' : '') +
+        '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12.5px;color:var(--ink-secondary);font-weight:600">連携のしかた・注意点</summary>' +
+        '<div class="how" style="margin-top:8px"><ul>' +
+        '<li>スプレッドシートの1行目を「予約データ」シートと同じ<b>日本語の見出し</b>にしてください（下のテンプレートが使えます）。</li>' +
+        '<li><b>確実な方法：</b>スプレッドシートで <code>ファイル → 共有 → ウェブに公開 → 「カンマ区切り形式(.csv)」</code> を選び、表示されたURLをここに貼り付け。</li>' +
+        '<li>または、共有を<code>「リンクを知っている全員（閲覧者）」</code>にして、通常の編集URLを貼り付け。</li>' +
+        '<li><b>⚠ プライバシー：</b>ウェブに公開・共有したスプレッドシートは、URLを知る人が閲覧できる状態になります。氏名・電話番号などを含む場合はご注意ください。非公開で扱いたい場合は下のファイルアップロードをお使いください。</li>' +
+        '<li>テンプレート：<code>data/template.csv</code>（このリポジトリ）をスプレッドシートに<code>ファイル → インポート</code>すると、見出し付きで始められます。</li>' +
+        '</ul></div></details>'
+    });
+    html += card({
+      col: 'col-12', title: '📁 ファイルから読み込む', sub: '非公開のデータはこちら（ブラウザ内でのみ処理）',
       body: '<div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="ファイルをアップロード">' +
         '<div class="dropzone-ico">⬆️</div><h3>予約データをドロップ、またはタップして選択</h3>' +
         '<p>対応形式：<b>.xlsx</b> / <b>.csv</b>　（「予約データ」シートの見出し行を含めてください）</p>' +
@@ -389,6 +409,10 @@
 
   function wireUpload() {
     var dz = $('#dropzone'), input = $('#fileInput');
+    var sheetInput = $('#sheetUrl'), linkBtn = $('#sheetLinkBtn'), unlinkBtn = $('#sheetUnlinkBtn');
+    if (linkBtn) linkBtn.addEventListener('click', function () { var u = (sheetInput.value || '').trim(); if (u) linkSheet(u); else toast('スプレッドシートのURLを入力してください', 'err'); });
+    if (sheetInput) sheetInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); if (linkBtn) linkBtn.click(); } });
+    if (unlinkBtn) unlinkBtn.addEventListener('click', unlinkSheet);
     if ($('#pickBtn')) $('#pickBtn').addEventListener('click', function (e) { e.stopPropagation(); input.click(); });
     if ($('#resetBtn')) $('#resetBtn').addEventListener('click', function (e) { e.stopPropagation(); loadSample(); toast('サンプルデータに戻しました', 'ok'); });
     dz.addEventListener('click', function () { input.click(); });
@@ -397,6 +421,31 @@
     ['dragleave', 'drop'].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); if (ev === 'dragleave' && dz.contains(e.relatedTarget)) return; dz.classList.remove('drag'); }); });
     dz.addEventListener('drop', function (e) { var f = e.dataTransfer.files[0]; if (f) handleFile(f); });
     input.onchange = function () { if (input.files[0]) handleFile(input.files[0]); input.value = ''; };
+  }
+  function applyRecords(recs, source, fileName, sheetUrl) {
+    var A = global.KATE.engine.compute(recs);
+    state.data = recs; state.analytics = A; state.source = source; state.fileName = fileName || null; state.sheetUrl = sheetUrl || null;
+    updateChrome(); renderAll(); route(state.view, true);
+    return A;
+  }
+  function linkSheet(url, opts) {
+    opts = opts || {};
+    if (!url) return;
+    if (!opts.silent) toast('スプレッドシートを読み込み中…');
+    global.KATE.sheets.fetchCsv(url).then(function (text) {
+      var recs = global.KATE.ingest.fromAOA(global.KATE.ingest.parseCSV(text));
+      var A = applyRecords(recs, 'スプレッドシート連携', null, url);
+      try { localStorage.setItem('kate-sheet-url', url); } catch (e) {}
+      var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
+      if (!opts.silent) toast('✓ スプレッドシートから ' + F.int(recs.length) + '件を読み込みました' + warn, warn ? 'err' : 'ok');
+    }).catch(function (err) {
+      console.warn('sheet load failed', err);
+      if (!opts.silent) toast('⚠ ' + (err.message || '読み込みに失敗しました'), 'err');
+    });
+  }
+  function unlinkSheet() {
+    state.sheetUrl = null; try { localStorage.removeItem('kate-sheet-url'); } catch (e) {}
+    loadSample(); route('data', true); toast('連携を解除し、サンプルに戻しました', 'ok');
   }
   function handleFile(file) {
     toast('読み込み中…');
@@ -479,6 +528,10 @@
     setTheme(saved || (global.matchMedia && global.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
     loadSample();
+
+    // Auto-reconnect a previously linked spreadsheet (always pull the latest)
+    var savedSheet = null; try { savedSheet = localStorage.getItem('kate-sheet-url'); } catch (e) {}
+    if (savedSheet) { state.sheetUrl = savedSheet; linkSheet(savedSheet, { silent: true }); }
 
     // nav
     Array.prototype.forEach.call(document.querySelectorAll('.tab, .botnav button'), function (b) {
