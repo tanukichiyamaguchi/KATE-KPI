@@ -399,7 +399,9 @@
         asOf: ym(asOf) === null ? null : asOf.toISOString().slice(0, 10),
         periodStart: months[0], periodEnd: months[months.length - 1],
         months: months, staffNames: staffNames,
-        totalRows: rows.length, generatedAt: options.now || null
+        totalRows: rows.length,
+        undatedRows: rows.filter(function (r) { return !r.date; }).length,   // rows whose 来店日 couldn't be parsed
+        generatedAt: options.now || null
       },
       store: {
         revenueTotal: revenueActual + revenueExpected, revenueActual: revenueActual, revenueExpected: revenueExpected,

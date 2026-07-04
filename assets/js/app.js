@@ -365,7 +365,8 @@
         '<div><span>有効予約</span><b class="tnum">' + F.int(A.store.effectiveReservations) + '件</b></div>' +
         '<div><span>来店顧客</span><b class="tnum">' + F.int(A.store.customers) + '人</b></div>' +
         '<div><span>対象期間</span><b>' + esc(m.periodStart) + ' 〜 ' + esc(m.periodEnd) + '</b></div>' +
-        '<div><span>集計基準日</span><b>' + esc(m.asOf) + '</b></div></div>'
+        '<div><span>集計基準日</span><b>' + esc(m.asOf) + '</b></div></div>' +
+        (m.undatedRows ? '<div class="status-line" style="margin-top:12px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' + F.int(m.undatedRows) + '件は来店日を読み取れず、日付ベースの集計から除外しました。</div>' : '')
     });
     html += card({
       col: 'col-6', title: '認識した列', sub: '予約データの主要列を自動でマッピング',
@@ -403,7 +404,8 @@
       var A = global.KATE.engine.compute(recs);
       state.data = recs; state.analytics = A; state.source = 'アップロード'; state.fileName = file.name;
       updateChrome(); renderAll(); route(state.view, true);
-      toast('✓ ' + F.int(recs.length) + '件を再計算しました', 'ok');
+      var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
+      toast('✓ ' + F.int(recs.length) + '件を再計算しました' + warn, warn ? 'err' : 'ok');
     }).catch(function (err) { console.error(err); toast('⚠ ' + (err.message || '読み込みに失敗しました'), 'err'); });
   }
 
