@@ -421,7 +421,8 @@
 
   // ============================ SPARKLINE ================================
   function sparkline(container, values, color) {
-    if (!values || !values.length) { container.innerHTML = ''; return; }
+    values = (values || []).filter(function (v) { return v != null && isFinite(v); });
+    if (!values.length) { container.innerHTML = ''; return; }
     var w = width(container, 120), h = container.clientHeight || 34;
     var svg = mount(container, w, h);
     var max = Math.max.apply(null, values), min = Math.min.apply(null, values), rng = max - min || 1;
