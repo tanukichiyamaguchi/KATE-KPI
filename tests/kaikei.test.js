@@ -284,5 +284,50 @@ h('■ Fixture G: シグナル皆無 / 確定月0件のnull化');
   check('regulars3（単回来店のみ→0）', z.regulars3, 0);
 }
 
+// ============================================================================
+// Fixture H — Phase 4 D1: 新規/再来ミックス・人気メニュー・クーポン依存度・
+// 施術/店販の月次分解・時間帯ヒートマップのクランプ
+// ============================================================================
+h('■ Fixture H: 新規/再来ミックス・メニュー/クーポン品質・時間帯ヒートマップ');
+{
+  var ROWS = [1, 2, 3, 4, 5, 6, 0];   // engine の dayOfWeek/hourDow 行順（月→日）と同じ
+  function rowIndexFor(dateStr) { return ROWS.indexOf(new Date(dateStr + 'T00:00:00').getDay()); }
+  const rows = [
+    rec({ custKey: 'A', date: '2026-05-01', kaikeiTotal: 6000, start: 1005 }),   // A 1st visit, 10:05 (no clamp)
+    rec({ custKey: 'A', date: '2026-06-01', kaikeiTotal: 6000, start: 830 }),    // A 2nd visit (repeat), 8:30 -> clamp 9
+    rec({ custKey: 'B', date: '2026-06-02', kaikeiTotal: 6000, start: 2130 }),   // B 1st visit (new), 21:30 -> clamp 20
+    rec({ custKey: 'C', date: '2026-06-03', kaikeiTotal: 8000, shohanAmount: 2000, menu: 'MENU-X', coupon: 'C1' }),
+    rec({ custKey: 'D', date: '2026-06-04', kaikeiTotal: 5000, menu: 'MENU-X' }),
+    rec({ custKey: 'E', date: '2026-06-05', kaikeiTotal: 5000, menu: 'MENU-Y' })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-08-01' });
+
+  const may = R.store.newMix.find(m => m.m === '2026-05');
+  const jun = R.store.newMix.find(m => m.m === '2026-06');
+  check('newMix 5月 new（Aの初回のみ）', may.new, 1);
+  check('newMix 5月 repeat', may.repeat, 0);
+  check('newMix 6月 new（B,C,D,Eの初回=4）', jun.new, 4);
+  check('newMix 6月 repeat（Aの2回目のみ）', jun.repeat, 1);
+
+  const menuX = R.trend.menuTop.find(m => m.menu === 'MENU-X');
+  check('menuTop MENU-X 件数（C,D）', menuX.n, 2);
+  check('menuTop MENU-X 金額（8000+5000）', menuX.amount, 13000);
+
+  check('couponRatio（Cのみクーポン付き ÷ 全6来店）', R.trend.couponRatio, 1 / 6, 1e-9);
+
+  const junSR = R.store.serviceRetailMonthly.find(m => m.m === '2026-06');
+  check('serviceRetailMonthly 6月 retail（Cの2000のみ）', junSR.retail, 2000);
+  check('serviceRetailMonthly 6月 service（30000-2000）', junSR.service, 28000);
+
+  const HOURS = R.trend.hourLabels.map(function (s) { return parseInt(s, 10); });
+  const idx9 = HOURS.indexOf(9), idx20 = HOURS.indexOf(20), idx10 = HOURS.indexOf(10);
+  const rowMay1 = rowIndexFor('2026-05-01'), rowJun1 = rowIndexFor('2026-06-01'), rowJun2 = rowIndexFor('2026-06-02');
+  check('hourDow: 10:05はそのまま10時', R.trend.hourDow[rowMay1][idx10], 1);
+  check('hourDow: 8:30は9時にクランプ', R.trend.hourDow[rowJun1][idx9], 1);
+  check('hourDow: 21:30は20時にクランプ', R.trend.hourDow[rowJun2][idx20], 1);
+  const totalHourDow = R.trend.hourDow.reduce(function (s, row) { return s + row.reduce(function (a, b) { return a + b; }, 0); }, 0);
+  check('hourDow 合計 = startを持つ来店数（A×2+B=3件）', totalHourDow, 3);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);

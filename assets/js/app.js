@@ -136,9 +136,9 @@
       body: chartBox('cCohort', 230)
     });
 
-    // 店販 + route + cancel + visit-count
+    // 店販 + 新規/再来 + route + visit-count
     html += card({
-      col: 'col-5', title: '店販（物販）実績', sub: rt.hasAmount ? '会計時店販金額をもとに算出' : '商品名から購入率のみ算出中',
+      col: 'col-6', title: '店販（物販）実績', sub: rt.hasAmount ? '会計時店販金額をもとに算出' : '商品名から購入率のみ算出中',
       body: '<div class="mini-stats" style="margin-bottom:6px">' +
         miniStat(pct(rt.customerRatio * 100, 1), '店販顧客比率', 'retail-customer-ratio') +
         miniStat(rt.amount != null ? yen(rt.amount) : '—', '店販金額', 'retail-amount') +
@@ -146,8 +146,11 @@
         miniStat(rt.avgSpend != null ? yen(rt.avgSpend) : '—', '店販単価', 'retail-avg-spend') +
         '</div>' + (rt.hasAmount ? '' : '<div class="note-inline" style="margin-top:12px">金額・売上比率・単価は、スプレッドシートに <b>「会計時店販金額」</b> 列を追加すると自動表示されます。</div>')
     });
-    html += card({ col: 'col-4', title: '集客経路', sub: '有効予約に占める構成', body: chartBox('cRoute', 210) });
-    html += card({ col: 'col-3', title: '来店回数の構成', sub: '回数別', body: '<div id="cVisitComp"></div>' });
+    var lastMix = s.newMix.filter(function (m) { return m.new + m.repeat > 0; }).slice(-1)[0];
+    var mixNote = lastMix && (lastMix.new + lastMix.repeat) ? '直近月（' + monthShort(lastMix.m) + '）の再来比率 ' + pct(lastMix.repeat / (lastMix.new + lastMix.repeat) * 100, 0) : '月次の新規・再来来店数';
+    html += card({ col: 'col-6', title: '新規・再来', sub: mixNote, tag: '件', body: chartBox('cNewMix', 210) });
+    html += card({ col: 'col-6', title: '集客経路', sub: '有効予約に占める構成', body: chartBox('cRoute', 210) });
+    html += card({ col: 'col-6', title: '来店回数の構成', sub: '回数別', body: '<div id="cVisitComp"></div>' });
 
     mount('overview', head + '<div class="grid">' + html + '</div>');
 
@@ -191,6 +194,16 @@
       C.hbars(el, {
         items: s.visitCountBreakdown.map(function (b, i) { return { label: b.label, value: b.count, sub: '客単価 ' + yen(b.spend), color: cvar(['--funnel-2', '--funnel-3', '--funnel-4', '--funnel-5'][i]) }; }),
         valueFmt: function (v) { return v + '件'; }
+      });
+    });
+    draw('cNewMix', function (el) {
+      C.columns(el, {
+        groups: s.newMix.map(function (m) { return monthShort(m.m); }), stacked: true,
+        series: [
+          { name: '新規', color: cvar('--series-1'), values: s.newMix.map(function (m) { return m.new; }) },
+          { name: '再来', color: cvar('--series-2'), values: s.newMix.map(function (m) { return m.repeat; }) }
+        ],
+        valueFmt: function (v) { return v + '件'; }, height: 210
       });
     });
     flush();
@@ -413,6 +426,20 @@
     html += card({ col: 'col-6', title: '月次コホート リピート率', sub: '初回獲得月ごとの2回目到達', tag: '%', body: chartBox('cTCohortR', 220) });
     html += card({ col: 'col-6', title: '月次コホート LTV', sub: '初回獲得月ごとの累計売上', tag: '¥', body: chartBox('cTCohortL', 220) });
     html += card({ col: 'col-12', title: '人気クーポン TOP', sub: '初回獲得クーポン別のリピート率とLTV', body: '<div id="cCoupon"></div>' });
+    if (t.menuTop.length) {
+      var menuSub = t.nextResMenuRatio != null ? '来店のうち次回予約割メニューの比率 ' + pct(t.nextResMenuRatio * 100, 1) : '件数の多い順';
+      html += card({ col: 'col-12', title: '人気メニュー TOP', sub: menuSub, body: '<div id="cMenu"></div>' });
+    }
+    if (t.couponRatio != null) {
+      html += card({ col: 'col-6', title: 'クーポン依存度', sub: '来店のうちクーポンを利用した割合', body: '<div id="mCoupon"></div>' });
+    }
+    if (A.store.serviceRetailMonthly) {
+      html += card({ col: 'col-6', title: '施術・店販の月次分解', sub: '会計金額の内訳', tag: '¥', body: chartBox('cServiceRetail', 210) });
+    }
+    html += card({
+      col: 'col-12', title: '時間帯 × 曜日 ヒートマップ', sub: '来店の多い時間帯を把握' + (A.meta.completedOnly ? '（会計時刻ベース）' : ''),
+      body: chartBox('cHourDow', 0)
+    });
 
     mount('trend', head + '<div class="grid">' + html + '</div>');
 
@@ -426,6 +453,32 @@
     draw('cCoupon', function (el) {
       var top = t.coupons.slice(0, 8);
       C.hbars(el, { items: top.map(function (c) { return { label: shortCoupon(c.coupon), value: c.n, sub: 'リピート ' + pct(c.repeat * 100, 0) + ' ・ LTV ' + yen(c.ltv), color: cvar('--series-1') }; }), valueFmt: function (v) { return v + '人'; } });
+    });
+    if (t.menuTop.length) {
+      draw('cMenu', function (el) {
+        C.hbars(el, { items: t.menuTop.map(function (m) { return { label: shortCoupon(m.menu), value: m.n, sub: yen(m.amount), color: cvar('--series-2') }; }), valueFmt: function (v) { return v + '件'; } });
+      });
+    }
+    if (t.couponRatio != null) {
+      draw('mCoupon', function (el) {
+        C.meter(el, { label: 'クーポン利用来店', value: t.couponRatio, display: pct(t.couponRatio * 100, 1), color: cvar('--series-3') });
+      });
+    }
+    if (A.store.serviceRetailMonthly) {
+      draw('cServiceRetail', function (el) {
+        var srm = A.store.serviceRetailMonthly;
+        C.columns(el, {
+          groups: srm.map(function (m) { return monthShort(m.m); }), stacked: true,
+          series: [
+            { name: '施術', color: cvar('--series-1'), values: srm.map(function (m) { return m.service; }) },
+            { name: '店販', color: cvar('--series-5'), values: srm.map(function (m) { return m.retail; }) }
+          ],
+          valueFmt: function (v) { return yen(Math.round(v)); }, yFmt: F.compact, height: 210
+        });
+      });
+    }
+    draw('cHourDow', function (el) {
+      C.heatmap(el, { matrix: t.hourDow, rowLabels: ['月', '火', '水', '木', '金', '土', '日'], colLabels: t.hourLabels, hue: cvar('--seq-5'), unit: '件' });
     });
     // segmented control
     var seg = $('#dowSeg');

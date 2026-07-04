@@ -216,7 +216,11 @@
         shohanAmount: shohanAmt || null,
         first: shinki === '新規' ? 'はい' : (shinki === '再来' ? 'いいえ' : null),
         menu: null, menuCat: null, coupon: null, couponCat: null, pay: null,
-        start: null, end: null, dur: null, usedGift: null, usedPoint: null,
+        // 会計時間 is HHMMSS (e.g. 173645 = 17:36:45) — /100 drops the seconds to
+        // give HHMM (1736), matching 予約データ's 開始時間 convention so engine.js
+        // can extract the hour the same way (Math.floor(start/100)) for either source.
+        start: (function () { var t = toNum(cell(lines[0], '会計時間')); return t ? Math.floor(t / 100) : null; })(),
+        end: null, dur: null, usedGift: null, usedPoint: null,
         _time: toNum(cell(lines[0], '会計時間'))   // checkout time-of-day; merge-pairing only, not read by the engine
       };
       var kn = normName(kana), nm = normName(name), cn = clean(custNo);
