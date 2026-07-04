@@ -130,12 +130,23 @@ svg { display: block; }
   background: var(--glass); backdrop-filter: saturate(1.8) blur(20px); -webkit-backdrop-filter: saturate(1.8) blur(20px);
   border-bottom: 1px solid var(--hairline);
 }
-.brand { display: flex; flex-direction: column; gap: 1px; margin-right: auto; min-width: 0; color: inherit; }
+.brand { display: flex; flex-direction: row; align-items: center; gap: 11px; margin-right: auto; min-width: 0; color: inherit; }
+.brand-mark { flex: none; color: var(--ink-primary); line-height: 0; }
+.brand-mark svg { height: 34px; width: auto; display: block; }
+.brand-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .wordmark { font-family: var(--font-display); font-size: 17px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; line-height: 1; white-space: nowrap; }
 .wordmark b { font-weight: 700; }
 .wordmark i { font-style: normal; font-weight: 400; text-transform: lowercase; letter-spacing: .1em; margin: 0 .12em; color: var(--ink-secondary); }
 .brand-sub { font-size: 11px; color: var(--ink-muted); letter-spacing: .02em; }
 .topbar-actions { display: flex; align-items: center; gap: 8px; }
+@media (max-width: 600px) {
+  .topbar { gap: 8px; }
+  .brand { gap: 7px; }
+  .brand-mark svg { height: 25px; }
+  .wordmark { font-size: 13.5px; letter-spacing: .06em; }
+  .brand-sub { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge-soft { font-size: 10.5px; padding: 5px 9px; }
+}
 .asof { font-size: 12px; color: var(--ink-muted); font-variant-numeric: tabular-nums; display: none; }
 @media (min-width: 720px) { .asof { display: inline-flex; align-items: center; gap: 6px; } }
 
@@ -151,7 +162,7 @@ svg { display: block; }
 .pill.accent:hover { background: var(--accent-ink); }
 .pill.icon-only { width: 34px; padding: 0; }
 .pill svg { width: 17px; height: 17px; stroke-width: 1.7; }
-.badge-soft { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 11.5px; font-weight: 500; }
+.badge-soft { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 11.5px; font-weight: 500; white-space: nowrap; flex: none; }
 .badge-soft .dot { width: 6px; height: 6px; border-radius: 980px; background: var(--good); }
 
 /* ---- Tabs (desktop) -------------------------------------------------------*/
