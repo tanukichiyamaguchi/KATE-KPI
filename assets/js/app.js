@@ -1,5 +1,5 @@
 /* ============================================================================
- * Atelier Éclat · App
+ * KATEstageLASH 蒲田西口店 · App
  * Orchestration: load reservations → compute analytics → render the five views
  * with the KATE chart library. Handles routing, theme, upload/ingest, resize
  * and theme-driven chart redraws. All client-side; no data leaves the browser.

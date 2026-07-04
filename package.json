@@ -1,7 +1,7 @@
 {
   "name": "kate-kpi-dashboard",
   "version": "1.0.0",
-  "description": "Atelier Éclat — KATE salon reservation-based KPI dashboard (static, client-side)",
+  "description": "KATEstageLASH 蒲田西口店 — reservation-based KPI dashboard (static, client-side)",
   "private": true,
   "scripts": {
     "test": "node tests/validate.js"
