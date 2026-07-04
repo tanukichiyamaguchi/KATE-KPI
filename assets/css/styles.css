@@ -310,6 +310,19 @@ svg { display: block; }
 .seg-rfm b { color: var(--ink-primary); font-variant-numeric: tabular-nums; }
 .seg-action { font-size: 12px; color: var(--ink-secondary); margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--hairline); line-height: 1.5; }
 
+/* ---- Head-to-head scoreboard ---------------------------------------------*/
+.vs-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 360px; }
+.vs-table th, .vs-table td { padding: 11px 14px; text-align: right; font-variant-numeric: tabular-nums; }
+.vs-table th:first-child, .vs-table td:first-child { text-align: left; color: var(--ink-secondary); font-weight: 500; white-space: nowrap; }
+.vs-table thead th { font-size: 12.5px; color: var(--ink-primary); font-weight: 600; border-bottom: 1px solid var(--border); }
+.vs-table thead th .vs-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 7px; vertical-align: middle; }
+.vs-table tbody tr { border-bottom: 1px solid var(--hairline); }
+.vs-table tbody tr:last-child { border-bottom: 0; }
+.vs-table td b { font-weight: 500; }
+.vs-table td.vs-win { background: var(--accent-soft); }
+.vs-table td.vs-win b { font-weight: 700; color: var(--accent-ink); }
+.vs-table td .vs-lead { font-size: 10px; color: var(--accent-ink); margin-left: 7px; font-weight: 700; letter-spacing: .02em; }
+
 /* ---- Staff ----------------------------------------------------------------*/
 .staff-head { display: flex; align-items: center; gap: 14px; }
 .staff-avatar { width: 46px; height: 46px; border-radius: 980px; display: grid; place-items: center; color: #fff; font-weight: 600; font-size: 18px; flex: none; font-family: var(--font-display); }
