@@ -26,6 +26,11 @@
     '予約時メニュー': 'menu',
     '予約時HotPepperBeautyクーポン': 'coupon',
     '予約時HotPepperBeautyクーポンカテゴリ': 'couponCat',
+    '会計時店販カテゴリ': 'shohanCat',
+    '会計時店販': 'shohan',
+    '会計時店販金額': 'shohanAmount',
+    '店販金額': 'shohanAmount',
+    '物販金額': 'shohanAmount',
     'フリガナ': 'kana',
     'お名前': 'name',
     '電話番号': 'phone',
@@ -38,7 +43,7 @@
     'このサロンに行くのは初めてですか？': 'first'
   };
   var REQUIRED = ['status'];
-  var NUMERIC = { start: 1, end: 1, dur: 1, yoyakuTotal: 1, payPlanned: 1, kaikeiTotal: 1, usedGift: 1, usedPoint: 1 };
+  var NUMERIC = { start: 1, end: 1, dur: 1, yoyakuTotal: 1, payPlanned: 1, kaikeiTotal: 1, usedGift: 1, usedPoint: 1, shohanAmount: 1 };
 
   function clean(s) { return String(s == null ? '' : s).replace(/^﻿/, '').trim(); }
   function normName(s) { return clean(s).replace(/[\s　]/g, ''); }
