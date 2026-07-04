@@ -285,6 +285,9 @@
     html += card({ col: 'col-6', title: '次回予約取得率の推移', sub: '来店時に次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext', 230) });
     html += card({ col: 'col-6', title: '2回目 次回予約取得率の推移', sub: '2回目来店時に、次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext2', 230) });
     html += card({ col: 'col-6', title: 'リピート育成力', sub: '初回担当者を基準にした 2〜4回目への到達率', body: chartBox('cStaffRepeat', 230) });
+    if (staff.some(function (st) { return st.utilization; })) {
+      html += card({ col: 'col-6', title: '月次 施術時間と稼働率', sub: '予約枠の使われ方（営業時間 9-20時想定）', tag: '%', body: chartBox('cStaffUtil', 230) });
+    }
 
     mount('staff', head + '<div class="grid">' + html + '</div>');
 
@@ -340,6 +343,17 @@
         valueFmt: function (v) { return v.toFixed(1) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, yMax: 100, height: 230
       });
     });
+    if (staff.some(function (st) { return st.utilization; })) {
+      draw('cStaffUtil', function (el) {
+        C.columns(el, {
+          groups: months, yMax: 100,
+          series: staff.filter(function (st) { return st.utilization; }).map(function (st) {
+            return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.utilization.map(function (u) { return u.rate * 100; }) };
+          }),
+          valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230
+        });
+      });
+    }
     flush();
   }
   function sm(v, label, dataKpi) { return '<div class="staff-metric"' + (dataKpi ? ' data-kpi="' + dataKpi + '"' : '') + '><b>' + v + '</b><span>' + label + '</span></div>'; }
@@ -506,6 +520,7 @@
 
   // ============================ RFM ========================================
   var rfmSort = { key: 'M', dir: -1 };
+  var rfmCallbackOnly = false;
   function renderRFM() {
     var A = state.analytics, r = A.rfm;
     var html = '<div class="view-title">顧客 RFM 分析</div><div class="view-lead">最終来店(R)・来店回数(F)・累計売上(M)で顧客を9つのセグメントに分類。' + r.total + '人の来店顧客が対象。</div>';
@@ -529,8 +544,15 @@
     html += '</div>';
 
     // customer table
+    var overdueCount = r.customers.filter(function (c) { return c.cycleOverdue; }).length;
     html += '<div class="section-title">顧客 RFM 明細</div>';
-    html += '<div class="grid">' + card({ col: 'col-12', sub: '累計売上(M)順・上位120人を表示。ヘッダーをタップで並べ替え。', title: '顧客一覧', body: '<div class="table-wrap tall"><table class="kate-table" id="rfmTable"></table></div>' }) + '</div>';
+    html += '<div class="grid">' + card({
+      col: 'col-12', sub: '累計売上(M)順・上位120人を表示。ヘッダーをタップで並べ替え。',
+      title: '顧客一覧',
+      body: '<div style="display:flex;justify-content:flex-end;margin-bottom:10px">' +
+        '<button type="button" class="pill' + (rfmCallbackOnly ? ' accent' : '') + '" id="rfmCallbackToggle" aria-pressed="' + rfmCallbackOnly + '">呼び戻し対象のみ表示（' + overdueCount + '人）</button>' +
+        '</div><div class="table-wrap tall"><table class="kate-table" id="rfmTable"></table></div>'
+    }) + '</div>';
 
     mount('rfm', html);
 
@@ -543,17 +565,29 @@
       C.hbars(el, { items: sorted.map(function (sg) { return { label: sg.label, value: sg.people, sub: pct(sg.ratio * 100, 1), color: cvar(SEG_COLOR[sg.seg]) }; }), valueFmt: function (v) { return v + '人'; } });
     });
     buildRfmTable();
+    var toggleBtn = $('#rfmCallbackToggle');
+    toggleBtn.addEventListener('click', function () {
+      rfmCallbackOnly = !rfmCallbackOnly;
+      toggleBtn.classList.toggle('accent', rfmCallbackOnly);
+      toggleBtn.setAttribute('aria-pressed', rfmCallbackOnly);
+      buildRfmTable();
+    });
     flush();
   }
   function buildRfmTable() {
     var r = state.analytics.rfm;
-    var rows = r.customers.slice().sort(function (a, b) { var k = rfmSort.key; return (a[k] - b[k]) * rfmSort.dir; }).slice(0, 120);
-    var cols = [['name', 'お名前'], ['R', 'R (日)'], ['F', 'F (回)'], ['M', 'M (¥)'], ['seg', 'セグメント']];
+    var pool = rfmCallbackOnly ? r.customers.filter(function (c) { return c.cycleOverdue; }) : r.customers;
+    var rows = pool.slice().sort(function (a, b) { var k = rfmSort.key; return (a[k] - b[k]) * rfmSort.dir; }).slice(0, 120);
+    var cols = [['name', 'お名前'], ['R', 'R (日)'], ['F', 'F (回)'], ['M', 'M (¥)'], ['seg', 'セグメント'], ['cycleOverdue', '周期超過']];
     var thead = '<thead><tr>' + cols.map(function (c) { return '<th data-k="' + c[0] + '" tabindex="0" role="button" aria-label="' + c[1] + 'で並べ替え"' + (rfmSort.key === c[0] ? ' aria-sort="' + (rfmSort.dir > 0 ? 'ascending' : 'descending') + '" class="sorted' + (rfmSort.dir > 0 ? ' asc' : '') + '"' : '') + '>' + c[1] + '</th>'; }).join('') + '</tr></thead>';
     var tbody = '<tbody>' + rows.map(function (c) {
       var col = cvar(SEG_COLOR[c.seg] || '--series-6');
+      var overdueCell = c.cycleOverdue
+        ? '<span class="chip down">周期超過</span>'
+        : '<span class="note-inline">目安 ' + c.ownCycle + '日</span>';
       return '<tr><td>' + esc(c.name) + '</td><td>' + c.R + '</td><td>' + c.F + '</td><td>' + F.int(c.M) + '</td>' +
-        '<td style="text-align:left"><span class="seg-tag"><i style="background:' + col + '"></i>' + esc(c.seg) + '</span></td></tr>';
+        '<td style="text-align:left"><span class="seg-tag"><i style="background:' + col + '"></i>' + esc(c.seg) + '</span></td>' +
+        '<td style="text-align:left">' + overdueCell + '</td></tr>';
     }).join('') + '</tbody>';
     var table = $('#rfmTable'); table.innerHTML = thead + tbody;
     Array.prototype.forEach.call(table.querySelectorAll('th'), function (th) {
