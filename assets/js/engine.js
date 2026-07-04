@@ -270,10 +270,15 @@
     var nextReserveRate = actualVisits ? nextReserveCount / actualVisits : 0;
 
     // ---- Visit cycle (median gap between consecutive visits) ----------------
-    var gaps = [];
+    // Also keep each customer's OWN median gap (for the M27 callback list below) —
+    // a customer with only one visit ever has no gap of their own, so they fall
+    // back to the store-wide median.
+    var gaps = [], custOwnCycle = {};
     visitedCusts.forEach(function (c) {
       var v = byCust[c.key].filter(function (r) { return r.isVisited && r.date; }).map(function (r) { return r.date; }).sort(function (a, b) { return a - b; });
-      for (var i = 1; i < v.length; i++) gaps.push(dayDiff(v[i], v[i - 1]));
+      var ownGaps = [];
+      for (var i = 1; i < v.length; i++) { var g = dayDiff(v[i], v[i - 1]); gaps.push(g); ownGaps.push(g); }
+      custOwnCycle[c.key] = ownGaps.length ? median(ownGaps) : null;
     });
     var visitCycleMedianDays = median(gaps);
 
@@ -409,13 +414,27 @@
           nextCnt: nextCnt, visN: vis.length, next2Cnt: next2, vis2N: vis2.length,
           nextResImmature: immature,
           retailRatio: rst.attachRate, retailAmount: rst.amount, retailBuyers: rst.buyers,
-          shimeiN: vis.filter(isShimei).length, retailBuyingVisits: rst.buyingVisits
+          shimeiN: vis.filter(isShimei).length, retailBuyingVisits: rst.buyingVisits,
+          durMin: vis.reduce(function (s, r) { return s + (r.dur || 0); }, 0)
         };
       });
     }
     var custVisitSet = {};
     visitedCusts.forEach(function (c) { custVisitSet[c.key] = true; });
     function custHasVisit(k) { return !!custVisitSet[k]; }
+
+    // ---- スタッフ稼働率 (M26・P4-4・予約データ限定) -----------------------------
+    // Σ施術時間(分) ÷ 営業可能時間（9:00-20:00固定・将来設定化）。会計明細には
+    // 所要時間が無いため、dur を一件も持たないデータセットでは算出しない。
+    var anyDur = visitedRows.some(function (r) { return r.dur != null; });
+    var OPERATING_HOURS = 11;   // 9:00-20:00
+    function daysInMonth(mo) { var p = mo.split('-'); return new Date(+p[0], +p[1], 0).getDate(); }
+    function utilizationMonthly(mrows) {
+      return anyDur ? mrows.map(function (r) {
+        var capacity = daysInMonth(r.m) * OPERATING_HOURS * 60;
+        return { m: r.m, minutes: r.durMin, capacity: capacity, rate: capacity ? r.durMin / capacity : 0 };
+      }) : null;
+    }
 
     // Whether this dataset has any 指名/店販 signal at all — gates whether the
     // corresponding personal-best/milestone fields below are numbers or null
@@ -504,7 +523,8 @@
       return {
         name: name, avg: avg, acquired: acqAll.length, matureAcquired: acqMature.length,
         reach2: reach(2), reach3: reach(3), reach4: reach(4), retail: retail, monthly: mrows, composition: comp,
-        personalBest: personalBest, cumulative: cumulative, regulars3: regulars3
+        personalBest: personalBest, cumulative: cumulative, regulars3: regulars3,
+        utilization: utilizationMonthly(mrows)
       };
     });
 
@@ -569,9 +589,17 @@
     });
 
     // ---- RFM ----------------------------------------------------------------
+    // ---- 呼び戻しリスト (M27・P4-5) --------------------------------------------
+    // 最終来店からの経過日数が、本人の来店周期（無ければ店舗全体の中央値）の
+    // 1.5倍を超えている顧客に「周期超過」フラグを立てる。
     var rfmCusts = visitedCusts.map(function (c) {
       var Rp = rScore(c.R), Fp = fScore(c.Fvis), Mp = mScore(c.M);
-      return { name: c.name, R: c.R, F: c.Fvis, M: c.M, Rp: Rp, Fp: Fp, Mp: Mp, seg: segment(Rp, Fp) };
+      var ownCycle = custOwnCycle[c.key] != null ? custOwnCycle[c.key] : visitCycleMedianDays;
+      var cycleOverdue = c.R != null && ownCycle != null && c.R > ownCycle * 1.5;
+      return {
+        name: c.name, R: c.R, F: c.Fvis, M: c.M, Rp: Rp, Fp: Fp, Mp: Mp, seg: segment(Rp, Fp),
+        daysSince: c.R, ownCycle: round(ownCycle, 1), cycleOverdue: cycleOverdue
+      };
     }).sort(function (a, b) { return b.M - a.M; });
 
     var segTotals = {};

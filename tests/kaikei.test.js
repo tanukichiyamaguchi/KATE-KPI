@@ -329,5 +329,67 @@ h('■ Fixture H: 新規/再来ミックス・メニュー/クーポン品質・
   check('hourDow 合計 = startを持つ来店数（A×2+B=3件）', totalHourDow, 3);
 }
 
+// ============================================================================
+// Fixture I — Phase 4 D2: 呼び戻しリスト（周期超過）とスタッフ稼働率
+// ============================================================================
+// asOf = day200 (BASE=2026-01-01 からのオフセットで表現). P1/P2 は店舗全体の
+// 来店周期の中央値(40日)を作るためだけの土台。Q/R は自分自身の周期(30日・
+// 閾値45日)で判定、S/T は来店1回のみのため店舗中央値(40日・閾値60日)へ
+// フォールバックする — 4通りすべての分岐を1件ずつ確認する。
+h('■ Fixture I: 呼び戻しリスト（周期超過）とスタッフ稼働率');
+{
+  function addDays(base, n) {
+    var d = new Date(base + 'T00:00:00'); d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+  const BASE = '2026-01-01';
+  const rows = [
+    rec({ custKey: 'P1', name: 'P1', date: addDays(BASE, 0), kaikeiTotal: 5000 }),
+    rec({ custKey: 'P1', name: 'P1', date: addDays(BASE, 40), kaikeiTotal: 5000 }),
+    rec({ custKey: 'P1', name: 'P1', date: addDays(BASE, 80), kaikeiTotal: 5000 }),
+    rec({ custKey: 'P2', name: 'P2', date: addDays(BASE, 0), kaikeiTotal: 5000 }),
+    rec({ custKey: 'P2', name: 'P2', date: addDays(BASE, 60), kaikeiTotal: 5000 }),
+    rec({ custKey: 'P2', name: 'P2', date: addDays(BASE, 120), kaikeiTotal: 5000 }),
+    rec({ custKey: 'Q', name: 'Q', date: addDays(BASE, 130), kaikeiTotal: 5000 }),
+    rec({ custKey: 'Q', name: 'Q', date: addDays(BASE, 160), kaikeiTotal: 5000 }),   // 周期30日・経過40日(<45)→非対象
+    rec({ custKey: 'R', name: 'R', date: addDays(BASE, 120), kaikeiTotal: 5000 }),
+    rec({ custKey: 'R', name: 'R', date: addDays(BASE, 150), kaikeiTotal: 5000 }),   // 周期30日・経過50日(>45)→対象
+    rec({ custKey: 'S', name: 'S', date: addDays(BASE, 130), kaikeiTotal: 5000 }),   // 1回のみ・経過70日(>60)→対象
+    rec({ custKey: 'T', name: 'T', date: addDays(BASE, 150), kaikeiTotal: 5000 }),   // 1回のみ・経過50日(<60)→非対象
+    rec({ staff: 'U', custKey: 'U1', name: 'U1', date: '2026-02-05', kaikeiTotal: 6000, start: 1000, dur: 60 }),
+    rec({ staff: 'U', custKey: 'U2', name: 'U2', date: '2026-02-10', kaikeiTotal: 6000, start: 1400, dur: 90 })
+  ];
+  const R2 = engine.compute(rows, { asOf: addDays(BASE, 200) });
+  check('store.visitCycleMedianDays（[30,30,40,40,60,60]の中央値）', R2.store.visitCycleMedianDays, 40);
+
+  function c(key) { return R2.rfm.customers.find(function (x) { return x.name === key; }); }
+  check('Q: 自分の周期30日・経過40日→非対象', c('Q').cycleOverdue ? 1 : 0, 0);
+  check('Q.ownCycle（自分の周期）', c('Q').ownCycle, 30);
+  check('R: 自分の周期30日・経過50日→対象', c('R').cycleOverdue ? 1 : 0, 1);
+  check('S: 来店1回・店舗中央値へフォールバック・経過70日→対象', c('S').cycleOverdue ? 1 : 0, 1);
+  check('S.ownCycle（店舗中央値40日にフォールバック）', c('S').ownCycle, 40);
+  check('T: 来店1回・フォールバック・経過50日→非対象', c('T').cycleOverdue ? 1 : 0, 0);
+
+  const u = R2.staff.find(function (s) { return s.name === 'U'; });
+  const feb = u.utilization.find(function (m) { return m.m === '2026-02'; });
+  check('utilization 2月 minutes（60+90）', feb.minutes, 150);
+  check('utilization 2月 capacity（28日×11h×60分）', feb.capacity, 28 * 11 * 60);
+  check('utilization 2月 rate（150/18480）', feb.rate, 150 / (28 * 11 * 60), 1e-9);
+}
+
+// ============================================================================
+// Fixture J — dur が一件も無いデータセットでは utilization を算出しない
+// ============================================================================
+h('■ Fixture J: durデータ皆無時は utilization = null');
+{
+  const rows = [
+    rec({ staff: 'V', custKey: 'V1', date: '2026-03-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'V', custKey: 'V2', date: '2026-03-02', kaikeiTotal: 5000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-03-10' });
+  const v = R.staff.find(function (s) { return s.name === 'V'; });
+  check('utilization（durデータ皆無→null）', v.utilization === null ? 1 : 0, 1);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);
