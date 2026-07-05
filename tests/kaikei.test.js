@@ -562,5 +562,28 @@ h('■ Fixture N: 固定化率は2回到達者に対する3回目到達の条件
   check('staff.fixationRate（2/3=0.667、2回到達者基準）', s.fixationRate, 2 / 3, 1e-6);
 }
 
+// ============================================================================
+// Fixture O — 基準日(meta.asOf)はタイムゾーンに依存しない
+// ============================================================================
+// parseDate はローカル深夜0時の Date を作るため、toISOString()（UTC変換）で
+// 文字列化すると UTC より東の地域では前日にずれる（日本では 2026-07-03 指定が
+// 「基準日 7月2日」と表示されていた実バグ）。テスト実行マシンのタイムゾーンに
+// 関係なく検出できるよう、TZ=Asia/Tokyo の子プロセスでエンジンを実行して検証。
+h('■ Fixture O: meta.asOf は日本時間でも指定日のまま（UTC変換で前日にずれない）');
+{
+  const { execFileSync } = require('child_process');
+  const script = `
+    const path = require('path');
+    const engine = require(path.join(${JSON.stringify(__dirname)}, '..', 'assets', 'js', 'engine.js'));
+    const rows = [{ status: '会計済み', staff: 's', route: '直接来店', custKey: 'A', name: null, gender: null,
+      first: null, shimei: null, yoyakuTotal: null, payPlanned: null, kaikeiTotal: 5000,
+      shohan: null, shohanCat: null, shohanAmount: null, date: '2026-06-01' }];
+    process.stdout.write(engine.compute(rows, { asOf: '2026-07-03' }).meta.asOf);
+  `;
+  const got = execFileSync(process.execPath, ['-e', script], { env: Object.assign({}, process.env, { TZ: 'Asia/Tokyo' }) }).toString();
+  check('TZ=Asia/Tokyo でも meta.asOf は 2026-07-03', got === '2026-07-03' ? 1 : 0, 1, 0);
+  if (got !== '2026-07-03') console.log(`         got=${JSON.stringify(got)}`);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);
