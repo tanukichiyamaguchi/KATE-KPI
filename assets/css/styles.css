@@ -398,6 +398,10 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
    room); swapped for an abbreviated one on narrow phones, see the media query
    below. */
 .compact-num { display: none; }
+/* Column-header units — "(日)" in "R (日)". Visually secondary on desktop and
+   dropped entirely on phones (media query below), where they don't fit the
+   narrow numeric columns. */
+.th-unit { color: var(--ink-muted); font-weight: 500; }
 /* Mobile: the fixed min-width above forces horizontal scroll on phone widths
    even though the actual content (short ¥/%/count values) doesn't need it —
    drop the floor and tighten padding/font so tables fit the viewport instead.
@@ -409,7 +413,20 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
   .vs-table th:first-child, .vs-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }
   table.kate-table { font-size: 11px; table-layout: fixed; }
   .kate-table th, .kate-table td { padding: 7px 5px; overflow: hidden; }
-  .kate-table th, .kate-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }
+  .kate-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }
+  /* Headers may wrap, but only at natural boundaries (spaces / <wbr>), never
+     mid-word: word-break:break-word here once let a header fragment into one
+     character per line inside a narrow column. Header labels are kept short
+     enough to fit (units split into .th-unit and hidden below); the automated
+     UI audit (tests/ui-audit.js) fails the build if a header ever clips or
+     stacks vertically again. */
+  .kate-table th { white-space: normal; word-break: keep-all; overflow-wrap: normal; }
+  /* Units and per-column help icons don't fit the narrow numeric headers on
+     phones. Both are redundant there: the units/meanings are in the page lead
+     (最終来店(R)・来店回数(F)・累計売上(M)…) and the desktop headers. Hiding the
+     icons also stops a header tap from ambiguously meaning sort-AND-help. */
+  .th-unit { display: none; }
+  #rfmTable th .help-ico { display: none; }
   /* The label/name column can afford to give up some width since it wraps
      freely — hand that room to the value columns instead of splitting evenly. */
   .kate-table th:first-child, .kate-table td:first-child { width: 24%; }
@@ -453,6 +470,14 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
   .vs-table th, .vs-table td { padding: 7px 5px; font-size: 11px; }
   table.kate-table { font-size: 10.3px; }
   .kate-table th, .kate-table td { padding: 6px 3px; }
+  /* 売上サマリー: a 7-digit month (¥1,162,451) physically can't fit a 320px
+     layout at any readable size — swap to the abbreviated form instead. */
+  .period-table .full-num { display: none; }
+  .period-table .compact-num { display: inline; }
+  /* Squeeze the RFM badges just enough that the longest segment name
+     (高ロイヤル顧客) and the 周期超過 chip stay on a single line at 320px. */
+  #rfmTable .seg-tag { font-size: 9.5px; padding: 2px 4px; }
+  #rfmTable .chip { font-size: 9.5px; padding: 2px 2px; }
 }
 
 /* ---- Data view ------------------------------------------------------------*/

@@ -110,8 +110,13 @@
 手計算フィクスチャで回帰検証します。
 
 ```bash
-npm test   # 回帰テスト一式（validate.js + kaikei.test.js + merge.test.js）
+npm test   # 回帰テスト一式（validate.js + kaikei.test.js + merge.test.js + ui-audit.js）
 ```
+
+`tests/ui-audit.js` はヘッドレスChromiumで実際のダッシュボードを320〜1280pxの5段階の幅で
+描画し、全タブを巡回して「短いラベルの縦積み（1文字ずつの折り返し）」「表セルの数字の
+見切れ」「チャートのラベルはみ出し」「コンソールエラー」を検出した時点で失敗します。
+Chromiumが無い環境では自動的にスキップします（`PW_CHROMIUM`環境変数でバイナリを指定可能）。
 
 ## 🗂 構成
 
@@ -136,6 +141,7 @@ tests/
   validate.js              回帰テスト（サンプルデータ vs 元ワークブック公表値）
   kaikei.test.js           会計明細・成熟トリミング・スタッフ平均(mean-of-months)の回帰テスト
   merge.test.js            2データ統合（フリガナ×来店日結合・重複疑い・再キー）の回帰テスト
+  ui-audit.js              UIレイアウト回帰テスト（縦積み文字/セル見切れ/ラベルはみ出し検出）
 ```
 
 ## 🔐 プライバシー

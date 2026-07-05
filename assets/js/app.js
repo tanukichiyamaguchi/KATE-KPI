@@ -289,7 +289,9 @@
     function row(label, pick) {
       return '<tr><td style="text-align:left">' + label + '</td>' + cols.map(function (c) {
         var v = pick(c.b);
-        return '<td>' + (v != null ? yen(v) : '—') + '</td>';
+        // Full figure by default; ~320px-wide phones swap in the abbreviated
+        // form (¥116万) via CSS — a 7-digit month clips there otherwise.
+        return '<td>' + (v != null ? '<span class="full-num">' + yen(v) + '</span><span class="compact-num">' + yenCompact(v) + '</span>' : '—') + '</td>';
       }).join('') + '</tr>';
     }
     return '<div class="table-wrap"><table class="kate-table period-table"' + (dataKpiPrefix ? ' data-kpi="' + dataKpiPrefix + '"' : '') + '><thead><tr><th style="text-align:left"></th>' +
@@ -658,15 +660,24 @@
     var r = state.analytics.rfm;
     var pool = rfmCallbackOnly ? r.customers.filter(function (c) { return c.cycleOverdue; }) : r.customers;
     var rows = pool.slice().sort(function (a, b) { var k = rfmSort.key; return (a[k] - b[k]) * rfmSort.dir; }).slice(0, 120);
+    // 見出しの単位（(日)(回)(¥)）は .th-unit として分離し、モバイルでは非表示。
+    // 狭い数値列に「R (日) ?」を丸ごと入れると1文字ずつ縦に折り返れるため —
+    // 単位と意味は「?」ヘルプとページ先頭のリード文で説明済み。
     var cols = [
-      ['name', 'お名前', null],
-      ['R', 'R (日)', '最終来店からの経過日数（Recency）。小さいほど最近来店している。'],
-      ['F', 'F (回)', '来店回数（Frequency）。'],
-      ['M', 'M (¥)', '累計売上（Monetary）。'],
-      ['seg', 'セグメント', 'R・F・Mそれぞれ5段階のスコアの組み合わせから決まる9分類。'],
-      ['cycleOverdue', '周期超過', '最終来店からの経過日数が、本人の来店周期（2回以上来店がある顧客のみ算出可・無ければ店舗全体の中央値で代用）の1.5倍を超えている状態。']
+      { k: 'name', label: 'お名前' },
+      { k: 'R', label: 'R', unit: '(日)', help: '最終来店からの経過日数（Recency・単位は日）。小さいほど最近来店している。' },
+      { k: 'F', label: 'F', unit: '(回)', help: '来店回数（Frequency・単位は回）。' },
+      { k: 'M', label: 'M', unit: '(¥)', help: '累計売上（Monetary・単位は円）。' },
+      { k: 'seg', label: 'セグメント', help: 'R・F・Mそれぞれ5段階のスコアの組み合わせから決まる9分類。' },
+      // 周期超過: 折り返すとしても「周期／超過」の語の切れ目だけ（<wbr>）。
+      // th は word-break: keep-all なので1文字ずつの縦積みにはならない。
+      { k: 'cycleOverdue', label: '周期超過', html: '周期<wbr>超過', help: '最終来店からの経過日数が、本人の来店周期（2回以上来店がある顧客のみ算出可・無ければ店舗全体の中央値で代用）の1.5倍を超えている状態。' }
     ];
-    var thead = '<thead><tr>' + cols.map(function (c) { return '<th data-k="' + c[0] + '" tabindex="0" role="button" aria-label="' + c[1] + 'で並べ替え"' + (rfmSort.key === c[0] ? ' aria-sort="' + (rfmSort.dir > 0 ? 'ascending' : 'descending') + '" class="sorted' + (rfmSort.dir > 0 ? ' asc' : '') + '"' : '') + '>' + c[1] + (c[2] ? help(c[2]) : '') + '</th>'; }).join('') + '</tr></thead>';
+    var thead = '<thead><tr>' + cols.map(function (c) {
+      return '<th data-k="' + c.k + '" tabindex="0" role="button" aria-label="' + c.label + (c.unit ? ' ' + c.unit : '') + 'で並べ替え"' +
+        (rfmSort.key === c.k ? ' aria-sort="' + (rfmSort.dir > 0 ? 'ascending' : 'descending') + '" class="sorted' + (rfmSort.dir > 0 ? ' asc' : '') + '"' : '') + '>' +
+        (c.html || c.label) + (c.unit ? ' <span class="th-unit">' + c.unit + '</span>' : '') + (c.help ? help(c.help) : '') + '</th>';
+    }).join('') + '</tr></thead>';
     var tbody = '<tbody>' + rows.map(function (c) {
       var col = cvar(SEG_COLOR[c.seg] || '--series-6');
       var overdueCell = c.cycleOverdue
