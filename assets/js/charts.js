@@ -42,11 +42,20 @@
     return fmtInt(n);
   }
   function fmtPct(n, d) { return (n * 100).toFixed(d == null ? 0 : d) + '%'; }
+  // Y-axis max: rounds up to a clean gridline value, with just enough headroom
+  // above the tallest bar/point for its value label to clear the plot's top
+  // edge. The old step table (1/2/2.5/5/10) rounded coarsely — a value like
+  // 1.16M jumped all the way to 2M, leaving ~40% of the chart as dead space
+  // above the tallest bar. A finer table keeps the same "clean number" property
+  // with far less waste.
+  var NICE_STEPS = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
   function niceMax(v) {
     if (!(v > 0)) return 1;   // also guards NaN
-    var mag = Math.pow(10, Math.floor(Math.log10(v)));
-    var norm = v / mag;
-    var step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
+    var target = v * 1.14;
+    var mag = Math.pow(10, Math.floor(Math.log10(target)));
+    var norm = target / mag;
+    var step = 10;
+    for (var i = 0; i < NICE_STEPS.length; i++) { if (norm <= NICE_STEPS[i]) { step = NICE_STEPS[i]; break; } }
     return step * mag;
   }
   function ease(t) { return 1 - Math.pow(1 - t, 3); } // easeOutCubic
@@ -175,7 +184,10 @@
       var ring = svgEl('circle', { cx: last[0], cy: last[1], r: 4.5, fill: color, stroke: ink.surface(), 'stroke-width': 2 });
       svg.appendChild(ring);
       if (s.endLabel !== false && !s.dashed) {
-        var lbl = svgEl('text', { x: last[0], y: last[1] - 10, 'text-anchor': 'end', fill: ink.secondary(), 'font-size': 11, 'font-weight': 600, opacity: 0 });
+        // y is the text BASELINE: clamp so the glyphs never poke above the SVG
+        // when the series ends at/near the axis maximum (e.g. a 100% month on
+        // a yMax:100 chart put the label's top edge at a negative y).
+        var lbl = svgEl('text', { x: last[0], y: Math.max(last[1] - 10, 12), 'text-anchor': 'end', fill: ink.secondary(), 'font-size': 11, 'font-weight': 600, opacity: 0 });
         lbl.textContent = s.name; svg.appendChild(lbl); animateAttr(lbl, 'opacity', 0, 1, 400, 900);
       }
     });

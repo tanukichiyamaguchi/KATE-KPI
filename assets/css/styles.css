@@ -394,6 +394,14 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
 .kate-table tbody tr:hover td { background: var(--surface-2); }
 .seg-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 980px; font-size: 11.5px; font-weight: 500; background: var(--surface-2); }
 .seg-tag i { width: 7px; height: 7px; border-radius: 2px; }
+/* #rfmTable's M column: full comma-grouped figure by default (desktop has the
+   room); swapped for an abbreviated one on narrow phones, see the media query
+   below. */
+.compact-num { display: none; }
+/* Column-header units — "(日)" in "R (日)". Visually secondary on desktop and
+   dropped entirely on phones (media query below), where they don't fit the
+   narrow numeric columns. */
+.th-unit { color: var(--ink-muted); font-weight: 500; }
 /* Mobile: the fixed min-width above forces horizontal scroll on phone widths
    even though the actual content (short ¥/%/count values) doesn't need it —
    drop the floor and tighten padding/font so tables fit the viewport instead.
@@ -405,7 +413,20 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
   .vs-table th:first-child, .vs-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }
   table.kate-table { font-size: 11px; table-layout: fixed; }
   .kate-table th, .kate-table td { padding: 7px 5px; overflow: hidden; }
-  .kate-table th, .kate-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }
+  .kate-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }
+  /* Headers may wrap, but only at natural boundaries (spaces / <wbr>), never
+     mid-word: word-break:break-word here once let a header fragment into one
+     character per line inside a narrow column. Header labels are kept short
+     enough to fit (units split into .th-unit and hidden below); the automated
+     UI audit (tests/ui-audit.js) fails the build if a header ever clips or
+     stacks vertically again. */
+  .kate-table th { white-space: normal; word-break: keep-all; overflow-wrap: normal; }
+  /* Units and per-column help icons don't fit the narrow numeric headers on
+     phones. Both are redundant there: the units/meanings are in the page lead
+     (最終来店(R)・来店回数(F)・累計売上(M)…) and the desktop headers. Hiding the
+     icons also stops a header tap from ambiguously meaning sort-AND-help. */
+  .th-unit { display: none; }
+  #rfmTable th .help-ico { display: none; }
   /* The label/name column can afford to give up some width since it wraps
      freely — hand that room to the value columns instead of splitting evenly. */
   .kate-table th:first-child, .kate-table td:first-child { width: 24%; }
@@ -414,18 +435,29 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
      fit a fixed table column — override so they wrap with the cell instead of
      silently clipping (or pushing the table wider). */
   .kate-table .chip, .kate-table .seg-tag, .kate-table .note-inline { min-width: 0; max-width: 100%; white-space: normal; word-break: break-word; }
-  /* #rfmTable's セグメント column (segment badge, e.g. 「高ロイヤル顧客」) is the
-     widest piece of content in the row — an even 1/5 split of the remaining
-     width (the default under table-layout:fixed) is too narrow, wrapping the
-     badge one character per line. Take width back from the short numeric R/F/M
-     columns and give it to the segment column instead, and trim the badge's
-     own font/padding a touch, so most segment names fit on a single line. */
-  #rfmTable th:nth-child(2), #rfmTable td:nth-child(2),
+  /* #rfmTable has 6 columns competing for ~260-330px on a phone. Budgeted by
+     actual content width (verified with Playwright at 320/375/390px, not
+     guessed): お名前 wraps freely so it can run leaner; R/F are 1-3 digit
+     numbers; M switches to abbreviated notation below (see .compact-num) so it
+     no longer needs room for a full 6-digit comma-grouped figure; セグメント
+     (up to 7 characters, 「高ロイヤル顧客」) and 周期超過 (the 4-character
+     overdue chip, previously untuned and wrapping one character per line) get
+     the rest. */
+  #rfmTable th:first-child, #rfmTable td:first-child { width: 16%; }
+  #rfmTable th:nth-child(2), #rfmTable td:nth-child(2) { width: 11%; }
   #rfmTable th:nth-child(3), #rfmTable td:nth-child(3) { width: 8%; }
   #rfmTable th:nth-child(4), #rfmTable td:nth-child(4) { width: 13%; }
   #rfmTable th:nth-child(5), #rfmTable td:nth-child(5) { width: 33%; }
-  #rfmTable th:nth-child(6), #rfmTable td:nth-child(6) { width: 14%; }
+  #rfmTable th:nth-child(6), #rfmTable td:nth-child(6) { width: 19%; }
   #rfmTable .seg-tag { font-size: 10.5px; padding: 2px 6px; gap: 3px; }
+  #rfmTable .chip { font-size: 10px; padding: 2px 3px; gap: 2px; }
+  /* M (¥): a full 6-digit comma-grouped figure ("123,456") doesn't fit the
+     narrowed M column below ~400px — swap to abbreviated notation ("12万"),
+     already the convention this dashboard uses for chart axes. Both spans
+     render (cheaper and more robust than re-rendering the table on resize);
+     only one is ever visible. */
+  #rfmTable .full-num { display: none; }
+  #rfmTable .compact-num { display: inline; }
   /* 売上サマリー (periodTable): its row labels (平均月間売上, 6 chars) need more
      than the generic 24% first column to stay on one line, and its 3 value
      columns are short enough to spare the width. */
@@ -438,6 +470,14 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
   .vs-table th, .vs-table td { padding: 7px 5px; font-size: 11px; }
   table.kate-table { font-size: 10.3px; }
   .kate-table th, .kate-table td { padding: 6px 3px; }
+  /* 売上サマリー: a 7-digit month (¥1,162,451) physically can't fit a 320px
+     layout at any readable size — swap to the abbreviated form instead. */
+  .period-table .full-num { display: none; }
+  .period-table .compact-num { display: inline; }
+  /* Squeeze the RFM badges just enough that the longest segment name
+     (高ロイヤル顧客) and the 周期超過 chip stay on a single line at 320px. */
+  #rfmTable .seg-tag { font-size: 9.5px; padding: 2px 4px; }
+  #rfmTable .chip { font-size: 9.5px; padding: 2px 2px; }
 }
 
 /* ---- Data view ------------------------------------------------------------*/
