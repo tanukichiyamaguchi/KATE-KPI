@@ -529,5 +529,38 @@ h('■ Fixture M: キャンセル後の再予約の有無で次回予約取得�
   check('5月 nextRes2（Dはキャンセル後に別日来店あり→1）', may.nextRes2, 1);
 }
 
+// ============================================================================
+// Fixture N — 固定化率は「2回到達した顧客のうち3回目も予約した」条件付き継続率
+// ============================================================================
+// P, S2: Fres=3（2回到達かつ3回到達）。Q: Fres=2（2回到達のみ）。R: Fres=1（未到達）。
+// 全顧客4人のうち2回到達=P,Q,S2の3人、3回到達=P,S2の2人。
+// 固定化率 = 3回到達2人 ÷ 2回到達3人 = 66.7%（誤って全顧客4人で割ると50%になり、
+// 区別できる値を意図的に選んでいる）。スタッフ側も同じ考え方（acqRecent内の
+// 2回到達者を分母にする）で 2/3 = 0.667 になることを確認。
+h('■ Fixture N: 固定化率は2回到達者に対する3回目到達の条件付き継続率');
+{
+  const rows = [
+    rec({ staff: 'S', custKey: 'P', date: '2026-05-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'S', custKey: 'P', date: '2026-05-10', kaikeiTotal: 5000 }),
+    rec({ staff: 'S', custKey: 'P', date: '2026-06-01', kaikeiTotal: 5000 }),   // P: Fres=3
+    rec({ staff: 'S', custKey: 'Q', date: '2026-06-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'S', custKey: 'Q', date: '2026-06-15', kaikeiTotal: 5000 }),   // Q: Fres=2
+    rec({ staff: 'S', custKey: 'R', date: '2026-07-01', kaikeiTotal: 5000 }),   // R: Fres=1
+    rec({ staff: 'S', custKey: 'S2', date: '2026-05-05', kaikeiTotal: 5000 }),
+    rec({ staff: 'S', custKey: 'S2', date: '2026-05-20', kaikeiTotal: 5000 }),
+    rec({ staff: 'S', custKey: 'S2', date: '2026-06-10', kaikeiTotal: 5000 })   // S2: Fres=3
+  ];
+  const R = engine.compute(rows, { asOf: '2026-08-01' });
+  check('store.customers（4人）', R.store.customers, 4);
+  check('store.funnel[1].people（2回到達=P,Q,S2の3人）', R.store.funnel[1].people, 3);
+  check('store.funnel[2].people（3回到達=P,S2の2人）', R.store.funnel[2].people, 2);
+  check('store.fixationRate（2/3=66.7%、4人分の2/4=50%ではない）', R.store.fixationRate, 66.7, 0.05);
+
+  const s = R.staff.find(x => x.name === 'S');
+  check('staff.reach2（3/4=0.75、全acqRecent基準のまま）', s.reach2, 0.75, 1e-6);
+  check('staff.reach3（2/4=0.5、全acqRecent基準のまま）', s.reach3, 0.5, 1e-6);
+  check('staff.fixationRate（2/3=0.667、2回到達者基準）', s.fixationRate, 2 / 3, 1e-6);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);

@@ -144,7 +144,7 @@
 
     // 売上サマリー（実績のみ・期間バケット）
     html += card({
-      col: 'col-12', title: '売上サマリー（実績）' + help('会計済みの売上のみを対象にした、直近3ヶ月（今月を含まない確定3ヶ月）・先月・今月（集計中）の平均。平均月間売上の分母は「来店のあった月数」、平均日間売上の分母は「営業日（会計が1件以上あった日数）」。'), sub: '会計済みの売上のみ（見込みは含めない）。日間売上は営業日（来店のあった日）あたり',
+      col: 'col-12', title: '売上サマリー（実績）' + help('会計済みの売上のみを対象にした、直近3ヶ月（今月を含まない確定3ヶ月）・先月・今月（集計中）の平均。平均月間売上の分母は「来店のあった月数」、平均日間売上の分母は「営業日（会計が1件以上あった日数）」。'),
       body: periodTable(s.revPeriods, 'rev-periods')
     });
 
@@ -202,7 +202,7 @@
 
     draw('mRepeat', function (el) { C.meter(el, { label: 'リピート率（2回到達）', help: '来店顧客のうち、2回目の予約（来店・今後の予約含む）に到達した人の割合。キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。', value: s.repeatRate / 100, display: pct(s.repeatRate), target: 0.7, sub: '目安 70%' }); });
     draw('mNext', function (el) { C.meter(el, { label: '次回予約取得率', help: '来店（会計済み）のうち、その後に何らかの予約・来店（キャンセルは除く）があった割合。1回目〜複数回目まで、来店ごとに1件として集計。', value: s.nextReserveRate / 100, display: pct(s.nextReserveRate), target: 0.6, sub: '目安 60%（来店時に次の予約を取った割合）' }); });
-    draw('mFix', function (el) { C.meter(el, { label: '固定化率（3回以上）', help: '来店顧客のうち、3回目以上の予約に到達した人の割合。判定は上のリピート率と同じ予約ベース（キャンセルのみでは到達扱いにしない）。', value: s.fixationRate / 100, display: pct(s.fixationRate), target: 0.3, sub: '目安 30%' }); });
+    draw('mFix', function (el) { C.meter(el, { label: '固定化率（3回到達）', help: '2回目の予約に到達した顧客のうち、3回目の予約も取った割合。判定は上のリピート率と同じ予約ベース（キャンセルのみでは到達扱いにしない）。リピート率とは分母が異なり、「2回来店した人が3回目も続けたか」を見る指標。', value: s.fixationRate / 100, display: pct(s.fixationRate), target: 0.3, sub: '目安 30%' }); });
 
     draw('cRevenue', function (el) {
       C.columns(el, {
@@ -262,24 +262,18 @@
   function miniStat(v, label, dataKpi) { return '<div class="mini-stat"' + (dataKpi ? ' data-kpi="' + dataKpi + '"' : '') + '><b>' + v + '</b><span>' + label + '</span></div>'; }
 
   // 期間バケット売上テーブル（直近3ヶ月/先月/今月 × 平均月間売上/平均日間売上）。
-  // engine の revPeriods（実績のみ・営業日割り）をそのまま表示する。
-  function periodCols(rp, compact) {
-    function span(ms) { return ms.length > 1 ? monthShort(ms[0]) + '〜' + monthShort(ms[ms.length - 1]) : (ms.length ? monthShort(ms[0]) : '—'); }
-    if (compact) {
-      return [
-        { b: rp.last3, label: '直近3ヶ月' },
-        { b: rp.prevMonth, label: '先月' },
-        { b: rp.currentMonth, label: '今月' }
-      ];
-    }
+  // engine の revPeriods（実績のみ・営業日割り）をそのまま表示する。月の範囲や
+  // 「集計中」「営業日」といった補足は、カード見出しのヘルプで説明済みなので
+  // 表内には繰り返さない。
+  function periodCols(rp) {
     return [
-      { b: rp.last3, label: '直近3ヶ月（' + span(rp.last3.months) + '）' },
-      { b: rp.prevMonth, label: '先月（' + span(rp.prevMonth.months) + '）' },
-      { b: rp.currentMonth, label: '今月（' + span(rp.currentMonth.months) + '・集計中）' }
+      { b: rp.last3, label: '直近3ヶ月' },
+      { b: rp.prevMonth, label: '先月' },
+      { b: rp.currentMonth, label: '今月' }
     ];
   }
-  function periodTable(rp, dataKpiPrefix, compact) {
-    var cols = periodCols(rp, compact);
+  function periodTable(rp, dataKpiPrefix) {
+    var cols = periodCols(rp);
     function row(label, pick) {
       return '<tr><td style="text-align:left">' + label + '</td>' + cols.map(function (c) {
         var v = pick(c.b);
@@ -289,7 +283,7 @@
     return '<div class="table-wrap"><table class="kate-table"' + (dataKpiPrefix ? ' data-kpi="' + dataKpiPrefix + '"' : '') + '><thead><tr><th style="text-align:left"></th>' +
       cols.map(function (c) { return '<th>' + c.label + '</th>'; }).join('') + '</tr></thead><tbody>' +
       row('平均月間売上', function (b) { return b.monthly; }) +
-      row('平均日間売上（営業日）', function (b) { return b.daily; }) +
+      row('平均日間売上', function (b) { return b.daily; }) +
       '</tbody></table></div>';
   }
 
@@ -313,7 +307,7 @@
       { label: '平均客単価', help: '直近3ヶ月の、月ごとの客単価（予約ベース売上÷予約数）を単純平均したもの。', fmt: function (st) { return yen(st.avgRecent.spend); } },
       { label: 'リピート率（2回到達）', help: 'このスタッフが直近3ヶ月に初回担当した顧客のうち、2回目の予約（来店・今後の予約含む）に到達した人の割合。キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。', fmt: function (st) { return pctOrDash(st.reach2); } },
       { label: '次回予約取得率', help: 'このスタッフが直近3ヶ月に担当した来店のうち、その後に何らかの予約・来店があった割合の月次単純平均。', fmt: function (st) { return pctOrDash(st.avgRecent.nextRes); } },
-      { label: '固定化率（3回目到達）', help: 'このスタッフが直近3ヶ月に初回担当した顧客のうち、3回目の予約に到達した人の割合。判定は上のリピート率と同じ予約ベース。', fmt: function (st) { return pctOrDash(st.reach3); } },
+      { label: '固定化率（3回到達）', help: '2回目の予約に到達した顧客のうち、3回目の予約も取った割合（予約ベース）。リピート率とは分母が異なり、「2回来店した人が3回目も続けたか」を見る指標。', fmt: function (st) { return pctOrDash(st.fixationRate); } },
       { label: '店販顧客比率', help: 'このスタッフが直近3ヶ月に担当した来店顧客のうち、店販を購入した人の割合。', fmt: function (st) { return pctOrDash(st.avgRecent.retailCustomerRatio, 1); } }
     ];
     var vs = '<div class="table-wrap"><table class="vs-table"><thead><tr><th></th>' +
@@ -342,9 +336,10 @@
           sm(pct(st.retail.customerRatio * 100, 1), '店販顧客比率' + help('このスタッフが担当した来店顧客のうち、店販を購入した人の割合。'), 'staff-' + esc(st.name) + '-retail') +
           sm(st.retail.avgMonthlyAmount != null ? yen(st.retail.avgMonthlyAmount) : '—', '平均店販売上 / 月' + help('月ごとの店販売上合計を、実績のある月数で割った平均。'), 'staff-' + esc(st.name) + '-retail-avg') +
           '</div>' +
-          '<div style="margin-top:14px" data-kpi="staff-' + esc(st.name) + '-rev-periods">' + periodTable(st.revPeriods, null, true) + '</div>' +
-          '<div id="stMeter' + i + '" style="margin-top:16px"></div>' +
-          '<div id="stMeter2_' + i + '"></div>' +
+          '<div style="margin-top:14px" data-kpi="staff-' + esc(st.name) + '-rev-periods">' + periodTable(st.revPeriods) + '</div>' +
+          '<div id="stMeterRepeat' + i + '" style="margin-top:16px"></div>' +
+          '<div id="stMeterNext' + i + '"></div>' +
+          '<div id="stMeterFix' + i + '"></div>' +
           personalBestBlock(st) +
           sgPanel(st, asOfMonth) +
           '<div class="next-hint" data-kpi="staff-' + esc(st.name) + '-next-hint">' + esc(nextHintText(st)) + '</div>'
@@ -356,7 +351,6 @@
     html += card({ col: 'col-6', title: '客単価の推移' + help('月ごとの客単価（予約ベース売上÷予約数）の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffSpend', 230) });
     var censNote = A.meta.completedOnly ? '　※直近の月は再来待ちのため集計対象外' : '';
     html += card({ col: 'col-6', title: '次回予約取得率の推移' + help('来店（会計済み）のうち、その後に何らかの予約・来店があった割合の月次推移。'), sub: '来店時に次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext', 230) });
-    html += card({ col: 'col-6', title: '2回目 次回予約取得率の推移' + help('その顧客にとって2回目の来店のうち、その後に何らかの予約・来店があった割合の月次推移。1回目より厳しい「2回目の壁」を表す指標。'), sub: '2回目来店時に、次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext2', 230) });
     html += card({ col: 'col-6', title: 'リピート育成力' + help('このスタッフが直近3ヶ月に初回担当した顧客のうち、2回目・3回目・4回目の予約に到達した人の割合（予約ベース。キャンセル後の再予約は到達扱い）。'), sub: '直近3ヶ月に初回担当した顧客の 2〜4回目への到達率', body: chartBox('cStaffRepeat', 230) });
     if (A.store.retail.hasAmount) {
       html += card({ col: 'col-6', title: '店販売上の推移' + help('月ごとの店販売上金額の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffRetail', 230) });
@@ -368,11 +362,14 @@
     mount('staff', head + '<div class="grid">' + html + '</div>');
 
     staff.forEach(function (st, i) {
-      draw('stMeter' + i, function (el) {
+      draw('stMeterRepeat' + i, function (el) {
+        C.meter(el, { label: 'リピート率（2回到達）', help: 'このスタッフが直近3ヶ月に初回担当した顧客のうち、2回目の予約（来店・今後の予約含む）に到達した人の割合。キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。', value: st.reach2 || 0, display: st.reach2 == null ? '—' : pct(st.reach2 * 100), color: cvar(STAFF_COLOR[st.name]), target: 0.7, sub: '目安 70%' });
+      });
+      draw('stMeterNext' + i, function (el) {
         C.meter(el, { label: '次回予約取得率', help: '来店（会計済み）のうち、その後に何らかの予約・来店（キャンセルは除く）があった割合の月次単純平均。', value: st.avg.nextRes || 0, display: st.avg.nextRes == null ? '—' : pct(st.avg.nextRes * 100), color: cvar(STAFF_COLOR[st.name]), target: 0.6, sub: '目安 60%' });
       });
-      draw('stMeter2_' + i, function (el) {
-        C.meter(el, { label: '2回目 次回予約取得率', help: 'その顧客にとって「ちょうど2回目」の来店だけを対象に、その後に何らかの予約・来店があった割合。全来店を対象にした「次回予約取得率」より、常連の来店に薄められない分シビアな数値になりやすい。', value: st.avg.nextRes2 || 0, display: st.avg.nextRes2 == null ? '—' : pct(st.avg.nextRes2 * 100), color: cvar(STAFF_COLOR[st.name]), target: 0.6, sub: '目安 60%（2回目来店の再予約）' });
+      draw('stMeterFix' + i, function (el) {
+        C.meter(el, { label: '固定化率（3回到達）', help: '2回目の予約に到達した顧客のうち、3回目の予約も取った割合（予約ベース）。', value: st.fixationRate || 0, display: st.fixationRate == null ? '—' : pct(st.fixationRate * 100), color: cvar(STAFF_COLOR[st.name]), target: 0.3, sub: '目安 30%' });
       });
     });
     // 月次予約数の比較: 月ごとのクラスターにスタッフ別の積み上げ棒をまとめて表示
@@ -417,13 +414,6 @@
       C.lineArea(el, {
         xLabels: months, area: false, yMax: 100,
         series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.monthly.map(function (m) { return m.nextRes == null ? null : m.nextRes * 100; }) }; }),
-        valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230
-      });
-    });
-    draw('cStaffNext2', function (el) {
-      C.lineArea(el, {
-        xLabels: months, area: false, yMax: 100,
-        series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.monthly.map(function (m) { return m.nextRes2 == null ? null : m.nextRes2 * 100; }) }; }),
         valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230
       });
     });
@@ -516,8 +506,7 @@
     var candidates = [];
     if (st.acqRecentN >= 20 && st.reach2 != null) candidates.push({ label: 'リピート（2回目のご来店）', value: st.reach2 * 100, target: 70 });
     if (st.avg.nextResN >= 20 && st.avg.nextRes != null) candidates.push({ label: '次回予約の獲得', value: st.avg.nextRes * 100, target: 60 });
-    if (st.avg.nextRes2N >= 20 && st.avg.nextRes2 != null) candidates.push({ label: '2回目のお客様の再予約', value: st.avg.nextRes2 * 100, target: 60 });
-    if (st.acqRecentN >= 20 && st.reach3 != null) candidates.push({ label: '常連化（3回以上のご来店）', value: st.reach3 * 100, target: 30 });
+    if (st.acqRecentN >= 20 && st.fixationRate != null) candidates.push({ label: '常連化（3回目のご来店）', value: st.fixationRate * 100, target: 30 });
     if (!candidates.length) return 'データが揃うと、具体的な提案が表示されます。';
     candidates.forEach(function (c) { c.gap = c.target - c.value; });
     var positive = candidates.filter(function (c) { return c.gap > 0; }).sort(function (a, b) { return b.gap - a.gap; });
@@ -792,7 +781,8 @@
         '<li><b>予約ベース売上</b> ＝ 会計済みの<code>会計時合計金額</code>（実績）＋ 基準日より後の受付待ちの<code>予約時合計金額</code>（見込み）。</li>' +
         '<li><b>有効予約</b> ＝ 会計済み ＋ これからの受付待ち予約。基準日以前の未処理（滞留）は除外。</li>' +
         '<li><b>顧客の識別</b>：<code>フリガナ</code>で名寄せ。リピート／RFMの母数は来店実績のある顧客。</li>' +
-        '<li><b>リピート率・固定化率・ファネル</b>：来店顧客のうち2回目・3回目以降の予約（会計済み＋今後の予約）を確保した割合。予約ベースの判定のため、キャンセルのみで次の予約が入っていない場合は「未到達」、キャンセル後に別の予約を取っていれば「到達」として数える（経過日数による母数除外は行わない）。<b>RFMのF</b>は実来店回数。</li>' +
+        '<li><b>リピート率・ファネル</b>：来店顧客のうち2回目以降の予約（会計済み＋今後の予約）を確保した割合。予約ベースの判定のため、キャンセルのみで次の予約が入っていない場合は「未到達」、キャンセル後に別の予約を取っていれば「到達」として数える（経過日数による母数除外は行わない）。<b>RFMのF</b>は実来店回数。</li>' +
+        '<li><b>固定化率</b>：リピート率とは分母が異なり、2回目の予約に到達した顧客のうち、3回目の予約も取った割合（条件付き継続率）。</li>' +
         '<li><b>スタッフ比較</b>：表内の数値はすべて直近3ヶ月（今月を含まない確定3ヶ月）平均。リピート率・固定化率は、そのスタッフが直近3ヶ月に初回担当した顧客のコホートが対象。</li>' +
         '<li><b>店販顧客比率</b> ＝ 店販（物販）を購入した<b>人数</b> ÷ 来店した<b>人数</b>。<b>店販単価</b>は「店販金額 ÷ 店販のあった会計数」（1人が複数回購入する場合があるため会計単位）。</li>' +
         '<li><b>LTV（予測）</b>：実績客単価 × 期待来店回数（5回到達までの期待値）。</li>' +
