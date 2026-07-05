@@ -28,6 +28,11 @@
   // entity-locked colors
   function cvar(n) { return C.cssVar(n); }
   var STAFF_COLOR = { 'momo': '--series-1', 'aoi': '--series-2' };
+  // Per-staff monotonic ordinal ramp (new -> 2nd -> 3rd -> 4th+), same identity
+  // hue as STAFF_COLOR — lets an ordinal-tier stacked bar stay staff-colored
+  // instead of collapsing every staff into one shared blue ramp.
+  var STAFF_RAMP = { 'momo': ['--funnel-2', '--funnel-3', '--funnel-4', '--funnel-5'], 'aoi': ['--funnel-o2', '--funnel-o3', '--funnel-o4', '--funnel-o5'] };
+  function staffTierColor(name, tier) { return cvar((STAFF_RAMP[name] || STAFF_RAMP.momo)[tier]); }
   var SEG_COLOR = {
     '最優良顧客': '--series-1', '高ロイヤル顧客': '--series-4', '優良顧客': '--series-5', '安全顧客': '--series-2',
     '要注意顧客': '--series-3', '新規顧客': '--series-6', '離反間近顧客': '--series-8', '休眠顧客': '--series-7', '離脱顧客': '--series-4'
@@ -318,7 +323,7 @@
       });
     });
 
-    html += card({ col: 'col-12', title: '月次 予約数の比較', sub: '月ごとにスタッフを並べた積み上げ棒。新規／2回目／3回目／4回目以上を色の濃さで表現（会計済み＝濃色、受付待ちの見込み＝同色を薄く表示）', tag: '件', body: chartBox('cStaffRes', 250) });
+    html += card({ col: 'col-12', title: '月次 予約数の比較', sub: '月ごとにスタッフの棒を並べた積み上げ棒（色相＝スタッフ、濃淡＝新規／2回目／3回目／4回目以上、薄色＝受付待ちの見込み）。上の数字は月ごとの合計件数', tag: '件', body: chartBox('cStaffRes', 250) });
     html += card({ col: 'col-6', title: '月次 予約ベース売上の比較', tag: '¥', body: chartBox('cStaffRev', 240) });
     html += card({ col: 'col-6', title: '客単価の推移', tag: '¥', body: chartBox('cStaffSpend', 230) });
     var censNote = A.meta.completedOnly ? '　※直近の月は再来待ちのため集計対象外' : '';
@@ -362,17 +367,18 @@
       });
     });
     draw('cStaffRes', function (el) {
+      function tierColor(tier) { return function (bi) { return staffTierColor(resSubLabels[bi], tier); }; }
       C.columnClusters(el, {
         groups: resGroups, clusterSize: staff.length, subLabels: resSubLabels, subColors: resSubColors,
         series: [
-          { name: '新規', color: cvar('--funnel-2'), values: resData.new },
-          { name: '2回目', color: cvar('--funnel-3'), values: resData.v2 },
-          { name: '3回目', color: cvar('--funnel-4'), values: resData.v3 },
-          { name: '4回目以上', color: cvar('--funnel-5'), values: resData.v4 },
-          { name: '新規（見込み）', color: cvar('--funnel-2'), opacity: 0.45, values: resData.expNew },
-          { name: '2回目（見込み）', color: cvar('--funnel-3'), opacity: 0.45, values: resData.expV2 },
-          { name: '3回目（見込み）', color: cvar('--funnel-4'), opacity: 0.45, values: resData.expV3 },
-          { name: '4回目以上（見込み）', color: cvar('--funnel-5'), opacity: 0.45, values: resData.expV4 }
+          { name: '新規', color: tierColor(0), values: resData.new },
+          { name: '2回目', color: tierColor(1), values: resData.v2 },
+          { name: '3回目', color: tierColor(2), values: resData.v3 },
+          { name: '4回目以上', color: tierColor(3), values: resData.v4 },
+          { name: '新規（見込み）', color: tierColor(0), opacity: 0.45, values: resData.expNew },
+          { name: '2回目（見込み）', color: tierColor(1), opacity: 0.45, values: resData.expV2 },
+          { name: '3回目（見込み）', color: tierColor(2), opacity: 0.45, values: resData.expV3 },
+          { name: '4回目以上（見込み）', color: tierColor(3), opacity: 0.45, values: resData.expV4 }
         ],
         valueFmt: function (v) { return v + '件'; }, height: 250
       });

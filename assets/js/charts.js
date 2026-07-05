@@ -207,7 +207,7 @@
   // opts: { groups:[label], series:[{name,color?,values:[]}], stacked?, height, valueFmt, yFmt }
   function columns(container, opts) {
     var w = width(container), h = opts.height || 260;
-    var padL = opts.padL || 44, padR = 14, padT = 18, padB = 34;
+    var padL = opts.padL || 44, padR = 14, padT = opts.stacked ? 26 : 18, padB = 34;
     var svg = mount(container, w, h);
     var groups = opts.groups, series = opts.series, ng = groups.length;
     var plotW = w - padL - padR, plotH = h - padT - padB;
@@ -241,6 +241,12 @@
           animateAttr(rect, 'y', y0, y1, 700, gi * 40 + si * 30);
           bindBarTip(rect, svg, w, glabel, s, si, v, opts);
         });
+        if (acc > 0) {
+          var totalLab = svgEl('text', { x: cx, y: yat(acc) - 7, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': 10.5, 'font-weight': 700 });
+          totalLab.setAttribute('font-variant-numeric', 'tabular-nums');
+          totalLab.textContent = (opts.totalFmt || opts.valueFmt || fmtCompact)(acc);
+          svg.appendChild(totalLab);
+        }
       } else {
         var innerW = band * 0.7, bw = Math.min(24, innerW / series.length - GAP);
         series.forEach(function (s, si) {
@@ -254,6 +260,7 @@
         });
       }
     });
+    if (opts.stacked) enableDragReveal(svg);
     if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si) }; }));
   }
   // ==================== CLUSTERED STACKED COLUMNS ==========================
@@ -269,7 +276,7 @@
   //         yMax?, valueFmt?, yFmt?, height? }
   function columnClusters(container, opts) {
     var w = width(container), h = opts.height || 260;
-    var padL = opts.padL || 44, padR = 14, padT = 18, padB = 44;
+    var padL = opts.padL || 44, padR = 14, padT = 26, padB = 44;
     var svg = mount(container, w, h);
     var groups = opts.groups, series = opts.series, clusterSize = opts.clusterSize || 1;
     var nClusters = groups.length, nBars = nClusters * clusterSize;
@@ -293,6 +300,10 @@
     // tooltip. Prevents adjacent labels merging into unreadable text on narrow
     // (mobile) screens.
     var showSubLabels = !!opts.subLabels && (clusterBand / clusterSize) >= 24;
+    // Per-bar totals need a bit less room than the sub-labels (short numbers,
+    // not names), but still skip them below a hard floor to avoid overlap.
+    var showTotals = (clusterBand / clusterSize) >= 18;
+    function colorFor(s, si, bi) { return (typeof s.color === 'function' ? s.color(bi) : s.color) || seriesColor(si); }
     groups.forEach(function (glabel, ci) {
       var clusterCx = padL + clusterBand * ci + clusterBand / 2;
       var groupInnerW = barW * clusterSize + innerGap * (clusterSize - 1);
@@ -314,26 +325,61 @@
           var y0 = yat(acc), y1 = yat(acc + v); acc += v;
           var rectH = Math.max(0, y0 - y1);
           var isTop = (function () { for (var kk = si + 1; kk < series.length; kk++) if ((series[kk].values[bi] || 0) > 0) return false; return true; })();
-          var rect = svgEl('rect', { x: bx, y: y1, width: barW, height: 0, fill: s.color || seriesColor(si), rx: isTop ? 3 : 0 });
+          var color = colorFor(s, si, bi);
+          var rect = svgEl('rect', { x: bx, y: y1, width: barW, height: 0, fill: color, rx: isTop ? 3 : 0 });
           if (s.opacity != null) rect.setAttribute('fill-opacity', s.opacity);
           rect.style.cursor = 'default'; svg.appendChild(rect);
           animateAttr(rect, 'height', 0, rectH, 700, ci * 40 + si * 20);
           animateAttr(rect, 'y', y0, y1, 700, ci * 40 + si * 20);
-          bindBarTip(rect, svg, w, glabel + (opts.subLabels ? ' ・ ' + opts.subLabels[bi] : ''), s, si, v, opts);
+          bindBarTip(rect, svg, w, glabel + (opts.subLabels ? ' ・ ' + opts.subLabels[bi] : ''), s, si, v, opts, color);
         });
+        if (showTotals && acc > 0) {
+          var totalLab = svgEl('text', { x: bx + barW / 2, y: yat(acc) - 6, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': 9.5, 'font-weight': 700 });
+          totalLab.setAttribute('font-variant-numeric', 'tabular-nums');
+          totalLab.textContent = (opts.totalFmt || opts.valueFmt || fmtCompact)(acc);
+          svg.appendChild(totalLab);
+        }
       }
     });
-    if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si) }; }));
+    enableDragReveal(svg);
+    if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: (typeof s.color === 'function' ? s.color(0) : s.color) || seriesColor(si) }; }));
   }
 
-  function bindBarTip(rect, svg, w, glabel, s, si, v, opts) {
-    rect.addEventListener('mouseenter', function (ev) {
+  function bindBarTip(rect, svg, w, glabel, s, si, v, opts, color) {
+    color = color || s.color || seriesColor(si);
+    function show(clientX) {
       rect.style.filter = 'brightness(1.06)';
       var box = svg.getBoundingClientRect();
-      showTip('<div class="kate-tip-title">' + esc(glabel) + '</div><div class="kate-tip-row"><i style="background:' + (s.color || seriesColor(si)) + '"></i><span>' + esc(s.name) + '</span><b>' + (opts.valueFmt || fmtCompact)(v) + '</b></div>', ev.clientX, box.top + rect.getBBox().y);
-    });
+      showTip('<div class="kate-tip-title">' + esc(glabel) + '</div><div class="kate-tip-row"><i style="background:' + color + '"></i><span>' + esc(s.name) + '</span><b>' + (opts.valueFmt || fmtCompact)(v) + '</b></div>', clientX, box.top + rect.getBBox().y);
+    }
+    rect.__showTip = show;
+    rect.addEventListener('mouseenter', function (ev) { show(ev.clientX); });
     rect.addEventListener('mousemove', function (ev) { var box = svg.getBoundingClientRect(); showTip(tooltip().innerHTML, ev.clientX, box.top + rect.getBBox().y); });
     rect.addEventListener('mouseleave', function () { rect.style.filter = ''; hideTip(); });
+  }
+  // Touch devices don't fire mouseenter/mouseleave while a single continuous
+  // touch drags across neighboring elements (the touch target stays pinned to
+  // wherever the gesture started), so sliding a finger across a stacked bar's
+  // segments would otherwise only ever reveal the first one. Bind at the SVG
+  // level instead and resolve the element under the finger on every move.
+  function enableDragReveal(svg) {
+    var lastRect = null;
+    function resolve(x, y) {
+      var el = document.elementFromPoint(x, y);
+      return (el && el.tagName === 'rect' && el.__showTip) ? el : null;
+    }
+    function handle(x, y) {
+      var rect = resolve(x, y);
+      if (rect === lastRect) { if (rect) rect.__showTip(x); return; }
+      if (lastRect) lastRect.style.filter = '';
+      lastRect = rect;
+      if (rect) rect.__showTip(x); else hideTip();
+    }
+    function end() { if (lastRect) { lastRect.style.filter = ''; lastRect = null; } hideTip(); }
+    svg.addEventListener('touchstart', function (ev) { var t = ev.touches[0]; if (t) handle(t.clientX, t.clientY); }, { passive: true });
+    svg.addEventListener('touchmove', function (ev) { var t = ev.touches[0]; if (t) handle(t.clientX, t.clientY); }, { passive: true });
+    svg.addEventListener('touchend', end);
+    svg.addEventListener('touchcancel', end);
   }
 
   // ============================ DONUT ======================================

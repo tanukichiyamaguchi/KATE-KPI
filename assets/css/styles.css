@@ -41,9 +41,12 @@
   --series-4: #9a3fd1; --series-5: #c9315b; --series-6: #0d8fa8;
   --series-7: #5c6a78; --series-8: #8a6d3b;
 
-  /* Blue monochrome ramp (funnel ordinal + sequential heatmap) */
+  /* Blue monochrome ramp (funnel ordinal + sequential heatmap) — momo's identity hue */
   --funnel-1: #cfe2fb; --funnel-2: #9dc5f2; --funnel-3: #5c9de8; --funnel-4: #2b7fd6; --funnel-5: #0a5bb0;
   --seq-0: #eef5fd; --seq-1: #cfe2fb; --seq-2: #9dc5f2; --seq-3: #5c9de8; --seq-4: #2b7fd6; --seq-5: #0a5bb0;
+  /* Orange monochrome ramp — aoi's identity hue, same lightness steps as --funnel-* so
+     a staff-colored ordinal chart still reads as monotonically darkening per staff. */
+  --funnel-o1: #fbe1c7; --funnel-o2: #f5bf85; --funnel-o3: #ec9748; --funnel-o4: #d9720a; --funnel-o5: #a3540a;
 
   --shadow-1: 0 1px 2px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.05);
   --shadow-2: 0 2px 6px rgba(0,0,0,0.06), 0 14px 34px rgba(0,0,0,0.09);
@@ -97,6 +100,7 @@
 
   --funnel-1: #16324d; --funnel-2: #1c4f7e; --funnel-3: #2b7fd6; --funnel-4: #4f9ae8; --funnel-5: #7db4f0;
   --seq-0: #14171c; --seq-1: #16324d; --seq-2: #1c4f7e; --seq-3: #2b7fd6; --seq-4: #4f9ae8; --seq-5: #7db4f0;
+  --funnel-o1: #4a2f14; --funnel-o2: #7a4a1a; --funnel-o3: #b06b1e; --funnel-o4: #e0902e; --funnel-o5: #f2b978;
 
   --shadow-1: 0 1px 2px rgba(0,0,0,0.4);
   --shadow-2: 0 8px 30px rgba(0,0,0,0.55);
