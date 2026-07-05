@@ -76,9 +76,14 @@ h('■ 来店回数別');
 g.visitCountBreakdown.forEach((b, i) => check(b.label + ' 件数', s.visitCountBreakdown[i].count, b.count, 2));
 
 h('■ 各スタッフ');
+// reach2 (2回到達率) is intentionally NOT cross-checked against the workbook here:
+// the workbook's published value uses the old 45-day-maturity, all-time definition,
+// while the engine now computes a reservation-based (cancel-aware), last-3-months-
+// cohort rate by user request — the two are no longer the same metric. See
+// tests/kaikei.test.js Fixture B for the hand-verified new-methodology coverage.
 gt.staff.repeat.forEach(sr => {
   const mine = R.staff.find(x => x.name === sr.name);
-  if (mine) { check(`${sr.name} 獲得顧客`, mine.acquired, sr.acquired, 3); check(`${sr.name} 2回到達率`, mine.reach2, sr.reach2, 0.03); }
+  if (mine) { check(`${sr.name} 獲得顧客`, mine.acquired, sr.acquired, 3); }
 });
 
 h('■ 曜日別');

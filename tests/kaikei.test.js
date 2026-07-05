@@ -61,35 +61,38 @@ h('■ Fixture A: 店販顧客比率（人ベース）');
 }
 
 // ============================================================================
-// Fixture B — 45日成熟トリミング (P1-2): repeatRate/fixationRate/funnel/churn
+// Fixture B — リピート率/固定化率/funnel/churn は予約ベース（45日成熟待ちなし）
 // ============================================================================
-// asOf = 2026-08-01. No future/waiting rows => completedOnly=true => maturity
-// gate applies. M1/M2 first-visited 92 days before asOf (mature). N1/N2
-// first-visited 7/12 days before asOf (immature) — excluded from the mature
-// base entirely, regardless of whether they already repeated (N2 has 2 visits
-// but must still be excluded because their FIRST visit hasn't matured).
-h('■ Fixture B: 45日成熟トリミング（リピート率/固定化率）');
+// asOf = 2026-08-01。「到達」は45日の経過を待たず、予約ベース（Fres、キャンセル
+// 後の再予約を考慮・キャンセルのみは含まない）で即座に判定する。N1/N2は直近
+// （asOfの数日前）の来店だが、成熟待ちなしで通常通りカウントされる。P1/P2は
+// キャンセルの扱いを検証：P1はキャンセル後に再予約なし→未到達、P2はキャンセル
+// 後に別日で来店→2回到達（Fixture Mのnextの検証と同じルールがfunnelでも
+// 効いていることを確認）。
+h('■ Fixture B: リピート率・固定化率は予約ベース（45日成熟待ちなし）');
 {
   const rows = [
     rec({ custKey: 'M1', date: '2026-05-01', kaikeiTotal: 5000 }),
-    rec({ custKey: 'M1', date: '2026-05-15', kaikeiTotal: 5000 }),   // M1 repeats (mature, Fres=2)
-    rec({ custKey: 'M2', date: '2026-05-01', kaikeiTotal: 5000 }),   // M2 no repeat (mature, Fres=1)
-    rec({ custKey: 'N1', date: '2026-07-25', kaikeiTotal: 5000 }),   // immature, 7 days before asOf
+    rec({ custKey: 'M1', date: '2026-05-15', kaikeiTotal: 5000 }),   // M1: Fres=2 → 2回到達
+    rec({ custKey: 'M2', date: '2026-05-01', kaikeiTotal: 5000 }),   // M2: Fres=1 → 未到達
+    rec({ custKey: 'N1', date: '2026-07-25', kaikeiTotal: 5000 }),   // N1: 直近来店・Fres=1 → 未到達
     rec({ custKey: 'N2', date: '2026-07-20', kaikeiTotal: 5000 }),
-    rec({ custKey: 'N2', date: '2026-07-28', kaikeiTotal: 5000 })    // N2 "repeats" but is still immature
+    rec({ custKey: 'N2', date: '2026-07-28', kaikeiTotal: 5000 }),   // N2: 直近来店だがFres=2 → 2回到達（成熟待ちなし）
+    rec({ custKey: 'P1', date: '2026-06-01', kaikeiTotal: 5000 }),
+    rec({ custKey: 'P1', status: 'お客様キャンセル', date: '2026-06-15' }),   // P1: キャンセルのみ・再予約なし → 未到達
+    rec({ custKey: 'P2', date: '2026-06-01', kaikeiTotal: 5000 }),
+    rec({ custKey: 'P2', status: 'お客様キャンセル', date: '2026-06-15' }),
+    rec({ custKey: 'P2', date: '2026-07-05', kaikeiTotal: 5000 })            // P2: キャンセル後、別日で来店 → 2回到達
   ];
   const R = engine.compute(rows, { asOf: '2026-08-01' });
-  check('meta.completedOnly', R.meta.completedOnly ? 1 : 0, 1);
-  check('maturity.applied', R.store.maturity.applied ? 1 : 0, 1);
-  check('maturity.matureCustomers (M1,M2)', R.store.maturity.matureCustomers, 2);
-  check('maturity.totalCustomers (全4顧客)', R.store.maturity.totalCustomers, 4);
-  // repeatRate = mature customers with Fres>=2 (M1 only) / matureN(2) = 0.5 => ×100 = 50
-  check('store.repeatRate (%)', R.store.repeatRate, 50, 0.05);
-  check('store.fixationRate (%)', R.store.fixationRate, 0, 0.05);
-  check('funnel[0].people (1回到達: 母数そのもの)', R.store.funnel[0].people, 2);
-  check('funnel[1].people (2回到達: M1のみ)', R.store.funnel[1].people, 1);
-  check('churn.base (成熟母数)', R.store.churn.base, 2);
-  check('churn.total (Fres<2: M2のみ)', R.store.churn.total, 1);
+  check('store.customers（来店顧客6人）', R.store.customers, 6);
+  // repeatRate = 2回到達（M1,N2,P2の3人）/ 来店顧客6人 = 0.5 => ×100 = 50
+  check('store.repeatRate（M1,N2,P2の3人/6人）', R.store.repeatRate, 50, 0.05);
+  check('store.fixationRate（3回到達は誰もいない）', R.store.fixationRate, 0, 0.05);
+  check('funnel[0].people（1回到達=全6人）', R.store.funnel[0].people, 6);
+  check('funnel[1].people（2回到達=M1,N2,P2の3人）', R.store.funnel[1].people, 3);
+  check('churn.base（来店顧客6人）', R.store.churn.base, 6);
+  check('churn.total（Fres<2=M2,N1,P1の3人）', R.store.churn.total, 3);
 }
 
 // ============================================================================
