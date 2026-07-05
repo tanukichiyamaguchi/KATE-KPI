@@ -1,4 +1,6 @@
 {
-  "v": 0,
-  "note": "合言葉共有は未設定です。データ入力タブでスプレッドシートを連携し、「全端末に共有（合言葉の設定）」で作った暗号文（{\"v\":1,\"salt\":…,\"iv\":…,\"ct\":…}）でこのファイルを置き換えると有効になります。暗号文はAES-GCMで保護されており、合言葉なしでは復元できないため公開リポジトリに置いても安全です。"
+  "v": 1,
+  "salt": "mUdQkqlTzRoyfHrpqOZwTw==",
+  "iv": "3qdreg4VEZygO4sU",
+  "ct": "ulS6VW8xeYAGlc7y2yfiSWWe4CBCbrVp9DWSTeHZ+qsHtv5bhd7BZEDeCYUh53CSdceq+msWUGdunbfcv1TpZ9NIsrjl9AkyZBjXKyiIC5XAsPB8SoS+YqcPv19X89naZscoaTqLzD3B1IAfKNnzSfvjln6Zso4qiIS0GYRSgAnOvfOeIkB14+s1HrEheRVHxKeFiSn7Jr+YKGgKUKAhcHj4r39LJSxKUawl6ymoJN9yxL5a4ggaY3sDSLToosnoMDl6DzFpTGgX7EmNdFfClJ4uH45/julQwy/uxMnqnKcKQeMN9iLjhaq8kANYZUFkryD0ULyrm2efU0enjO0nC68="
 }
