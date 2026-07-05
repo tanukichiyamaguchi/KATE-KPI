@@ -15,7 +15,8 @@
   // the *displayed* label, derived from whichever slot(s) are loaded.
   var state = {
     data: null, analytics: null, view: 'overview', source: 'サンプルデータ', fileName: null,
-    sheetUrl: null, sheetUrlKaikei: null, sources: { yoyaku: null, kaikei: null }, mergeReport: null
+    sheetUrl: null, sheetUrlKaikei: null, sources: { yoyaku: null, kaikei: null }, mergeReport: null,
+    sharedBlob: null   // data/shared-link.json（合言葉で暗号化されたシートURL）があれば入る
   };
   var activeCharts = [];   // redraw closures for the mounted view (resize/theme)
 
@@ -144,6 +145,18 @@
     var A = state.analytics, s = A.store, t = A.trend;
     var head = '<div class="view-title">店舗ダッシュボード</div><div class="view-lead">' + esc(ymRangeJa(A.meta.periodStart, A.meta.periodEnd)) + ' ／ 来店顧客 ' + esc(s.customers) + '人・基準日 ' + esc(ymdJa(A.meta.asOf)) + '。</div>';
     var html = '';
+
+    // 新しい端末への案内: 共有設定（暗号化済みシートURL）が同梱されているのに
+    // まだ何も連携していない = サンプルデータを見ている状態。合言葉の入力へ誘導。
+    if (state.sharedBlob && state.source === 'サンプルデータ') {
+      html += card({
+        col: 'col-12',
+        body: '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">' +
+          '<div style="flex:1;min-width:200px"><b>いまはサンプルデータを表示しています。</b><br>' +
+          '<span class="note-inline">お店の合言葉を入力すると、この端末でも店舗の実データが表示されます（初回のみ）。</span></div>' +
+          '<button class="pill accent" type="button" onclick="location.hash=\'#data\'">合言葉を入力する</button></div>'
+      });
+    }
 
     // KPI tile row (revenue KGI & effective-reservation count intentionally omitted)
     var rt = s.retail;
@@ -714,6 +727,18 @@
     var A = state.analytics, m = A.meta;
     var head = '<div class="view-title">データ入力</div><div class="view-lead">Googleスプレッドシート連携、またはファイル（CSV / Excel）を入れるだけで全指標を自動再計算します。<b>「予約データ」</b>（ステータス列つき）と、<b>「会計明細」</b>（会計日・金額・店販つき）の両形式に対応。<b>両方を読み込むと自動で結合</b>し、店販売上や次回予約取得率などの指標を同じ画面で確認できます（文字コードは Shift-JIS / UTF-8 を自動判別）。</div>';
     var html = '';
+    // 合言葉 (shared passphrase) — decrypt the repo-hosted encrypted sheet URLs
+    // so a brand-new device links up without anyone typing the raw URL.
+    if (state.sharedBlob && !(state.sheetUrl || state.sheetUrlKaikei)) {
+      html += card({
+        col: 'col-12', title: '合言葉で店舗データを表示' + help('お店のスプレッドシートのURLを暗号化したものがこのアプリに同梱されています。合言葉を入力すると、この端末で復元されて自動連携が始まります（合言葉の入力は端末ごとに最初の1回だけ）。'),
+        sub: 'この端末で初めて使うときは、お店の合言葉を入力してください（1回だけ）',
+        body: '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<input type="password" id="sharedPassInput" class="sheet-input" autocomplete="off" placeholder="合言葉">' +
+          '<button class="pill accent" id="sharedPassBtn" type="button">読み込む</button>' +
+          '</div>'
+      });
+    }
     // Google Sheets link — one row per slot
     html += card({
       col: 'col-12', title: 'スプレッドシート連携', sub: 'Googleスプレッドシートに入れておけば、URLを貼るだけで自動で反映されます（両方貼ると自動結合）',
@@ -736,7 +761,21 @@
         '<li>または、共有を<code>「リンクを知っている全員（閲覧者）」</code>にして、通常の編集URLを貼り付け。</li>' +
         '<li><b>⚠ プライバシー：</b>ウェブに公開・共有したスプレッドシートは、URLを知る人が閲覧できる状態になります。氏名・電話番号などを含む場合はご注意ください。非公開で扱いたい場合は下のファイルアップロードをお使いください。</li>' +
         '<li>テンプレート：<code>data/template.csv</code>（このリポジトリ）をスプレッドシートに<code>ファイル → インポート</code>すると、見出し付きで始められます。</li>' +
-        '</ul></div></details>'
+        '</ul></div></details>' +
+        ((state.sheetUrl || state.sheetUrlKaikei) ?
+          '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12.5px;color:var(--ink-secondary);font-weight:600">全端末に共有（合言葉の設定）</summary>' +
+          '<div class="how" style="margin-top:8px"><ul>' +
+          '<li>合言葉を決めて下に入力すると、連携中のスプレッドシートURLを暗号化した<b>共有用の暗号文</b>が作られます。</li>' +
+          '<li>暗号文を開発担当に渡してアプリに組み込むと、以後どの端末でも<b>合言葉を1回入力するだけ</b>で店舗データが表示されます。</li>' +
+          '<li>暗号文だけではURLは復元できないため、そのまま渡して問題ありません。<b>合言葉は店名などの推測されやすい言葉を避け</b>、スタッフだけに共有してください。</li>' +
+          '</ul></div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">' +
+          '<input type="text" id="sharedGenInput" class="sheet-input" autocomplete="off" placeholder="新しい合言葉（8文字以上を推奨）">' +
+          '<button class="pill accent" id="sharedGenBtn" type="button">暗号文を作る</button>' +
+          '</div>' +
+          '<textarea id="sharedGenOut" readonly style="display:none;width:100%;margin-top:8px;min-height:96px;font-family:monospace;font-size:11px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--ink-primary)"></textarea>' +
+          '<button class="pill" id="sharedGenCopy" type="button" style="display:none;margin-top:6px">暗号文をコピー</button>' +
+          '</details>' : '')
     });
     // File upload — one dropzone per slot
     ['yoyaku', 'kaikei'].forEach(function (slot) {
@@ -813,6 +852,55 @@
     wireSlot('yoyaku'); wireSlot('kaikei');
     var resetBtn = $('#resetBtn');
     if (resetBtn) resetBtn.addEventListener('click', function (e) { e.stopPropagation(); resetAll(); toast('サンプルデータに戻しました', 'ok'); });
+    wireSharedPass();
+  }
+  // 合言葉: decrypt-and-link on new devices, and the owner-side ciphertext
+  // generator (its output is committed to the repo as data/shared-link.json —
+  // safe there because it's AES-GCM ciphertext, useless without the passphrase).
+  function wireSharedPass() {
+    var passInput = $('#sharedPassInput'), passBtn = $('#sharedPassBtn');
+    if (passBtn && passInput) {
+      var unlock = function () {
+        var pass = passInput.value || '';
+        if (!pass) { toast('合言葉を入力してください', 'err'); return; }
+        passBtn.disabled = true;
+        global.KATE.crypto.decrypt(pass, state.sharedBlob).then(function (obj) {
+          passBtn.disabled = false;
+          var linked = false;
+          if (obj && obj.yoyaku) { linked = true; state.sheetUrl = obj.yoyaku; try { localStorage.setItem('kate-sheet-url', obj.yoyaku); } catch (e) {} linkSheet(obj.yoyaku, 'yoyaku', { silent: true }); }
+          if (obj && obj.kaikei) { linked = true; state.sheetUrlKaikei = obj.kaikei; try { localStorage.setItem('kate-sheet-url-kaikei', obj.kaikei); } catch (e) {} linkSheet(obj.kaikei, 'kaikei', { silent: true }); }
+          toast(linked ? '✓ 店舗データの読み込みを開始しました。この端末では次回から自動で表示されます' : '共有データにURLが含まれていません', linked ? 'ok' : 'err');
+        }, function (err) {
+          passBtn.disabled = false;
+          toast('⚠ ' + (err.message || '読み込みに失敗しました'), 'err');
+        });
+      };
+      passBtn.addEventListener('click', unlock);
+      passInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); unlock(); } });
+    }
+    var genInput = $('#sharedGenInput'), genBtn = $('#sharedGenBtn'), genOut = $('#sharedGenOut'), genCopy = $('#sharedGenCopy');
+    if (genBtn && genInput) {
+      genBtn.addEventListener('click', function () {
+        var pass = (genInput.value || '').trim();
+        if (pass.length < 4) { toast('合言葉は4文字以上にしてください（8文字以上を推奨）', 'err'); return; }
+        var payload = {};
+        if (state.sheetUrl) payload.yoyaku = state.sheetUrl;
+        if (state.sheetUrlKaikei) payload.kaikei = state.sheetUrlKaikei;
+        global.KATE.crypto.encrypt(pass, payload).then(function (blob) {
+          genOut.value = JSON.stringify(blob);
+          genOut.style.display = 'block'; genCopy.style.display = 'inline-flex';
+          toast('✓ 暗号文を作成しました。コピーして開発担当に渡してください', 'ok');
+        }).catch(function (err) { toast('⚠ ' + (err.message || '暗号化に失敗しました'), 'err'); });
+      });
+    }
+    if (genCopy && genOut) {
+      genCopy.addEventListener('click', function () {
+        genOut.select();
+        var done = function () { toast('✓ コピーしました', 'ok'); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(genOut.value).then(done, function () { document.execCommand('copy'); done(); });
+        else { document.execCommand('copy'); done(); }
+      });
+    }
   }
   function wireSlot(slot) {
     var sm = slotMeta(slot);
@@ -952,6 +1040,11 @@
 
   // ---- boot ----------------------------------------------------------------
   function boot() {
+    // Capture the deep-link hash FIRST: applySources() below routes to the
+    // default view, which rewrites location.hash before the initial-route
+    // code further down would otherwise get to read it.
+    var initialHash = (location.hash || '#overview').slice(1);
+
     var saved; try { saved = localStorage.getItem('kate-theme'); } catch (e) {}
     setTheme(saved || (global.matchMedia && global.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
@@ -963,6 +1056,17 @@
     try { savedYoyaku = localStorage.getItem('kate-sheet-url'); savedKaikei = localStorage.getItem('kate-sheet-url-kaikei'); } catch (e) {}
     if (savedYoyaku) { state.sheetUrl = savedYoyaku; linkSheet(savedYoyaku, 'yoyaku', { silent: true }); }
     if (savedKaikei) { state.sheetUrlKaikei = savedKaikei; linkSheet(savedKaikei, 'kaikei', { silent: true }); }
+
+    // 合言葉: if the repo ships an encrypted shared-link blob, load it. On a
+    // device with nothing linked yet, re-render so the 合言葉 card and the
+    // overview banner appear (the fetch usually resolves after first paint).
+    fetch('data/shared-link.json', { cache: 'no-store' }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (blob) {
+      if (!blob || blob.v !== 1) return;
+      state.sharedBlob = blob;
+      if (!state.sheetUrl && !state.sheetUrlKaikei) renderAll();
+    }).catch(function () { /* file absent (404) or offline — feature stays dormant */ });
 
     // nav
     Array.prototype.forEach.call(document.querySelectorAll('.tab, .botnav button'), function (b) {
@@ -985,8 +1089,7 @@
 
     // routing
     global.addEventListener('hashchange', function () { route((location.hash || '#overview').slice(1)); });
-    var initial = (location.hash || '#overview').slice(1);
-    route(VIEWS.includes(initial) ? initial : 'overview', true);
+    route(VIEWS.includes(initialHash) ? initialHash : 'overview', true);
 
     // resize → debounced redraw of active view charts + underline
     var rt;

@@ -110,7 +110,7 @@
 手計算フィクスチャで回帰検証します。
 
 ```bash
-npm test   # 回帰テスト一式（validate.js + kaikei.test.js + merge.test.js + ui-audit.js）
+npm test   # 回帰テスト一式（validate + kaikei + merge + crypto + ui-audit）
 ```
 
 `tests/ui-audit.js` はヘッドレスChromiumで実際のダッシュボードを320〜1280pxの5段階の幅で
@@ -129,6 +129,7 @@ assets/
     engine.js              分析エンジン（予約データ → 全KPI）※検証済み
     ingest.js              CSV/XLSX 取り込み・列マッピング・顧客キー・2データ統合（mergeSources）
     sheets.js              Googleスプレッドシート連携（URL→CSV取得）
+    crypto.js              合言葉クリプト（PBKDF2+AES-GCM・共有シートURLの暗号化）
     charts.js              手書きSVGチャート（線/棒/ドーナツ/ファネル/ヒートマップ 他）
     app.js                 ビュー描画・ルーティング・テーマ・アップロード・連携
     sample-data.js         匿名化サンプル予約データ（分析特性は保持）
@@ -136,13 +137,30 @@ assets/
 data/
   template.csv             スプレッドシート用の見出しテンプレート
   reservations.sample.json サンプルデータ ／ ground-truth.json 検証用
+  shared-link.json         合言葉共有（暗号化済みシートURL・未設定時は v:0 の休眠状態）
 docs/                      設計ブリーフ・スクリーンショット
 tests/
   validate.js              回帰テスト（サンプルデータ vs 元ワークブック公表値）
   kaikei.test.js           会計明細・成熟トリミング・スタッフ平均(mean-of-months)の回帰テスト
   merge.test.js            2データ統合（フリガナ×来店日結合・重複疑い・再キー）の回帰テスト
+  crypto.test.js           合言葉クリプトの往復・誤合言葉・改ざん検出の回帰テスト
   ui-audit.js              UIレイアウト回帰テスト（縦積み文字/セル見切れ/ラベルはみ出し検出）
 ```
+
+## 🔑 合言葉共有（全端末で同じデータを見る）
+
+CSV/Excelのアップロードはブラウザ内でのみ処理されるため、端末をまたいで共有されません。
+全端末で同じデータを見るには**スプレッドシート連携＋合言葉共有**を使います:
+
+1. データをGoogleスプレッドシートに置き、1台の端末でURLを連携する
+2. データ入力タブの「全端末に共有（合言葉の設定）」で合言葉を決めて**暗号文**を作る
+3. 暗号文で `data/shared-link.json` を置き換えてデプロイする（暗号文はAES-GCM＋
+   PBKDF2で保護され、合言葉なしでは復元できないため公開リポジトリに置いても安全）
+4. 以後、どの端末でも**合言葉を1回入力するだけ**で店舗データが表示される
+   （未連携の端末には概要画面に案内バナーが自動表示される）
+
+合言葉は店名など推測されやすい言葉を避け、スタッフだけに共有してください。
+合言葉を変えたいときは手順2〜3を繰り返すだけです（古い暗号文は無効になります）。
 
 ## 🔐 プライバシー
 
