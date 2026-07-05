@@ -247,16 +247,20 @@
     }
     var retail = retailStats(visitedRows);
 
-    // ---- Retention funnel (reservation-based, base = mature visited customers) -
-    // Base is `matureCusts`, not all visited customers: for completed-checkout
-    // sources a very recent first-timer hasn't had time to repeat, so including
-    // them would understate every rate below (see custMature above).
+    // ---- Retention funnel (reservation-based: Fres counts visited + upcoming
+    // effective reservations, already excluding cancellations — see Fres above
+    // and Fixture M) --------------------------------------------------------
+    // Base is ALL visited customers, not a maturity-gated subset: "reached N" is
+    // now a pure reservation fact (has the customer got an Nth reservation,
+    // counting a rebooking after a cancellation but not the cancellation itself),
+    // not a time-elapsed guess — a brand-new customer with no 2nd reservation yet
+    // correctly counts as "not yet reached 2", the same as any other customer.
     var funnel = [1, 2, 3, 4, 5].map(function (n) {
-      var people = matureCusts.filter(function (c) { return c.Fres >= n; }).length;
-      return { n: n, people: people, reach: matureN ? people / matureN : 0 };
+      var people = visitedCusts.filter(function (c) { return c.Fres >= n; }).length;
+      return { n: n, people: people, reach: baseN ? people / baseN : 0 };
     });
-    var repeatRate = matureN ? funnel[1].people / matureN : 0;
-    var fixationRate = matureN ? funnel[2].people / matureN : 0;
+    var repeatRate = baseN ? funnel[1].people / baseN : 0;
+    var fixationRate = baseN ? funnel[2].people / baseN : 0;
 
     // ---- Next-reservation rate (per visit) ----------------------------------
     // A visit "secured a next reservation" if the customer has any later effective reservation.
@@ -285,10 +289,10 @@
     });
     var visitCycleMedianDays = median(gaps);
 
-    // ---- Churn (mature visited customers with no next effective reservation) -
-    var churned = matureCusts.filter(function (c) { return c.Fres < 2; });
+    // ---- Churn (visited customers with no next effective reservation) -------
+    var churned = visitedCusts.filter(function (c) { return c.Fres < 2; });
     var cancelStopped = churned.filter(function (c) { return c.hasAnyCancel; }).length;
-    var churn = { total: churned.length, cancelStopped: cancelStopped, noNextReserve: churned.length - cancelStopped, base: matureN };
+    var churn = { total: churned.length, cancelStopped: cancelStopped, noNextReserve: churned.length - cancelStopped, base: baseN };
 
     // ---- Cancellation (HOT PEPPER Beauty excluded per store policy) ----------
     // The salon can't control HPB-side cancellations, so HPB reservations are
@@ -487,13 +491,19 @@
       var mrows = staffMonthly(name);
       var active = mrows.filter(function (r) { return r.actual > 0; });
       // `acqAll` is the headline "獲得顧客" count (never right-censored); `acqMature`
-      // is the maturity-gated subset used for the reach2/3/4 denominators so a wave
-      // of very recent first-timers doesn't drag those rates down artificially.
+      // is the 45-day-matured subset still used for the "成熟母数" stat and the
+      // 次の一手 sample-size gate below (unrelated to reach()).
       var acqAll = customers.filter(function (c) { return c.firstVisitStaff === name && c.hasVisit; });
       var acqMature = acqAll.filter(custMature);
-      // null (not 0) when there's no mature base yet — a brand-new staff hasn't
-      // "failed" to retain anyone, there just hasn't been time to find out.
-      function reach(n) { return acqMature.length ? acqMature.filter(function (c) { return c.Fres >= n; }).length / acqMature.length : null; }
+      // リピート率（2回到達）・固定化率（3回目到達）・リピート育成力チャートの母数：
+      // 直近3ヶ月（今月を含まない確定3ヶ月）にこのスタッフが初回担当した顧客の
+      // コホート。「到達」は予約ベース（Fres、キャンセル後の再予約を考慮・
+      // キャンセルのみは含まない）で判定し、45日成熟待ちは行わない —
+      // 新しく獲得した顧客でも、2回目の予約が入っていなければ即座に「未到達」。
+      var acqRecent = acqAll.filter(function (c) { return last3Months.indexOf(c.firstVisitMonth) !== -1; });
+      // null (not 0) when there's no recent-cohort base yet — a brand-new staff
+      // hasn't "failed" to retain anyone, there just hasn't been anyone to test yet.
+      function reach(n) { return acqRecent.length ? acqRecent.filter(function (c) { return c.Fres >= n; }).length / acqRecent.length : null; }
       var mature = active.filter(function (r) { return !r.nextResImmature; });
       // Mean-of-months (元ワークブック準拠): simple average of the per-month values
       // over months where the value is defined — NOT visit-weighted (pooled). This
@@ -517,7 +527,18 @@
         nextResN: mature.reduce(function (s, r) { return s + r.visN; }, 0),
         nextRes2N: mature.reduce(function (s, r) { return s + r.vis2N; }, 0)
       };
+      // スタッフ比較表（vsMetrics）専用：直近3ヶ月（今月を含まない確定3ヶ月）限定の
+      // 平均。全期間平均の avg とは別に持たせ、比較表以外（スタッフカードの2×2
+      // グリッドや自分の推移など）は従来通り全期間の avg を使い続ける。
+      var activeRecent = active.filter(function (r) { return last3Months.indexOf(r.m) !== -1; });
       var staffVis = rows.filter(function (r) { return r.staff === name && r.isVisited; });
+      var staffVisRecent = staffVis.filter(function (r) { return last3Months.indexOf(r.ym) !== -1; });
+      var avgRecent = {
+        visitsPerMonth: activeRecent.length ? round(activeRecent.reduce(function (s, r) { return s + r.actual; }, 0) / activeRecent.length, 1) : 0,
+        spend: (function () { var m = meanMonths(activeRecent, function (r) { return r.spend; }); return m == null ? 0 : Math.round(m); })(),
+        nextRes: meanMonths(activeRecent, function (r) { return r.nextRes; }),
+        retailCustomerRatio: retailStats(staffVisRecent).customerRatio
+      };
       var retail = retailStats(staffVis);
       // 平均店販売上/月 = Σ月次店販金額 ÷ active月数 (店販金額データが無ければ null)
       retail.avgMonthlyAmount = anyRetail && active.length
@@ -565,12 +586,13 @@
           retail: anyRetail && isLatestBest(confirmedActive, function (r) { return r.retailAmount || 0; })
         }
       };
-      // 育てた常連: customers this staff first served who went on to become mature
-      // regulars (Fres>=3), using the same 45-day maturity gate as store-level fixation.
-      var regulars3 = matureCusts.filter(function (c) { return c.firstVisitStaff === name && c.Fres >= 3; }).length;
+      // 育てた常連: customers this staff first served who went on to become regulars
+      // (Fres>=3, reservation-based — see Fres above). A career-cumulative count,
+      // so it deliberately spans all-time, not just the last 3 months.
+      var regulars3 = visitedCusts.filter(function (c) { return c.firstVisitStaff === name && c.Fres >= 3; }).length;
 
       return {
-        name: name, avg: avg, acquired: acqAll.length, matureAcquired: acqMature.length,
+        name: name, avg: avg, avgRecent: avgRecent, acquired: acqAll.length, matureAcquired: acqMature.length, acqRecentN: acqRecent.length,
         reach2: reach(2), reach3: reach(3), reach4: reach(4), retail: retail, monthly: mrows, composition: comp,
         personalBest: personalBest, regulars3: regulars3,
         revPeriods: periodStats(staffVis),

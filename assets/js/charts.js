@@ -107,7 +107,7 @@
   // opts: { series:[{name,color?,values:[],dashed?}], xLabels:[], yFmt, valueFmt, height, yMax?, area? }
   function lineArea(container, opts) {
     var w = width(container), h = opts.height || 260;
-    var padL = opts.padL || 46, padR = opts.padR || 16, padT = 16, padB = 34;
+    var padL = opts.padL || 38, padR = opts.padR || 16, padT = 16, padB = 34;
     var svg = mount(container, w, h);
     var series = opts.series, xs = opts.xLabels;
     var n = xs.length;
@@ -116,11 +116,16 @@
     var xat = function (i) { return padL + (n <= 1 ? plotW / 2 : plotW * i / (n - 1)); };
     var yat = function (v) { return padT + plotH - (v / maxV) * plotH; };
 
-    // gridlines + y ticks
+    // gridlines + y ticks — the top (max) and bottom (0) tick labels are
+    // dropped: they were the widest numbers on the axis and, on a narrow
+    // mobile viewport, ate into the plot area for little benefit (the bars/
+    // lines themselves already communicate the extremes). Gridlines at every
+    // tick stay, for the visual reference.
     var ticks = 4;
     for (var g = 0; g <= ticks; g++) {
       var yv = maxV * g / ticks, y = yat(yv);
       svg.appendChild(svgEl('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: ink.grid(), 'stroke-width': 1 }));
+      if (g === 0 || g === ticks) continue;
       var lab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': 11 });
       lab.setAttribute('font-variant-numeric', 'tabular-nums');
       lab.textContent = (opts.yFmt || fmtCompact)(yv); svg.appendChild(lab);
@@ -196,6 +201,7 @@
     }
     function clearFocus() { focus.setAttribute('opacity', 0); dots.forEach(function (d) { d.setAttribute('opacity', 0); }); hideTip(); }
     hit.addEventListener('mousemove', onMove);
+    hit.addEventListener('touchstart', function (e) { if (e.touches[0]) onMove(e.touches[0]); }, { passive: true });
     hit.addEventListener('touchmove', function (e) { if (e.touches[0]) onMove(e.touches[0]); }, { passive: true });
     hit.addEventListener('mouseleave', clearFocus);
     hit.addEventListener('touchend', clearFocus);
@@ -203,11 +209,27 @@
     if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si), dashed: s.dashed }; }));
   }
 
+  // Centered value label above a bar. If the natural text would be wider than
+  // maxWidth, it's compressed via SVG textLength (not wrapped) so it never
+  // overflows the bar it sits above — used for per-bar/per-cluster totals,
+  // which get cramped on narrow mobile bars once there are 2+ series.
+  function fitValueLabel(svg, x, y, text, maxWidth, fontSize) {
+    var t = svgEl('text', { x: x, y: y, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': fontSize, 'font-weight': 700 });
+    t.setAttribute('font-variant-numeric', 'tabular-nums');
+    t.textContent = text;
+    svg.appendChild(t);
+    if (maxWidth > 0 && t.getComputedTextLength) {
+      var natural = t.getComputedTextLength();
+      if (natural > maxWidth) { t.setAttribute('textLength', maxWidth); t.setAttribute('lengthAdjust', 'spacingAndGlyphs'); }
+    }
+    return t;
+  }
+
   // ============================ COLUMNS (grouped / stacked) =================
-  // opts: { groups:[label], series:[{name,color?,values:[]}], stacked?, height, valueFmt, yFmt }
+  // opts: { groups:[label], series:[{name,color?,values:[]}], stacked?, height, valueFmt, totalFmt?, yFmt }
   function columns(container, opts) {
     var w = width(container), h = opts.height || 260;
-    var padL = opts.padL || 44, padR = 14, padT = opts.stacked ? 26 : 18, padB = 34;
+    var padL = opts.padL || 36, padR = 14, padT = opts.stacked ? 26 : 22, padB = 34;
     var svg = mount(container, w, h);
     var groups = opts.groups, series = opts.series, ng = groups.length;
     var plotW = w - padL - padR, plotH = h - padT - padB;
@@ -217,9 +239,11 @@
     var band = plotW / ng;
     var GAP = 2;
 
+    // Top (max) and bottom (0) tick labels omitted — see lineArea for why.
     for (var g = 0; g <= 4; g++) {
       var yv = maxV * g / 4, y = yat(yv);
       svg.appendChild(svgEl('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: ink.grid(), 'stroke-width': 1 }));
+      if (g === 0 || g === 4) continue;
       var lab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': 11 });
       lab.setAttribute('font-variant-numeric', 'tabular-nums'); lab.textContent = (opts.yFmt || fmtCompact)(yv); svg.appendChild(lab);
     }
@@ -242,13 +266,11 @@
           bindBarTip(rect, svg, w, glabel, s, si, v, opts);
         });
         if (acc > 0) {
-          var totalLab = svgEl('text', { x: cx, y: yat(acc) - 7, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': 10.5, 'font-weight': 700 });
-          totalLab.setAttribute('font-variant-numeric', 'tabular-nums');
-          totalLab.textContent = (opts.totalFmt || opts.valueFmt || fmtCompact)(acc);
-          svg.appendChild(totalLab);
+          fitValueLabel(svg, cx, yat(acc) - 7, (opts.totalFmt || opts.valueFmt || fmtCompact)(acc), barW + 6, 10.5);
         }
       } else {
         var innerW = band * 0.7, bw = Math.min(24, innerW / series.length - GAP);
+        var showBarLabels = bw >= 12;
         series.forEach(function (s, si) {
           var v = Math.max(0, s.values[gi]);
           var x = cx - innerW / 2 + si * (bw + GAP), y1 = yat(v), rectH = padT + plotH - y1;
@@ -257,10 +279,13 @@
           animateAttr(rect, 'height', 0, rectH, 700, gi * 40 + si * 40);
           animateAttr(rect, 'y', padT + plotH, y1, 700, gi * 40 + si * 40);
           bindBarTip(rect, svg, w, glabel, s, si, v, opts);
+          if (showBarLabels && v > 0) {
+            fitValueLabel(svg, x + bw / 2, y1 - 5, (opts.totalFmt || opts.valueFmt || fmtCompact)(v), bw, 9);
+          }
         });
       }
     });
-    if (opts.stacked) enableDragReveal(svg);
+    enableDragReveal(svg);
     if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si) }; }));
   }
   // ==================== CLUSTERED STACKED COLUMNS ==========================
@@ -276,7 +301,7 @@
   //         yMax?, valueFmt?, yFmt?, height? }
   function columnClusters(container, opts) {
     var w = width(container), h = opts.height || 260;
-    var padL = opts.padL || 44, padR = 14, padT = 26, padB = 44;
+    var padL = opts.padL || 36, padR = 14, padT = 26, padB = 44;
     var svg = mount(container, w, h);
     var groups = opts.groups, series = opts.series, clusterSize = opts.clusterSize || 1;
     var nClusters = groups.length, nBars = nClusters * clusterSize;
@@ -287,9 +312,11 @@
     var yat = function (v) { return padT + plotH - (v / maxV) * plotH; };
     var clusterBand = plotW / nClusters, innerGap = 4;
 
+    // Top (max) and bottom (0) tick labels omitted — see lineArea for why.
     for (var g = 0; g <= 4; g++) {
       var yv = maxV * g / 4, y = yat(yv);
       svg.appendChild(svgEl('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: ink.grid(), 'stroke-width': 1 }));
+      if (g === 0 || g === 4) continue;
       var lab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': 11 });
       lab.setAttribute('font-variant-numeric', 'tabular-nums'); lab.textContent = (opts.yFmt || fmtCompact)(yv); svg.appendChild(lab);
     }
@@ -334,15 +361,12 @@
           bindBarTip(rect, svg, w, glabel + (opts.subLabels ? ' ・ ' + opts.subLabels[bi] : ''), s, si, v, opts, color);
         });
         if (showTotals && acc > 0) {
-          var totalLab = svgEl('text', { x: bx + barW / 2, y: yat(acc) - 6, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': 9.5, 'font-weight': 700 });
-          totalLab.setAttribute('font-variant-numeric', 'tabular-nums');
-          totalLab.textContent = (opts.totalFmt || opts.valueFmt || fmtCompact)(acc);
-          svg.appendChild(totalLab);
+          fitValueLabel(svg, bx + barW / 2, yat(acc) - 6, (opts.totalFmt || opts.valueFmt || fmtCompact)(acc), barW + 4, 9.5);
         }
       }
     });
     enableDragReveal(svg);
-    if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: (typeof s.color === 'function' ? s.color(0) : s.color) || seriesColor(si) }; }));
+    if (!opts.hideLegend && series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: (typeof s.color === 'function' ? s.color(0) : s.color) || seriesColor(si) }; }));
   }
 
   function bindBarTip(rect, svg, w, glabel, s, si, v, opts, color) {
@@ -360,22 +384,28 @@
   // Touch devices don't fire mouseenter/mouseleave while a single continuous
   // touch drags across neighboring elements (the touch target stays pinned to
   // wherever the gesture started), so sliding a finger across a stacked bar's
-  // segments would otherwise only ever reveal the first one. Bind at the SVG
-  // level instead and resolve the element under the finger on every move.
+  // segments — or a donut's wedges, a heatmap's cells, a scatter's points —
+  // would otherwise only ever reveal whichever one the touch started on. Bind
+  // at the SVG level instead and resolve the element under the finger on every
+  // move. Works for any shape (rect/path/circle) that has a `__showTip`
+  // callback attached; an optional `__clearHi` lets an element restore its own
+  // highlight style on the way out (falls back to clearing `style.filter`,
+  // the convention used by bar highlighting).
   function enableDragReveal(svg) {
-    var lastRect = null;
+    var last = null;
     function resolve(x, y) {
-      var el = document.elementFromPoint(x, y);
-      return (el && el.tagName === 'rect' && el.__showTip) ? el : null;
+      var e = document.elementFromPoint(x, y);
+      return (e && e.__showTip) ? e : null;
     }
+    function clear(e) { if (!e) return; if (e.__clearHi) e.__clearHi(); else e.style.filter = ''; }
     function handle(x, y) {
-      var rect = resolve(x, y);
-      if (rect === lastRect) { if (rect) rect.__showTip(x); return; }
-      if (lastRect) lastRect.style.filter = '';
-      lastRect = rect;
-      if (rect) rect.__showTip(x); else hideTip();
+      var e = resolve(x, y);
+      if (e === last) { if (e) e.__showTip(x); return; }
+      clear(last);
+      last = e;
+      if (e) e.__showTip(x); else hideTip();
     }
-    function end() { if (lastRect) { lastRect.style.filter = ''; lastRect = null; } hideTip(); }
+    function end() { clear(last); last = null; hideTip(); }
     svg.addEventListener('touchstart', function (ev) { var t = ev.touches[0]; if (t) handle(t.clientX, t.clientY); }, { passive: true });
     svg.addEventListener('touchmove', function (ev) { var t = ev.touches[0]; if (t) handle(t.clientX, t.clientY); }, { passive: true });
     svg.addEventListener('touchend', end);
@@ -397,7 +427,9 @@
       path.style.transformOrigin = cx + 'px ' + cy + 'px';
       svg.appendChild(path);
       if (!noAnim()) { path.style.opacity = 0; path.style.transform = 'scale(.85)'; path.getBoundingClientRect(); path.style.transition = 'opacity .5s ease ' + (i * 70) + 'ms, transform .5s cubic-bezier(.34,1.56,.64,1) ' + (i * 70) + 'ms'; path.style.opacity = 1; path.style.transform = 'scale(1)'; }
-      path.addEventListener('mouseenter', function (ev) { path.style.filter = 'brightness(1.07)'; var box = svg.getBoundingClientRect(); showTip('<div class="kate-tip-row"><i style="background:' + (s.color || seriesColor(i)) + '"></i><span>' + esc(s.label) + '</span><b>' + (opts.valueFmt || fmtInt)(s.value) + ' · ' + fmtPct(frac, 1) + '</b></div>', ev.clientX, box.top + cy - R); });
+      function show(clientX) { path.style.filter = 'brightness(1.07)'; var box = svg.getBoundingClientRect(); showTip('<div class="kate-tip-row"><i style="background:' + (s.color || seriesColor(i)) + '"></i><span>' + esc(s.label) + '</span><b>' + (opts.valueFmt || fmtInt)(s.value) + ' · ' + fmtPct(frac, 1) + '</b></div>', clientX, box.top + cy - R); }
+      path.__showTip = show;
+      path.addEventListener('mouseenter', function (ev) { show(ev.clientX); });
       path.addEventListener('mouseleave', function () { path.style.filter = ''; hideTip(); });
       a0 = a1;
     });
@@ -406,6 +438,7 @@
       cv.textContent = opts.centerValue; svg.appendChild(cv);
       if (opts.centerLabel) { var cl = svgEl('text', { x: cx, y: cy + size * 0.13, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11 }); cl.textContent = opts.centerLabel; svg.appendChild(cl); }
     }
+    enableDragReveal(svg);
     legend(container, segs.map(function (s, i) { return { label: s.label + ' · ' + fmtPct(s.value / total, 0), color: s.color || seriesColor(i) }; }));
   }
   function arc(cx, cy, R, r, a0, a1) {
@@ -465,10 +498,14 @@
         svg.appendChild(rect);
         if (!noAnim()) { rect.style.opacity = 0; rect.getBoundingClientRect(); rect.style.transition = 'opacity .5s ease ' + ((r + c) * 45) + 'ms'; rect.style.opacity = 1; }
         if (v > 0) { var t = svgEl('text', { x: x + cell / 2, y: y + cell / 2 + 4, 'text-anchor': 'middle', fill: intensity > 0.55 ? '#fff' : ink.secondary(), 'font-size': 12, 'font-weight': 600 }); t.textContent = v; svg.appendChild(t); }
-        rect.addEventListener('mouseenter', function (ev) { rect.setAttribute('stroke', base); rect.setAttribute('stroke-width', 2); var box = svg.getBoundingClientRect(); showTip('<div class="kate-tip-row"><span>' + esc(opts.rowLabels[r]) + ' × ' + esc(opts.colLabels[c]) + '</span><b>' + v + esc(opts.unit || '人') + '</b></div>', ev.clientX, box.top + y); });
-        rect.addEventListener('mouseleave', function () { rect.removeAttribute('stroke'); hideTip(); });
+        function show(clientX) { rect.setAttribute('stroke', base); rect.setAttribute('stroke-width', 2); var box = svg.getBoundingClientRect(); showTip('<div class="kate-tip-row"><span>' + esc(opts.rowLabels[r]) + ' × ' + esc(opts.colLabels[c]) + '</span><b>' + v + esc(opts.unit || '人') + '</b></div>', clientX, box.top + y); }
+        rect.__showTip = show;
+        rect.__clearHi = function () { rect.removeAttribute('stroke'); };
+        rect.addEventListener('mouseenter', function (ev) { show(ev.clientX); });
+        rect.addEventListener('mouseleave', function () { rect.__clearHi(); hideTip(); });
       })(r, c);
     }
+    enableDragReveal(svg);
   }
 
   // ============================ HORIZONTAL BARS ============================
@@ -510,9 +547,13 @@
     opts.points.forEach(function (p, i) {
       var c = svgEl('circle', { cx: xat(p.x), cy: yat(p.y), r: 0, fill: p.color, 'fill-opacity': 0.72, stroke: ink.surface(), 'stroke-width': 1.5 });
       svg.appendChild(c); animateAttr(c, 'r', 0, p.r || 5, 500, i * 4);
-      c.addEventListener('mouseenter', function (ev) { c.setAttribute('fill-opacity', 1); var box = svg.getBoundingClientRect(); showTip('<div class="kate-tip-title">' + esc(p.label || '') + '</div><div class="kate-tip-row"><i style="background:' + p.color + '"></i><span>' + esc(p.seg || '') + '</span></div>', ev.clientX, box.top + yat(p.y)); });
-      c.addEventListener('mouseleave', function () { c.setAttribute('fill-opacity', 0.72); hideTip(); });
+      function show(clientX) { c.setAttribute('fill-opacity', 1); var box = svg.getBoundingClientRect(); showTip('<div class="kate-tip-title">' + esc(p.label || '') + '</div><div class="kate-tip-row"><i style="background:' + p.color + '"></i><span>' + esc(p.seg || '') + '</span></div>', clientX, box.top + yat(p.y)); }
+      c.__showTip = show;
+      c.__clearHi = function () { c.setAttribute('fill-opacity', 0.72); };
+      c.addEventListener('mouseenter', function (ev) { show(ev.clientX); });
+      c.addEventListener('mouseleave', function () { c.__clearHi(); hideTip(); });
     });
+    enableDragReveal(svg);
   }
   function axisLabel(x, y, t, anchor) { var e = svgEl('text', { x: x, y: y, 'text-anchor': anchor, fill: ink.muted(), 'font-size': 11 }); e.textContent = t || ''; return e; }
 
