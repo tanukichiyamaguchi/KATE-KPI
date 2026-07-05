@@ -260,7 +260,9 @@
       return { n: n, people: people, reach: baseN ? people / baseN : 0 };
     });
     var repeatRate = baseN ? funnel[1].people / baseN : 0;
-    var fixationRate = baseN ? funnel[2].people / baseN : 0;
+    // 固定化率: 全顧客に対する到達率ではなく、「2回来店した顧客のうち3回目の
+    // 予約を取った割合」という条件付き継続率（funnel の 継続/離脱 表示と同じ考え方）。
+    var fixationRate = funnel[1].people ? funnel[2].people / funnel[1].people : 0;
 
     // ---- Next-reservation rate (per visit) ----------------------------------
     // A visit "secured a next reservation" if the customer has any later effective reservation.
@@ -504,6 +506,12 @@
       // null (not 0) when there's no recent-cohort base yet — a brand-new staff
       // hasn't "failed" to retain anyone, there just hasn't been anyone to test yet.
       function reach(n) { return acqRecent.length ? acqRecent.filter(function (c) { return c.Fres >= n; }).length / acqRecent.length : null; }
+      // 固定化率: 全コホートに対する到達率ではなく、「2回目に到達した顧客のうち
+      // 3回目の予約も取った割合」という条件付き継続率（店舗全体の fixationRate と
+      // 同じ考え方）。2回到達者がまだいなければ null。
+      var reach2Count = acqRecent.filter(function (c) { return c.Fres >= 2; }).length;
+      var reach3Count = acqRecent.filter(function (c) { return c.Fres >= 3; }).length;
+      var fixationRate = reach2Count ? reach3Count / reach2Count : null;
       var mature = active.filter(function (r) { return !r.nextResImmature; });
       // Mean-of-months (元ワークブック準拠): simple average of the per-month values
       // over months where the value is defined — NOT visit-weighted (pooled). This
@@ -593,7 +601,7 @@
 
       return {
         name: name, avg: avg, avgRecent: avgRecent, acquired: acqAll.length, matureAcquired: acqMature.length, acqRecentN: acqRecent.length,
-        reach2: reach(2), reach3: reach(3), reach4: reach(4), retail: retail, monthly: mrows, composition: comp,
+        reach2: reach(2), reach3: reach(3), reach4: reach(4), fixationRate: fixationRate, retail: retail, monthly: mrows, composition: comp,
         personalBest: personalBest, regulars3: regulars3,
         revPeriods: periodStats(staffVis),
         utilization: utilizationMonthly(mrows)

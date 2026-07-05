@@ -42,7 +42,11 @@ check('母数(来店顧客)', s.customers, 358, 2);
 
 h('■ リピート・定着');
 check('リピート率(2回到達)%', s.repeatRate, g.repeatRate, 1);
-check('固定化率(3回以上)%', s.fixationRate, g.fixationRate, 1);
+// 固定化率は「全顧客に対する3回到達率」から「2回到達した顧客のうち3回目も
+// 予約した割合」という条件付き継続率に定義変更（ユーザー確認済み）。ワーク
+// ブックの旧定義値とは別の意味の数値になったため、ground-truthとの突合は
+// 行わない。info行として新定義の値を参考表示する。
+info('  固定化率(3回以上・条件付き継続率／旧定義との比較不可)', s.fixationRate, g.fixationRate);
 check('次回予約取得率%', s.nextReserveRate, g.nextReserveRate, 3);
 check('来店周期(中央値・日)', s.visitCycleMedianDays, g.visitCycleMedianDays, 3);
 g.funnel.forEach((f, i) => check(`到達 ${f.n}回 人数`, s.funnel[i].people, f.people, 1));

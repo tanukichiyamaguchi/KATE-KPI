@@ -406,6 +406,18 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
      fit a fixed table column — override so they wrap with the cell instead of
      silently clipping (or pushing the table wider). */
   .kate-table .chip, .kate-table .seg-tag, .kate-table .note-inline { min-width: 0; max-width: 100%; white-space: normal; word-break: break-word; }
+  /* #rfmTable's セグメント column (segment badge, e.g. 「高ロイヤル顧客」) is the
+     widest piece of content in the row — an even 1/5 split of the remaining
+     width (the default under table-layout:fixed) is too narrow, wrapping the
+     badge one character per line. Take width back from the short numeric R/F/M
+     columns and give it to the segment column instead, and trim the badge's
+     own font/padding a touch, so most segment names fit on a single line. */
+  #rfmTable th:nth-child(2), #rfmTable td:nth-child(2),
+  #rfmTable th:nth-child(3), #rfmTable td:nth-child(3) { width: 8%; }
+  #rfmTable th:nth-child(4), #rfmTable td:nth-child(4) { width: 13%; }
+  #rfmTable th:nth-child(5), #rfmTable td:nth-child(5) { width: 33%; }
+  #rfmTable th:nth-child(6), #rfmTable td:nth-child(6) { width: 14%; }
+  #rfmTable .seg-tag { font-size: 10.5px; padding: 2px 6px; gap: 3px; }
 }
 /* Very narrow phones (e.g. 320px-wide devices): a few more digits than the
    above accounts for — shave a bit more font/padding so large ¥ figures
