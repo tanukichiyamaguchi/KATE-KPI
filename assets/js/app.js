@@ -16,7 +16,9 @@
   var state = {
     data: null, analytics: null, view: 'overview', source: 'サンプルデータ', fileName: null,
     sheetUrl: null, sheetUrlKaikei: null, sources: { yoyaku: null, kaikei: null }, mergeReport: null,
-    sharedBlob: null   // data/shared-link.json（合言葉で暗号化されたシートURL）があれば入る
+    sharedBlob: null,   // data/shared-link.json（合言葉で暗号化されたシートURL）があれば入る
+    ownerLock: null,    // data/owner-lock.json（管理用の合言葉で暗号化されたロック）があれば入る
+    ownerUnlocked: false // ロック解除はメモリ上のみ（リロードで再ロック・端末に保存しない）
   };
   var activeCharts = [];   // redraw closures for the mounted view (resize/theme)
 
@@ -725,7 +727,12 @@
   }
   function renderData() {
     var A = state.analytics, m = A.meta;
-    var head = '<div class="view-title">データ入力</div><div class="view-lead">Googleスプレッドシート連携、またはファイル（CSV / Excel）を入れるだけで全指標を自動再計算します。<b>「予約データ」</b>（ステータス列つき）と、<b>「会計明細」</b>（会計日・金額・店販つき）の両形式に対応。<b>両方を読み込むと自動で結合</b>し、店販売上や次回予約取得率などの指標を同じ画面で確認できます（文字コードは Shift-JIS / UTF-8 を自動判別）。</div>';
+    // 管理ロック中は、このページの管理操作（連携URLの表示・変更・取り込み等）を
+    // すべて隠す。スタッフの初回セットアップ（店の合言葉カード）だけは残す。
+    var ownerLocked = !!(state.ownerLock && !state.ownerUnlocked);
+    var head = '<div class="view-title">データ入力</div><div class="view-lead">' + (ownerLocked
+      ? 'ダッシュボードの閲覧（概要・スタッフなどの各タブ）に設定は不要です。このページの管理操作はロックされています。'
+      : 'Googleスプレッドシート連携、またはファイル（CSV / Excel）を入れるだけで全指標を自動再計算します。<b>「予約データ」</b>（ステータス列つき）と、<b>「会計明細」</b>（会計日・金額・店販つき）の両形式に対応。<b>両方を読み込むと自動で結合</b>し、店販売上や次回予約取得率などの指標を同じ画面で確認できます（文字コードは Shift-JIS / UTF-8 を自動判別）。') + '</div>';
     var html = '';
     // 合言葉 (shared passphrase) — decrypt the repo-hosted encrypted sheet URLs
     // so a brand-new device links up without anyone typing the raw URL.
@@ -738,6 +745,19 @@
           '<button class="pill accent" id="sharedPassBtn" type="button">読み込む</button>' +
           '</div>'
       });
+    }
+    if (ownerLocked) {
+      html += card({
+        col: 'col-12', title: '管理者メニュー' + help('スプレッドシート連携の設定（URLの表示を含む）・ファイル取り込み・データのクリアなどの管理操作は、管理用の合言葉でロックされています。ロック解除はこのページを開いている間だけ有効で、端末には何も保存されません。'),
+        sub: '連携設定などの管理操作は、管理用の合言葉（店の合言葉とは別）でロックされています',
+        body: '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+          '<input type="password" id="ownerPassInput" class="sheet-input" autocomplete="off" placeholder="管理用の合言葉">' +
+          '<button class="pill accent" id="ownerPassBtn" type="button">ロック解除</button>' +
+          '</div>'
+      });
+      mount('data', head + '<div class="grid">' + html + '</div>');
+      wireUpload();
+      return;
     }
     // Google Sheets link — one row per slot
     html += card({
@@ -790,6 +810,21 @@
       });
     });
     html += card({ col: 'col-12', body: '<button class="pill" id="resetBtn" type="button">全データをクリアしてサンプルに戻す</button>' });
+    // 管理ロックの設定（オーナー用）: 有効化すると、このページの管理操作が
+    // 管理用の合言葉なしでは見られなくなる（連携URLの露出防止）。
+    html += card({
+      col: 'col-12', title: '管理ロック（オーナー用）' + help('管理用の合言葉を設定すると、このデータ入力ページの管理操作（連携URLの表示・変更・ファイル取り込み・クリア）が、合言葉を入れるまで隠されます。ダッシュボードの閲覧には影響しません。店の合言葉とは別のものにしてください。'),
+      sub: state.ownerLock
+        ? '設定済み。新しい合言葉で暗号文を作り直して差し替えると、古い合言葉は無効になります'
+        : '未設定。設定すると、このページの管理操作（連携URLの表示を含む）が合言葉なしでは見られなくなります',
+      body: '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+        '<input type="text" id="ownerGenInput" class="sheet-input" autocomplete="off" placeholder="管理用の合言葉（店の合言葉とは別に・8文字以上を推奨）">' +
+        '<button class="pill accent" id="ownerGenBtn" type="button">ロック用の暗号文を作る</button>' +
+        '</div>' +
+        '<textarea id="ownerGenOut" readonly style="display:none;width:100%;margin-top:8px;min-height:96px;font-family:monospace;font-size:11px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--ink-primary)"></textarea>' +
+        '<button class="pill" id="ownerGenCopy" type="button" style="display:none;margin-top:6px">暗号文をコピー</button>' +
+        '<div class="note-inline" style="margin-top:8px">作成した暗号文を開発担当に渡してアプリに組み込むと有効になります。</div>'
+    });
     // Merge report — only when both slots are loaded
     if (state.mergeReport) {
       var mr = state.mergeReport;
@@ -853,6 +888,7 @@
     var resetBtn = $('#resetBtn');
     if (resetBtn) resetBtn.addEventListener('click', function (e) { e.stopPropagation(); resetAll(); toast('サンプルデータに戻しました', 'ok'); });
     wireSharedPass();
+    wireOwnerLock();
   }
   // 合言葉: decrypt-and-link on new devices, and the owner-side ciphertext
   // generator (its output is committed to the repo as data/shared-link.json —
@@ -893,14 +929,52 @@
         }).catch(function (err) { toast('⚠ ' + (err.message || '暗号化に失敗しました'), 'err'); });
       });
     }
-    if (genCopy && genOut) {
-      genCopy.addEventListener('click', function () {
-        genOut.select();
-        var done = function () { toast('✓ コピーしました', 'ok'); };
-        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(genOut.value).then(done, function () { document.execCommand('copy'); done(); });
-        else { document.execCommand('copy'); done(); }
+    wireCopy(genCopy, genOut);
+  }
+  function wireCopy(btn, srcTextarea) {
+    if (!btn || !srcTextarea) return;
+    btn.addEventListener('click', function () {
+      srcTextarea.select();
+      var done = function () { toast('✓ コピーしました', 'ok'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(srcTextarea.value).then(done, function () { document.execCommand('copy'); done(); });
+      else { document.execCommand('copy'); done(); }
+    });
+  }
+  // 管理ロック: 解除（ロック中のみ表示）と、ロック用暗号文の生成（解除中のみ表示）。
+  // 解除状態はメモリ上のみ — localStorage に旗を残さないので、端末を渡しても
+  // リロードすれば必ず再ロックされる。
+  function wireOwnerLock() {
+    var passInput = $('#ownerPassInput'), passBtn = $('#ownerPassBtn');
+    if (passBtn && passInput) {
+      var unlock = function () {
+        var pass = passInput.value || '';
+        if (!pass) { toast('管理用の合言葉を入力してください', 'err'); return; }
+        passBtn.disabled = true;
+        global.KATE.crypto.decrypt(pass, state.ownerLock).then(function () {
+          state.ownerUnlocked = true;
+          renderAll();
+          toast('✓ ロックを解除しました（このページを開いている間だけ有効です）', 'ok');
+        }, function (err) {
+          passBtn.disabled = false;
+          toast('⚠ ' + (err.message || '解除に失敗しました'), 'err');
+        });
+      };
+      passBtn.addEventListener('click', unlock);
+      passInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); unlock(); } });
+    }
+    var genInput = $('#ownerGenInput'), genBtn = $('#ownerGenBtn'), genOut = $('#ownerGenOut'), genCopy = $('#ownerGenCopy');
+    if (genBtn && genInput) {
+      genBtn.addEventListener('click', function () {
+        var pass = (genInput.value || '').trim();
+        if (pass.length < 4) { toast('合言葉は4文字以上にしてください（8文字以上を推奨）', 'err'); return; }
+        global.KATE.crypto.encrypt(pass, { role: 'owner' }).then(function (blob) {
+          genOut.value = JSON.stringify(blob);
+          genOut.style.display = 'block'; genCopy.style.display = 'inline-flex';
+          toast('✓ ロック用の暗号文を作成しました。コピーして開発担当に渡してください', 'ok');
+        }).catch(function (err) { toast('⚠ ' + (err.message || '作成に失敗しました'), 'err'); });
       });
     }
+    wireCopy(genCopy, genOut);
   }
   function wireSlot(slot) {
     var sm = slotMeta(slot);
@@ -1067,6 +1141,16 @@
       state.sharedBlob = blob;
       if (!state.sheetUrl && !state.sheetUrlKaikei) renderAll();
     }).catch(function () { /* file absent (404) or offline — feature stays dormant */ });
+
+    // 管理ロック: data/owner-lock.json が有効なら、データ入力ページの管理操作を
+    // 管理用の合言葉で保護する（閲覧タブには影響しない）。
+    fetch('data/owner-lock.json', { cache: 'no-store' }).then(function (r) {
+      return r.ok ? r.json() : null;
+    }).then(function (blob) {
+      if (!blob || blob.v !== 1) return;
+      state.ownerLock = blob;
+      if (state.view === 'data') renderAll();
+    }).catch(function () { /* absent or offline — tab stays unlocked as before */ });
 
     // nav
     Array.prototype.forEach.call(document.querySelectorAll('.tab, .botnav button'), function (b) {
