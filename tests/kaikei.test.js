@@ -449,5 +449,41 @@ h('■ Fixture K: 期間バケット売上と newMix 内訳');
   check('newMix repeat = v2+v3+v4', jun.repeat, jun.v2 + jun.v3 + jun.v4);
 }
 
+// ============================================================================
+// Fixture L — 受付待ち（見込み）も来店回数（_ord）で内訳できる
+// ============================================================================
+// asOf = 2026-07-10（今月=7月）。P1(スタッフS1): 6月に1回目(会計済み)、7月に
+// 2回目の予約(受付待ち・見込み)。P2(スタッフS1): 過去の来店なし、7月に初回の
+// 予約のみ(受付待ち) → 見込みでも1回目として数えられることの検証。P3(スタッフ
+// S2、別スタッフ): 5月に1回目(会計済み)、7月に2回目の予約(受付待ち) →
+// スタッフ別の内訳がS1/S2で混ざらないことの検証。
+h('■ Fixture L: 受付待ちの来店回数内訳（composition の expNew/expV2）');
+{
+  const rows = [
+    rec({ staff: 'S1', custKey: 'P1', name: 'P1', date: '2026-06-01', kaikeiTotal: 6000 }),
+    rec({ staff: 'S1', custKey: 'P1', name: 'P1', status: '受付待ち', date: '2026-07-20', yoyakuTotal: 6000 }),
+    rec({ staff: 'S1', custKey: 'P2', name: 'P2', status: '受付待ち', date: '2026-07-25', yoyakuTotal: 5000 }),
+    rec({ staff: 'S2', custKey: 'P3', name: 'P3', date: '2026-05-01', kaikeiTotal: 7000 }),
+    rec({ staff: 'S2', custKey: 'P3', name: 'P3', status: '受付待ち', date: '2026-07-28', yoyakuTotal: 7000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-10' });
+  const s1 = R.staff.find(s => s.name === 'S1');
+  const s2 = R.staff.find(s => s.name === 'S2');
+  const s1Jun = s1.composition.find(c => c.m === '2026-06');
+  const s1Jul = s1.composition.find(c => c.m === '2026-07');
+  const s2May = s2.composition.find(c => c.m === '2026-05');
+  const s2Jul = s2.composition.find(c => c.m === '2026-07');
+
+  check('S1 6月 new（P1の1回目・会計済み）', s1Jun.new, 1);
+  check('S1 7月 expV2（P1の2回目・見込み）', s1Jul.expV2, 1);
+  check('S1 7月 expNew（P2は過去来店なし→見込みでも1回目）', s1Jul.expNew, 1);
+  check('S1 7月 new（会計済みの新規は0）', s1Jul.new, 0);
+  check('S2 5月 new（P3の1回目・会計済み）', s2May.new, 1);
+  // S1の7月 expV2 は P1のみ(=1)。S2のP3も同じ月に expV2=1 を持つため、混ざって
+  // いれば2になってしまう — スタッフ別に正しく分離されていることの検証。
+  check('S2 7月 expV2（P3の2回目・見込み）', s2Jul.expV2, 1);
+  check('S1 7月 expV2 は S2(P3) と混ざらず1のまま', s1Jul.expV2, 1);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);

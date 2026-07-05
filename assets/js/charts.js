@@ -256,6 +256,76 @@
     });
     if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si) }; }));
   }
+  // ==================== CLUSTERED STACKED COLUMNS ==========================
+  // Like columns({stacked:true}) but bars are grouped into visual clusters
+  // (e.g. one cluster per month, one stacked bar per staff inside it): a
+  // bigger gap separates clusters than separates bars within one, and each
+  // cluster gets a single shared label instead of one label per bar. Keeps
+  // related bars visually adjacent instead of spreading everything evenly
+  // across the whole width (which reads as unrelated, disconnected columns).
+  // opts: { groups, clusterSize, subLabels?, subColors?,
+  //         series:[{name,color,opacity?,values}] (flat, cluster-major then
+  //         sub-index-minor, length = groups.length*clusterSize),
+  //         yMax?, valueFmt?, yFmt?, height? }
+  function columnClusters(container, opts) {
+    var w = width(container), h = opts.height || 260;
+    var padL = opts.padL || 44, padR = 14, padT = 18, padB = 44;
+    var svg = mount(container, w, h);
+    var groups = opts.groups, series = opts.series, clusterSize = opts.clusterSize || 1;
+    var nClusters = groups.length, nBars = nClusters * clusterSize;
+    var plotW = w - padL - padR, plotH = h - padT - padB;
+    var totals = [];
+    for (var bi0 = 0; bi0 < nBars; bi0++) totals.push(series.reduce(function (a, s) { return a + Math.max(0, s.values[bi0] || 0); }, 0));
+    var maxV = opts.yMax || niceMax(Math.max.apply(null, totals.concat([1])));
+    var yat = function (v) { return padT + plotH - (v / maxV) * plotH; };
+    var clusterBand = plotW / nClusters, GAP = 2, innerGap = 4;
+
+    for (var g = 0; g <= 4; g++) {
+      var yv = maxV * g / 4, y = yat(yv);
+      svg.appendChild(svgEl('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: ink.grid(), 'stroke-width': 1 }));
+      var lab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': 11 });
+      lab.setAttribute('font-variant-numeric', 'tabular-nums'); lab.textContent = (opts.yFmt || fmtCompact)(yv); svg.appendChild(lab);
+    }
+
+    var barW = Math.max(6, Math.min(22, (clusterBand * 0.72 - innerGap * (clusterSize - 1)) / clusterSize));
+    // Per-bar text labels need real room to stay legible; below that, skip the
+    // text and rely on the color tick (still readable at any width) plus the
+    // tooltip. Prevents adjacent labels merging into unreadable text on narrow
+    // (mobile) screens.
+    var showSubLabels = !!opts.subLabels && (clusterBand / clusterSize) >= 24;
+    groups.forEach(function (glabel, ci) {
+      var clusterCx = padL + clusterBand * ci + clusterBand / 2;
+      var groupInnerW = barW * clusterSize + innerGap * (clusterSize - 1);
+      var t = svgEl('text', { x: clusterCx, y: h - (showSubLabels ? 25 : 12), 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11, 'font-weight': 600 });
+      t.textContent = glabel; svg.appendChild(t);
+      for (var k = 0; k < clusterSize; k++) {
+        var bi = ci * clusterSize + k;
+        var bx = clusterCx - groupInnerW / 2 + k * (barW + innerGap);
+        if (showSubLabels) {
+          var slab = svgEl('text', { x: bx + barW / 2, y: h - 11, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 9.5 });
+          slab.textContent = opts.subLabels[bi]; svg.appendChild(slab);
+        }
+        if (opts.subColors) {
+          svg.appendChild(svgEl('rect', { x: bx, y: padT + plotH + 3, width: barW, height: 2.5, rx: 1.25, fill: opts.subColors[bi] }));
+        }
+        var acc = 0;
+        series.forEach(function (s, si) {
+          var v = Math.max(0, s.values[bi] || 0); if (v <= 0) return;
+          var y0 = yat(acc), y1 = yat(acc + v); acc += v;
+          var rectH = Math.max(0, y0 - y1 - GAP);
+          var isTop = (function () { for (var kk = si + 1; kk < series.length; kk++) if ((series[kk].values[bi] || 0) > 0) return false; return true; })();
+          var rect = svgEl('rect', { x: bx, y: y1 + GAP, width: barW, height: 0, fill: s.color || seriesColor(si), rx: isTop ? 3 : 0 });
+          if (s.opacity != null) rect.setAttribute('fill-opacity', s.opacity);
+          rect.style.cursor = 'default'; svg.appendChild(rect);
+          animateAttr(rect, 'height', 0, rectH, 700, ci * 40 + si * 20);
+          animateAttr(rect, 'y', y0, y1 + GAP, 700, ci * 40 + si * 20);
+          bindBarTip(rect, svg, w, glabel + (opts.subLabels ? ' ・ ' + opts.subLabels[bi] : ''), s, si, v, opts);
+        });
+      }
+    });
+    if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si) }; }));
+  }
+
   function bindBarTip(rect, svg, w, glabel, s, si, v, opts) {
     rect.addEventListener('mouseenter', function (ev) {
       rect.style.filter = 'brightness(1.06)';
@@ -468,7 +538,7 @@
 
   global.KATE = global.KATE || {};
   global.KATE.charts = {
-    lineArea: lineArea, columns: columns, donut: donut, funnel: funnel, heatmap: heatmap,
+    lineArea: lineArea, columns: columns, columnClusters: columnClusters, donut: donut, funnel: funnel, heatmap: heatmap,
     hbars: hbars, scatter: scatter, gauge: gauge, meter: meter, sparkline: sparkline, countUp: countUp,
     fmt: { int: fmtInt, yen: fmtYen, compact: fmtCompact, pct: fmtPct }, seriesColor: seriesColor, cssVar: cssVar,
     setInstant: function (b) { instant = !!b; }

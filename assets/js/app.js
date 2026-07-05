@@ -117,7 +117,7 @@
       col: 'col-5', title: '定着・リピート',
       sub: s.maturity.applied ? 'リピート率・固定化率は成熟顧客 ' + s.maturity.matureCustomers + '人が母数' : '来店顧客 ' + s.customers + '人が母数',
       body: '<div id="mRepeat" data-kpi="repeat-rate"></div><div id="mNext" data-kpi="next-reserve-rate"></div><div id="mFix" data-kpi="fixation-rate"></div>' +
-        '<div class="note-inline" style="margin-top:10px">来店周期の中央値 <b>' + s.visitCycleMedianDays + '日</b>。目安ラインは業界基準値です。</div>' +
+        '<div class="note-inline" style="margin-top:10px">来店周期の中央値 <b>' + s.visitCycleMedianDays + '日</b>。</div>' +
         (matNote ? '<div class="note-inline" style="margin-top:5px">' + matNote + '</div>' : '')
     });
     html += card({
@@ -204,7 +204,7 @@
       C.columns(el, {
         groups: s.newMix.map(function (m) { return monthShort(m.m); }), stacked: true,
         series: [
-          { name: '新規', color: cvar('--series-1'), values: s.newMix.map(function (m) { return m.new; }) },
+          { name: '新規', color: cvar('--funnel-2'), values: s.newMix.map(function (m) { return m.new; }) },
           { name: '2回目', color: cvar('--funnel-3'), values: s.newMix.map(function (m) { return m.v2; }) },
           { name: '3回目', color: cvar('--funnel-4'), values: s.newMix.map(function (m) { return m.v3; }) },
           { name: '4回目以上', color: cvar('--funnel-5'), values: s.newMix.map(function (m) { return m.v4; }) }
@@ -318,7 +318,7 @@
       });
     });
 
-    html += card({ col: 'col-12', title: '月次 予約数の比較', sub: '月×スタッフごとの1本。積み上げ＝新規／2回目／3回目／4回目以上（会計済み）＋見込み（受付待ち）', tag: '件', body: chartBox('cStaffRes', 240) });
+    html += card({ col: 'col-12', title: '月次 予約数の比較', sub: '月ごとにスタッフを並べた積み上げ棒。新規／2回目／3回目／4回目以上を色の濃さで表現（会計済み＝濃色、受付待ちの見込み＝同色を薄く表示）', tag: '件', body: chartBox('cStaffRes', 250) });
     html += card({ col: 'col-6', title: '月次 予約ベース売上の比較', tag: '¥', body: chartBox('cStaffRev', 240) });
     html += card({ col: 'col-6', title: '客単価の推移', tag: '¥', body: chartBox('cStaffSpend', 230) });
     var censNote = A.meta.completedOnly ? '　※直近の月は再来待ちのため集計対象外' : '';
@@ -342,30 +342,39 @@
         C.meter(el, { label: '2回目 次回予約取得率', value: st.avg.nextRes2 || 0, display: st.avg.nextRes2 == null ? '—' : pct(st.avg.nextRes2 * 100), color: cvar(STAFF_COLOR[st.name]), target: 0.6, sub: '目安 60%（2回目来店の再予約）' });
       });
     });
-    // 月次予約数の比較: 月×スタッフごとに1本の積み上げ棒（新規/2回目/3回目/4回目以上/見込み）。
-    // 内訳は staff.composition（会計済みの来店回数別）、見込みは monthly.exp。
-    var resGroups = [], resData = { new: [], v2: [], v3: [], v4: [], exp: [] };
-    A.store.monthly.forEach(function (m) {
+    // 月次予約数の比較: 月ごとのクラスターにスタッフ別の積み上げ棒をまとめて表示
+    // （新規/2回目/3回目/4回目以上、会計済み＝濃色・受付待ち＝同色を薄くして重畳）。
+    // 月×スタッフを横並びのフラット軸にすると隣の月まで距離が均等になり
+    // 「どの2本が同じ月か」が読み取りにくいため、月を1クラスターにまとめ、
+    // ラベルも月1回＋スタッフ名のみに簡略化する。
+    var activeMonths = A.store.monthly.filter(function (m) {
+      return staff.some(function (st) { var sm = st.monthly.filter(function (x) { return x.m === m.m; })[0]; return sm && sm.res; });
+    });
+    var resGroups = activeMonths.map(function (m) { return monthShort(m.m); });
+    var resData = { new: [], v2: [], v3: [], v4: [], expNew: [], expV2: [], expV3: [], expV4: [] };
+    var resSubLabels = [], resSubColors = [];
+    activeMonths.forEach(function (m) {
       staff.forEach(function (st) {
-        var sm = st.monthly.filter(function (x) { return x.m === m.m; })[0];
-        if (!sm || !sm.res) return;
-        var cp = st.composition.filter(function (x) { return x.m === m.m; })[0] || { new: 0, v2: 0, v3: 0, v4: 0 };
-        resGroups.push(monthShort(m.m) + ' ' + st.name);
+        var cp = st.composition.filter(function (x) { return x.m === m.m; })[0] || { new: 0, v2: 0, v3: 0, v4: 0, expNew: 0, expV2: 0, expV3: 0, expV4: 0 };
         resData.new.push(cp.new); resData.v2.push(cp.v2); resData.v3.push(cp.v3); resData.v4.push(cp.v4);
-        resData.exp.push(sm.exp);
+        resData.expNew.push(cp.expNew); resData.expV2.push(cp.expV2); resData.expV3.push(cp.expV3); resData.expV4.push(cp.expV4);
+        resSubLabels.push(st.name); resSubColors.push(cvar(STAFF_COLOR[st.name]));
       });
     });
     draw('cStaffRes', function (el) {
-      C.columns(el, {
-        groups: resGroups, stacked: true,
+      C.columnClusters(el, {
+        groups: resGroups, clusterSize: staff.length, subLabels: resSubLabels, subColors: resSubColors,
         series: [
-          { name: '新規', color: cvar('--series-1'), values: resData.new },
+          { name: '新規', color: cvar('--funnel-2'), values: resData.new },
           { name: '2回目', color: cvar('--funnel-3'), values: resData.v2 },
           { name: '3回目', color: cvar('--funnel-4'), values: resData.v3 },
           { name: '4回目以上', color: cvar('--funnel-5'), values: resData.v4 },
-          { name: '見込み（受付待ち）', color: cvar('--funnel-2'), values: resData.exp }
+          { name: '新規（見込み）', color: cvar('--funnel-2'), opacity: 0.45, values: resData.expNew },
+          { name: '2回目（見込み）', color: cvar('--funnel-3'), opacity: 0.45, values: resData.expV2 },
+          { name: '3回目（見込み）', color: cvar('--funnel-4'), opacity: 0.45, values: resData.expV3 },
+          { name: '4回目以上（見込み）', color: cvar('--funnel-5'), opacity: 0.45, values: resData.expV4 }
         ],
-        valueFmt: function (v) { return v + '件'; }, height: 240
+        valueFmt: function (v) { return v + '件'; }, height: 250
       });
     });
     draw('cStaffRev', function (el) { C.columns(el, { groups: months, series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.monthly.map(function (m) { return m.rev; }) }; }), valueFmt: function (v) { return yen(v); }, yFmt: F.compact, height: 240 }); });
@@ -496,11 +505,6 @@
     });
     html += card({ col: 'col-6', title: '月次コホート リピート率', sub: '初回獲得月ごとの2回目到達', tag: '%', body: chartBox('cTCohortR', 220) });
     html += card({ col: 'col-6', title: '月次コホート LTV', sub: '初回獲得月ごとの累計売上', tag: '¥', body: chartBox('cTCohortL', 220) });
-    html += card({ col: 'col-12', title: '人気クーポン TOP', sub: '初回獲得クーポン別のリピート率とLTV', body: '<div id="cCoupon"></div>' });
-    if (t.menuTop.length) {
-      var menuSub = t.nextResMenuRatio != null ? '来店のうち次回予約割メニューの比率 ' + pct(t.nextResMenuRatio * 100, 1) : '件数の多い順';
-      html += card({ col: 'col-12', title: '人気メニュー TOP', sub: menuSub, body: '<div id="cMenu"></div>' });
-    }
     if (t.couponRatio != null) {
       html += card({ col: 'col-6', title: 'クーポン依存度', sub: '来店のうちクーポンを利用した割合', body: '<div id="mCoupon"></div>' });
     }
@@ -521,15 +525,6 @@
     draw('cTCohortL', function (el) {
       C.columns(el, { groups: t.monthlyCohort.map(function (c) { return monthShort(c.m); }), series: [{ name: 'LTV', color: cvar('--series-4'), values: t.monthlyCohort.map(function (c) { return c.ltv; }) }], valueFmt: yen, yFmt: F.compact, height: 220 });
     });
-    draw('cCoupon', function (el) {
-      var top = t.coupons.slice(0, 8);
-      C.hbars(el, { items: top.map(function (c) { return { label: shortCoupon(c.coupon), value: c.n, sub: 'リピート ' + pct(c.repeat * 100, 0) + ' ・ LTV ' + yen(c.ltv), color: cvar('--series-1') }; }), valueFmt: function (v) { return v + '人'; } });
-    });
-    if (t.menuTop.length) {
-      draw('cMenu', function (el) {
-        C.hbars(el, { items: t.menuTop.map(function (m) { return { label: shortCoupon(m.menu), value: m.n, sub: yen(m.amount), color: cvar('--series-2') }; }), valueFmt: function (v) { return v + '件'; } });
-      });
-    }
     if (t.couponRatio != null) {
       draw('mCoupon', function (el) {
         C.meter(el, { label: 'クーポン利用来店', value: t.couponRatio, display: pct(t.couponRatio * 100, 1), color: cvar('--series-3') });
@@ -573,7 +568,6 @@
       });
     });
   }
-  function shortCoupon(s) { s = String(s); return s.length > 28 ? s.slice(0, 27) + '…' : s; }
 
   // ============================ RFM ========================================
   var rfmSort = { key: 'M', dir: -1 };
