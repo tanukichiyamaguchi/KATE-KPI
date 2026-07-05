@@ -354,11 +354,48 @@
     // Per-VISIT ordinal (not the customer's first-*effective*-month binning used
     // by `monthly.new` above), so a customer whose very first interaction was a
     // future booking doesn't get miscounted as "new" in some other month.
+    // v2/v3/v4 = 2回目/3回目/4回目以上の来店数 (repeat = v2+v3+v4, kept for subs).
     var newMix = months.map(function (mo) {
       var vis = visitedRows.filter(function (r) { return r.ym === mo; });
-      var newN = vis.filter(function (r) { return r._ord === 1; }).length;
-      return { m: mo, new: newN, repeat: vis.length - newN };
+      var counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
+      vis.forEach(function (r) { counts[Math.min(4, Math.max(1, r._ord || 1))]++; });
+      return { m: mo, new: counts[1], v2: counts[2], v3: counts[3], v4: counts[4], repeat: counts[2] + counts[3] + counts[4] };
     });
+
+    // ---- 期間バケット売上（実績のみ・元要望準拠） -------------------------------
+    // 直近3ヶ月＝今月（基準日の月）を含まない確定3ヶ月。売上は会計済みのΣのみ。
+    // monthly = Σ売上 ÷ 来店のあった月数（新任スタッフがバケット内の一部月しか
+    // 働いていない場合に平均を不当に下げないため）。daily = Σ売上 ÷ 営業日
+    // （その期間に1件でも会計があったユニーク日数）。データが無いバケットは null。
+    var currentYm = ym(asOf);
+    var prevYm = (function () { var p = currentYm.split('-'); var d = new Date(+p[0], +p[1] - 2, 1); return ym(d); })();
+    var last3Months = months.filter(function (mo) { return mo < currentYm; }).slice(-3);
+    function bucketOf(vRows, monthList) {
+      var inBucket = vRows.filter(function (r) { return monthList.indexOf(r.ym) !== -1; });
+      if (!inBucket.length) return { months: monthList, monthly: null, daily: null };
+      var rev = inBucket.reduce(function (s, r) { return s + r.kaikei; }, 0);
+      var activeMonths = uniqCount(inBucket, function (r) { return r.ym; });
+      var bizDays = uniqCount(inBucket.filter(function (r) { return r.date; }), function (r) { return r.date.getTime(); });
+      return { months: monthList, monthly: Math.round(rev / activeMonths), daily: bizDays ? Math.round(rev / bizDays) : null };
+    }
+    function periodStats(vRows) {
+      return {
+        last3: bucketOf(vRows, last3Months),
+        prevMonth: bucketOf(vRows, [prevYm]),
+        currentMonth: bucketOf(vRows, [currentYm])
+      };
+    }
+    var revPeriods = periodStats(visitedRows);
+    // 店販の期間バケット（月間のみ）: Σ shohanAmt を同じバケットで集計。
+    function retailBucket(monthList) {
+      var inBucket = visitedRows.filter(function (r) { return monthList.indexOf(r.ym) !== -1; });
+      var amt = inBucket.reduce(function (s, r) { return s + r.shohanAmt; }, 0);
+      var activeMonths = uniqCount(inBucket, function (r) { return r.ym; });
+      return activeMonths ? Math.round(amt / activeMonths) : null;
+    }
+    var retailPeriods = retail.hasAmount ? {
+      last3: retailBucket(last3Months), prevMonth: retailBucket([prevYm]), currentMonth: retailBucket([currentYm])
+    } : null;
 
     // ---- Cohort (first-visit month → 2nd-visit reach) -----------------------
     // A cohort month whose customers haven't yet had 45 days to return is dropped
@@ -439,7 +476,8 @@
     // corresponding personal-best/milestone fields below are numbers or null
     // (a salon that never records retail sales shouldn't show a false "0件").
     var anyRetail = visitedRows.some(function (r) { return r.hasRetail; });
-    var currentYm = ym(asOf);   // the in-progress month — excluded from personal-best comparisons
+    // currentYm (the in-progress month, excluded from personal-best comparisons)
+    // is defined up with the period buckets.
 
     var staff = staffNames.map(function (name) {
       var mrows = staffMonthly(name);
@@ -477,6 +515,10 @@
       };
       var staffVis = rows.filter(function (r) { return r.staff === name && r.isVisited; });
       var retail = retailStats(staffVis);
+      // 平均店販売上/月 = Σ月次店販金額 ÷ active月数 (店販金額データが無ければ null)
+      retail.avgMonthlyAmount = anyRetail && active.length
+        ? Math.round(active.reduce(function (s, r) { return s + (r.retailAmount || 0); }, 0) / active.length)
+        : null;
       // visit-count composition per month
       var comp = mrows.map(function (r, i) {
         var mo = r.m;
@@ -509,16 +551,13 @@
         visits: pickBest(confirmedActive, function (r) { return r.actual; }),
         rev: pickBest(confirmedActive, function (r) { return r.revActual; }),
         spend: pickBest(confirmedActive, function (r) { return r.spend || 0; }),
-        retail: anyRetail ? pickBest(confirmedActive, function (r) { return r.retailBuyingVisits; }) : null,
+        retail: anyRetail ? pickBest(confirmedActive, function (r) { return r.retailAmount || 0; }) : null,   // 月間店販売上（金額）
         latestIsBest: {
           visits: isLatestBest(confirmedActive, function (r) { return r.actual; }),
           rev: isLatestBest(confirmedActive, function (r) { return r.revActual; }),
           spend: isLatestBest(confirmedActive, function (r) { return r.spend || 0; }),
-          retail: anyRetail && isLatestBest(confirmedActive, function (r) { return r.retailBuyingVisits; })
+          retail: anyRetail && isLatestBest(confirmedActive, function (r) { return r.retailAmount || 0; })
         }
-      };
-      var cumulative = {
-        retailVisits: anyRetail ? mrows.reduce(function (s, r) { return s + r.retailBuyingVisits; }, 0) : null
       };
       // 育てた常連: customers this staff first served who went on to become mature
       // regulars (Fres>=3), using the same 45-day maturity gate as store-level fixation.
@@ -527,7 +566,8 @@
       return {
         name: name, avg: avg, acquired: acqAll.length, matureAcquired: acqMature.length,
         reach2: reach(2), reach3: reach(3), reach4: reach(4), retail: retail, monthly: mrows, composition: comp,
-        personalBest: personalBest, cumulative: cumulative, regulars3: regulars3,
+        personalBest: personalBest, regulars3: regulars3,
+        revPeriods: periodStats(staffVis),
         utilization: utilizationMonthly(mrows)
       };
     });
@@ -649,7 +689,8 @@
         maturity: { applied: !hasFuture, days: REPEAT_MATURITY_DAYS, matureCustomers: matureN, totalCustomers: baseN },
         funnel: funnel, churn: churn, cancel: cancel, route: route, retail: retail,
         ltv: { current: Math.round(ltv.current), predicted: Math.round(ltv.predicted), expectedVisits: round(ltv.expectedVisits, 2), observedVisits: round(ltv.observedVisits, 2) },
-        monthly: monthly, cohort: cohort, visitCountBreakdown: visitCountBreakdown, newMix: newMix, serviceRetailMonthly: serviceRetailMonthly
+        monthly: monthly, cohort: cohort, visitCountBreakdown: visitCountBreakdown, newMix: newMix, serviceRetailMonthly: serviceRetailMonthly,
+        revPeriods: revPeriods, retailPeriods: retailPeriods
       },
       staff: staff,
       trend: {
