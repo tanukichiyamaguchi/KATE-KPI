@@ -26,6 +26,15 @@
   function yenCompact(n) { return '¥' + F.compact(n); }
   function pct(n, d) { return (n).toFixed(d == null ? 1 : d) + '%'; }
   function monthShort(ym) { var m = ym.split('-'); return (+m[1]) + '月'; }
+  // Human date formatting: raw ISO strings ("2026-07-03") read as machine output
+  // to the salon staff this dashboard is for — render 年/月/日 instead.
+  function ymJa(ym) { var p = String(ym).split('-'); return (+p[0]) + '年' + (+p[1]) + '月'; }
+  function ymdJa(d) { var p = String(d).split('-'); return p.length >= 3 ? (+p[0]) + '年' + (+p[1]) + '月' + (+p[2]) + '日' : ymJa(d); }
+  function ymRangeJa(a, b) {
+    if (!a || !b) return '';
+    var pa = String(a).split('-'), pb = String(b).split('-');
+    return pa[0] === pb[0] ? ymJa(a) + '〜' + (+pb[1]) + '月' : ymJa(a) + '〜' + ymJa(b);
+  }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   // entity-locked colors
@@ -133,7 +142,7 @@
   // ============================ OVERVIEW ===================================
   function renderOverview() {
     var A = state.analytics, s = A.store, t = A.trend;
-    var head = '<div class="view-title">店舗ダッシュボード</div><div class="view-lead">' + esc(A.meta.periodStart) + '〜' + esc(A.meta.periodEnd) + ' ／ 来店顧客 ' + esc(s.customers) + '人・基準日 ' + esc(A.meta.asOf) + '。</div>';
+    var head = '<div class="view-title">店舗ダッシュボード</div><div class="view-lead">' + esc(ymRangeJa(A.meta.periodStart, A.meta.periodEnd)) + ' ／ 来店顧客 ' + esc(s.customers) + '人・基準日 ' + esc(ymdJa(A.meta.asOf)) + '。</div>';
     var html = '';
 
     // KPI tile row (revenue KGI & effective-reservation count intentionally omitted)
@@ -171,7 +180,7 @@
       body: chartBox('cTCohortR', 230)
     });
     html += card({
-      col: 'col-12', title: '月次コホート LTV' + help('初回来店した月ごとに顧客をグループ化し、そのグループの現時点までの累計売上を平均したもの。'), sub: '初回獲得月ごとの累計売上', tag: '¥',
+      col: 'col-6', title: '月次コホート LTV' + help('初回来店した月ごとに顧客をグループ化し、そのグループの現時点までの累計売上を平均したもの。'), sub: '初回獲得月ごとの累計売上', tag: '¥',
       body: chartBox('cTCohortL', 220)
     });
 
@@ -197,7 +206,7 @@
     var lastMix = s.newMix.filter(function (m) { return m.new + m.repeat > 0; }).slice(-1)[0];
     var mixNote = lastMix && (lastMix.new + lastMix.repeat) ? '直近月（' + monthShort(lastMix.m) + '）の再来比率 ' + pct(lastMix.repeat / (lastMix.new + lastMix.repeat) * 100, 0) : '月次の新規・再来来店数';
     html += card({ col: 'col-6', title: '新規・再来' + help('月ごとの来店を、その顧客にとって何回目の来店かで内訳表示（新規／2回目／3回目／4回目以上）。来店の実際の順番で判定し、予約段階の情報には依存しない。'), sub: mixNote + '　※再来はX回目の内訳つき', tag: '件', body: chartBox('cNewMix', 210) });
-    html += card({ col: 'col-12', title: '来店回数の構成' + help('全期間を通じて、来店回数（1回目・2回目・3回目・4回目以上）ごとの来店件数と、その回数における平均客単価。'), sub: '回数別', body: '<div id="cVisitComp"></div>' });
+    html += card({ col: 'col-6', title: '来店回数の構成' + help('全期間を通じて、来店回数（1回目・2回目・3回目・4回目以上）ごとの来店件数と、その回数における平均客単価。'), sub: '回数別', body: '<div id="cVisitComp"></div>' });
 
     mount('overview', head + '<div class="grid">' + html + '</div>');
 
@@ -283,7 +292,7 @@
         return '<td>' + (v != null ? yen(v) : '—') + '</td>';
       }).join('') + '</tr>';
     }
-    return '<div class="table-wrap"><table class="kate-table"' + (dataKpiPrefix ? ' data-kpi="' + dataKpiPrefix + '"' : '') + '><thead><tr><th style="text-align:left"></th>' +
+    return '<div class="table-wrap"><table class="kate-table period-table"' + (dataKpiPrefix ? ' data-kpi="' + dataKpiPrefix + '"' : '') + '><thead><tr><th style="text-align:left"></th>' +
       cols.map(function (c) { return '<th>' + c.label + '</th>'; }).join('') + '</tr></thead><tbody>' +
       row('平均月間売上', function (b) { return b.monthly; }) +
       row('平均日間売上', function (b) { return b.daily; }) +
@@ -762,8 +771,8 @@
         '<div><span>取込件数</span><b class="tnum">' + F.int(m.totalRows) + '件</b></div>' +
         '<div><span>有効予約</span><b class="tnum">' + F.int(A.store.effectiveReservations) + '件</b></div>' +
         '<div><span>来店顧客</span><b class="tnum">' + F.int(A.store.customers) + '人</b></div>' +
-        '<div><span>対象期間</span><b>' + esc(m.periodStart) + ' 〜 ' + esc(m.periodEnd) + '</b></div>' +
-        '<div><span>集計基準日</span><b>' + esc(m.asOf) + '</b></div></div>' +
+        '<div><span>対象期間</span><b>' + esc(ymRangeJa(m.periodStart, m.periodEnd)) + '</b></div>' +
+        '<div><span>集計基準日</span><b>' + esc(ymdJa(m.asOf)) + '</b></div></div>' +
         (m.undatedRows ? '<div class="status-line" style="margin-top:12px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' + F.int(m.undatedRows) + '件は来店日を読み取れず、日付ベースの集計から除外しました。</div>' : '')
     });
     html += card({
@@ -913,7 +922,7 @@
   }
 
   function updateChrome() {
-    $('#asof').textContent = '基準日 ' + (state.analytics.meta.asOf || '');
+    $('#asof').textContent = state.analytics.meta.asOf ? '基準日 ' + ymdJa(state.analytics.meta.asOf) : '';
     $('#dataBadgeText').textContent = state.fileName || state.source;
   }
   function setTheme(t) {
