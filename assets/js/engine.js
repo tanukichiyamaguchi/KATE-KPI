@@ -343,7 +343,7 @@
       return {
         m: mo, res: res, actual: vis.length, exp: fut.length, rev: revActual + revExpected,
         revActual: revActual, revExpected: revExpected,
-        spend: vis.length ? Math.round(revActual / vis.length) : 0,   // 実績客単価のみ（0来店月は0＝スパークライン安全）
+        spend: res ? Math.round((revActual + revExpected) / res) : 0,   // 予約ベース客単価（元ワークブック準拠・0予約月は0＝スパークライン安全）
         new: newByMonth[mo] || 0,
         cancel: conf.length ? canc.length / conf.length : null,
         nextRes: vis.length ? nextCnt / vis.length : null
@@ -404,7 +404,7 @@
         var immature = monthImmature(mo);          // right-censored recent month → not measurable
         return {
           m: mo, res: res, actual: vis.length, exp: fut.length, rev: rev, revActual: revActual,
-          spend: vis.length ? Math.round(revActual / vis.length) : null,   // 実績客単価のみ（将来予約金額は含めない）
+          spend: res ? Math.round(rev / res) : null,   // 予約ベース客単価＝予約ベース売上÷予約数（元ワークブック準拠）
           new: newN,
           cancel: confVisitors.length ? canc.length / confVisitors.length : null,
           cancelCnt: canc.length, cancelDen: confVisitors.length,
@@ -453,15 +453,23 @@
       // "failed" to retain anyone, there just hasn't been time to find out.
       function reach(n) { return acqMature.length ? acqMature.filter(function (c) { return c.Fres >= n; }).length / acqMature.length : null; }
       var mature = active.filter(function (r) { return !r.nextResImmature; });
+      // Mean-of-months (元ワークブック準拠): simple average of the per-month values
+      // over months where the value is defined — NOT visit-weighted (pooled). This
+      // matches the salon's published 各スタッフ workbook exactly.
+      function meanMonths(list, valueFn) {
+        var vals = [];
+        list.forEach(function (r) { var v = valueFn(r); if (v != null && isFinite(v)) vals.push(v); });
+        return vals.length ? vals.reduce(function (a, b) { return a + b; }, 0) / vals.length : null;
+      }
       var avg = {
         months: active.length,
         visitsPerMonth: active.length ? round(active.reduce(function (s, r) { return s + r.actual; }, 0) / active.length, 1) : 0,
         revPerMonth: active.length ? Math.round(active.reduce(function (s, r) { return s + r.rev; }, 0) / active.length) : 0,
-        spend: (function () { var v = active.reduce(function (s, r) { return s + r.actual; }, 0); var rv = active.reduce(function (s, r) { return s + r.revActual; }, 0); return v ? Math.round(rv / v) : 0; })(),
+        spend: (function () { var m = meanMonths(active, function (r) { return r.spend; }); return m == null ? 0 : Math.round(m); })(),
         newPerMonth: active.length ? round(active.reduce(function (s, r) { return s + r.new; }, 0) / active.length, 1) : 0,
-        cancel: (function () { var num = active.reduce(function (s, r) { return s + r.cancelCnt; }, 0); var den = active.reduce(function (s, r) { return s + r.cancelDen; }, 0); return den ? num / den : 0; })(),
-        nextRes: (function () { var num = mature.reduce(function (s, r) { return s + r.nextCnt; }, 0); var den = mature.reduce(function (s, r) { return s + r.visN; }, 0); return den ? num / den : null; })(),
-        nextRes2: (function () { var num = mature.reduce(function (s, r) { return s + r.next2Cnt; }, 0); var den = mature.reduce(function (s, r) { return s + r.vis2N; }, 0); return den ? num / den : null; })(),
+        cancel: (function () { var m = meanMonths(active, function (r) { return r.cancel; }); return m == null ? 0 : m; })(),
+        nextRes: meanMonths(active, function (r) { return r.nextRes; }),
+        nextRes2: meanMonths(active, function (r) { return r.nextRes2; }),
         // Denominators for the min-N gate on 次の一手 (P3-4) — Σ mature-month visits,
         // not months, since a candidate needs enough *visits* behind it to be trustworthy.
         nextResN: mature.reduce(function (s, r) { return s + r.visN; }, 0),

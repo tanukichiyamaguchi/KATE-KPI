@@ -111,20 +111,21 @@ h('■ Fixture C: revActual/revExpected の分解');
   check('monthly.rev (維持: revActual+revExpected)', m.rev, 45000);
   check('monthly.actual', m.actual, 2);
   check('monthly.exp', m.exp, 2);
-  // spend is actual-only now: 25000/2 = 12500 (not blended with future money)
-  check('monthly.spend (実績のみ)', m.spend, 12500);
+  // spend is 予約ベース (元ワークブック準拠): 予約ベース売上 45000 ÷ 予約数 4 = 11250
+  check('monthly.spend (予約ベース客単価)', m.spend, 11250);
 }
 
 // ============================================================================
-// Fixture D — スタッフ平均の pooled 化 (P1-5): mean-of-months ではなく Σ分子/Σ分母
+// Fixture D — スタッフ平均は mean-of-months（元ワークブック準拠・pooled ではない）
 // ============================================================================
 // Staff 'X': month A (2 visits, 1 got-next => 50%), month B (8 visits, 6 got-next
-// => 75%). Mean-of-months would give (0.5+0.75)/2=0.625; pooled gives (1+6)/(2+8)=0.7.
+// => 75%). Mean-of-months gives (0.5+0.75)/2=0.625; visit-weighted pooled would
+// give (1+6)/(2+8)=0.7. The workbook uses mean-of-months, so 0.625 is expected.
 // "Got next" is manufactured by giving those customers a later visit in 2026-08
 // under a different staff ('Y') so it doesn't pollute X's own monthly counts.
 // A dummy future row elsewhere sets hasFuture=true so month-maturity never gates
-// this fixture (isolating the pooling behaviour from the P1-2 concern).
-h('■ Fixture D: スタッフ平均の pooled 次回予約取得率');
+// this fixture (isolating the averaging behaviour from the P1-2 concern).
+h('■ Fixture D: スタッフ平均は mean-of-months 次回予約取得率');
 {
   const rows = [
     rec({ staff: 'X', custKey: 'XA1', date: '2026-05-01', kaikeiTotal: 6000 }),
@@ -156,29 +157,29 @@ h('■ Fixture D: スタッフ平均の pooled 次回予約取得率');
   const monthB = x.monthly.find(m => m.m === '2026-06');
   check('monthA.nextRes (1/2)', monthA.nextRes, 0.5);
   check('monthB.nextRes (6/8)', monthB.nextRes, 0.75);
-  // pooled: (1+6)/(2+8) = 0.7 — NOT the mean-of-months 0.625
-  check('avg.nextRes は pooled (0.7、単純平均0.625ではない)', x.avg.nextRes, 0.7);
+  // mean-of-months: (0.5+0.75)/2 = 0.625 — NOT the visit-weighted pooled 0.7
+  check('avg.nextRes は mean-of-months (0.625、加重0.7ではない)', x.avg.nextRes, 0.625);
 }
 
 // ============================================================================
-// Fixture E (oracle) — サンプルデータの pooled 期待値を固定（P1-5 の回帰オラクル）
+// Fixture E (oracle) — サンプルデータの mean-of-months 期待値を固定（回帰オラクル）
 // ============================================================================
-// store.retail / staff.avg.{spend,nextRes,nextRes2} have no ground-truth.json
-// coverage (see tests/validate.js). These values were computed by the fixed
-// engine against the bundled sample data at implementation time and are pinned
+// staff.avg.{spend,nextRes,nextRes2} have no ground-truth.json coverage (see
+// tests/validate.js). These mean-of-months values reproduce the salon's published
+// 各スタッフ workbook (momo は 客単価6270・次回0.602 まで完全一致) and are pinned
 // here so a future regression is caught even without an external oracle.
-h('■ Fixture E: サンプルデータの pooled 値を固定（回帰オラクル）');
+h('■ Fixture E: サンプルデータの mean-of-months 値を固定（回帰オラクル）');
 {
   require(path.join(__dirname, '..', 'assets', 'js', 'sample-data.js'));
   const data = globalThis.KATE.SAMPLE_RESERVATIONS;
   const R = engine.compute(data, { asOf: '2026-07-03' });
   const momo = R.staff.find(s => s.name === 'momo');
   const aoi = R.staff.find(s => s.name === 'aoi');
-  check('momo avg.spend', momo.avg.spend, 6071);
-  check('momo avg.nextRes', momo.avg.nextRes, 0.5783898305084746, 1e-6);
-  check('momo avg.nextRes2', momo.avg.nextRes2, 0.46715328467153283, 1e-6);
-  check('aoi avg.spend', aoi.avg.spend, 6876);
-  check('aoi avg.nextRes', aoi.avg.nextRes, 0.575, 1e-6);
+  check('momo avg.spend (ワークブック 6270 と一致)', momo.avg.spend, 6270);
+  check('momo avg.nextRes (ワークブック 0.602 と一致)', momo.avg.nextRes, 0.6019287506047886, 1e-6);
+  check('momo avg.nextRes2', momo.avg.nextRes2, 0.5613041112155543, 1e-6);
+  check('aoi avg.spend', aoi.avg.spend, 6842);
+  check('aoi avg.nextRes', aoi.avg.nextRes, 0.7733333333333333, 1e-6);
   check('aoi avg.nextRes2', aoi.avg.nextRes2, 0.5, 1e-6);
   check('store.retail.customerRatio (人ベース)', R.store.retail.customerRatio, 11 / 359, 1e-6);
   check('store.retail.attachRate (会計ベース)', R.store.retail.attachRate, 11 / 552, 1e-6);
