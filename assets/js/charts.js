@@ -233,12 +233,12 @@
         series.forEach(function (s, si) {
           var v = Math.max(0, s.values[gi]); if (v <= 0) return;
           var y0 = yat(acc), y1 = yat(acc + v); acc += v;
-          var rectH = Math.max(0, y0 - y1 - GAP);
+          var rectH = Math.max(0, y0 - y1);
           var isTop = (function () { for (var k = si + 1; k < series.length; k++) if (series[k].values[gi] > 0) return false; return true; })();
-          var rect = svgEl('rect', { x: x, y: y1 + GAP, width: barW, height: 0, fill: s.color || seriesColor(si), rx: isTop ? 4 : 0 });
+          var rect = svgEl('rect', { x: x, y: y1, width: barW, height: 0, fill: s.color || seriesColor(si), rx: isTop ? 4 : 0 });
           rect.style.cursor = 'default'; svg.appendChild(rect);
           animateAttr(rect, 'height', 0, rectH, 700, gi * 40 + si * 30);
-          animateAttr(rect, 'y', y0, y1 + GAP, 700, gi * 40 + si * 30);
+          animateAttr(rect, 'y', y0, y1, 700, gi * 40 + si * 30);
           bindBarTip(rect, svg, w, glabel, s, si, v, opts);
         });
       } else {
@@ -278,7 +278,7 @@
     for (var bi0 = 0; bi0 < nBars; bi0++) totals.push(series.reduce(function (a, s) { return a + Math.max(0, s.values[bi0] || 0); }, 0));
     var maxV = opts.yMax || niceMax(Math.max.apply(null, totals.concat([1])));
     var yat = function (v) { return padT + plotH - (v / maxV) * plotH; };
-    var clusterBand = plotW / nClusters, GAP = 2, innerGap = 4;
+    var clusterBand = plotW / nClusters, innerGap = 4;
 
     for (var g = 0; g <= 4; g++) {
       var yv = maxV * g / 4, y = yat(yv);
@@ -312,13 +312,13 @@
         series.forEach(function (s, si) {
           var v = Math.max(0, s.values[bi] || 0); if (v <= 0) return;
           var y0 = yat(acc), y1 = yat(acc + v); acc += v;
-          var rectH = Math.max(0, y0 - y1 - GAP);
+          var rectH = Math.max(0, y0 - y1);
           var isTop = (function () { for (var kk = si + 1; kk < series.length; kk++) if ((series[kk].values[bi] || 0) > 0) return false; return true; })();
-          var rect = svgEl('rect', { x: bx, y: y1 + GAP, width: barW, height: 0, fill: s.color || seriesColor(si), rx: isTop ? 3 : 0 });
+          var rect = svgEl('rect', { x: bx, y: y1, width: barW, height: 0, fill: s.color || seriesColor(si), rx: isTop ? 3 : 0 });
           if (s.opacity != null) rect.setAttribute('fill-opacity', s.opacity);
           rect.style.cursor = 'default'; svg.appendChild(rect);
           animateAttr(rect, 'height', 0, rectH, 700, ci * 40 + si * 20);
-          animateAttr(rect, 'y', y0, y1 + GAP, 700, ci * 40 + si * 20);
+          animateAttr(rect, 'y', y0, y1, 700, ci * 40 + si * 20);
           bindBarTip(rect, svg, w, glabel + (opts.subLabels ? ' ・ ' + opts.subLabels[bi] : ''), s, si, v, opts);
         });
       }
