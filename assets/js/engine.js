@@ -705,7 +705,11 @@
 
     return {
       meta: {
-        asOf: ym(asOf) === null ? null : asOf.toISOString().slice(0, 10),
+        // Format asOf from LOCAL date parts, not toISOString(): parseDate builds
+        // local-midnight Dates, and toISOString converts to UTC — which rolled
+        // the displayed 基準日 back a day for every user east of UTC (Japan saw
+        // 7月2日 for an asOf of 2026-07-03).
+        asOf: ym(asOf) === null ? null : ym(asOf) + '-' + String(asOf.getDate()).padStart(2, '0'),
         periodStart: months[0], periodEnd: months[months.length - 1],
         months: months, staffNames: staffNames,
         totalRows: rows.length,
