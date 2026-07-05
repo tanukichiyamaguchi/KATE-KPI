@@ -252,10 +252,13 @@ h('■ Fixture F: 自己ベスト・累計マイルストーン・育てた常�
   check('personalBest.spend.v（7月8400が最大）', p.personalBest.spend.v, 8400);
   check('personalBest.spend.m', p.personalBest.spend.m === '2026-07' ? 1 : 0, 1);
   check('latestIsBest.spend（7月は5,6月とタイせず単独最大→true）', p.personalBest.latestIsBest.spend ? 1 : 0, 1);
-  check('personalBest.retail.v（6月2件が最大）', p.personalBest.retail.v, 2);
-  check('latestIsBest.retail（7月1件は6月未満→false）', p.personalBest.latestIsBest.retail ? 1 : 0, 0);
+  // retail is amount-based (月間店販売上): May 1000, June 2000+1500=3500, July 1200
+  check('personalBest.retail.v（6月3500円が最大）', p.personalBest.retail.v, 3500);
+  check('personalBest.retail.m', p.personalBest.retail.m === '2026-06' ? 1 : 0, 1);
+  check('latestIsBest.retail（7月1200は6月未満→false）', p.personalBest.latestIsBest.retail ? 1 : 0, 0);
 
-  check('cumulative.retailVisits', p.cumulative.retailVisits, 14);
+  // 平均店販売上/月 = (1000+3500+1200+90000) / active4ヶ月 = 23925
+  check('retail.avgMonthlyAmount', p.retail.avgMonthlyAmount, Math.round((1000 + 3500 + 1200 + 90000) / 4));
   check('regulars3（REG1-3のみ・fillerは単回来店で対象外）', p.regulars3, 3);
 }
 
@@ -277,7 +280,7 @@ h('■ Fixture G: シグナル皆無 / 確定月0件のnull化');
   check('personalBest.visits（確定月0→null）', z.personalBest.visits === null ? 1 : 0, 1);
   check('personalBest.spend（確定月0→null）', z.personalBest.spend === null ? 1 : 0, 1);
   check('personalBest.retail（店販データ皆無→null）', z.personalBest.retail === null ? 1 : 0, 1);
-  check('cumulative.retailVisits（店販データ皆無→null）', z.cumulative.retailVisits === null ? 1 : 0, 1);
+  check('retail.avgMonthlyAmount（店販データ皆無→null）', z.retail.avgMonthlyAmount === null ? 1 : 0, 1);
   check('regulars3（単回来店のみ→0）', z.regulars3, 0);
 }
 
@@ -386,6 +389,64 @@ h('■ Fixture J: durデータ皆無時は utilization = null');
   const R = engine.compute(rows, { asOf: '2026-03-10' });
   const v = R.staff.find(function (s) { return s.name === 'V'; });
   check('utilization（durデータ皆無→null）', v.utilization === null ? 1 : 0, 1);
+}
+
+// ============================================================================
+// Fixture K — 期間バケット売上 (revPeriods/retailPeriods) と newMix の内訳
+// ============================================================================
+// asOf = 2026-07-10（今月=7月）。直近3ヶ月 = 4,5,6月（今月を含まない確定3ヶ月）。
+// 3月は範囲外（バケットに入らないことの検証用）。スタッフ'W'は5月に来店ゼロ
+// →「来店のあった月数」で割る仕様の検証（4,6月のみ ÷2）。
+h('■ Fixture K: 期間バケット売上と newMix 内訳');
+{
+  const rows = [
+    // 3月 (範囲外): W 100,000
+    rec({ staff: 'W', custKey: 'K1', name: 'K1', date: '2026-03-05', kaikeiTotal: 100000 }),
+    // 4月: W 2来店・同日 (営業日1日) 計12,000 / 店販 500
+    rec({ staff: 'W', custKey: 'K2', name: 'K2', date: '2026-04-10', kaikeiTotal: 5000, shohan: 'item', shohanAmount: 500 }),
+    rec({ staff: 'W', custKey: 'K3', name: 'K3', date: '2026-04-10', kaikeiTotal: 7000 }),
+    // 5月: 別スタッフ'V'のみ 8,000 (Wは来店ゼロ月)
+    rec({ staff: 'V', custKey: 'K4', name: 'K4', date: '2026-05-15', kaikeiTotal: 8000 }),
+    // 6月: W 2来店・別日 (営業日2日) 計9,000 / K1の2回目・K2の2回目
+    rec({ staff: 'W', custKey: 'K1', name: 'K1', date: '2026-06-01', kaikeiTotal: 4000 }),
+    rec({ staff: 'W', custKey: 'K2', name: 'K2', date: '2026-06-20', kaikeiTotal: 5000, shohan: 'item', shohanAmount: 1000 }),
+    // 7月 (今月): W 1来店 3,000 / K1の3回目
+    rec({ staff: 'W', custKey: 'K1', name: 'K1', date: '2026-07-05', kaikeiTotal: 3000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-10' });
+  const rp = R.store.revPeriods;
+
+  check('last3 の範囲は 4,5,6月（3月・7月は含まない）', JSON.stringify(rp.last3.months) === JSON.stringify(['2026-04', '2026-05', '2026-06']) ? 1 : 0, 1);
+  // store last3: (12000+8000+9000)/3ヶ月 = 9667
+  check('store last3.monthly（29000/3）', rp.last3.monthly, Math.round(29000 / 3));
+  // store last3 営業日: 4/10, 5/15, 6/1, 6/20 = 4日 → 29000/4 = 7250
+  check('store last3.daily（営業日4日）', rp.last3.daily, 7250);
+  check('store prevMonth.monthly（6月 9000）', rp.prevMonth.monthly, 9000);
+  check('store prevMonth.daily（9000/2日）', rp.prevMonth.daily, 4500);
+  check('store currentMonth.monthly（7月 3000・集計中）', rp.currentMonth.monthly, 3000);
+  check('store currentMonth.daily（3000/1日）', rp.currentMonth.daily, 3000);
+
+  const w = R.staff.find(s => s.name === 'W');
+  // W last3: 4月12000 + 6月9000 = 21000、来店のあった月は2ヶ月 → 10500
+  check('staff W last3.monthly（21000/活動2ヶ月）', w.revPeriods.last3.monthly, 10500);
+  // W last3 営業日: 4/10, 6/1, 6/20 = 3日 → 21000/3 = 7000
+  check('staff W last3.daily（営業日3日）', w.revPeriods.last3.daily, 7000);
+
+  const v = R.staff.find(s => s.name === 'V');
+  // V の今月(7月)は来店ゼロ → null
+  check('staff V currentMonth.monthly（来店ゼロ→null）', v.revPeriods.currentMonth.monthly === null ? 1 : 0, 1);
+
+  // retailPeriods: last3 = (500+1000)/3活動月 = 500
+  check('retailPeriods.last3（1500/3活動月）', R.store.retailPeriods.last3, 500);
+  check('retailPeriods.currentMonth（7月店販なし→0/1月=0）', R.store.retailPeriods.currentMonth, 0);
+
+  // newMix 内訳: 6月 = K1の2回目 + K2の2回目 → v2=2; 7月 = K1の3回目 → v3=1
+  const jun = R.store.newMix.find(m => m.m === '2026-06');
+  const jul = R.store.newMix.find(m => m.m === '2026-07');
+  check('newMix 6月 v2（K1,K2の2回目）', jun.v2, 2);
+  check('newMix 6月 new', jun.new, 0);
+  check('newMix 7月 v3（K1の3回目）', jul.v3, 1);
+  check('newMix repeat = v2+v3+v4', jun.repeat, jun.v2 + jun.v3 + jun.v4);
 }
 
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
