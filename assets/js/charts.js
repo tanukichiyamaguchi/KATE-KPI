@@ -556,7 +556,15 @@
     container.innerHTML = '';
     var wrap = el('div', 'meter');
     var head = el('div', 'meter-head');
-    head.appendChild(el('span', 'meter-label', opts.label));
+    var labelWrap = el('span', 'meter-label-wrap');
+    labelWrap.appendChild(el('span', 'meter-label', opts.label));
+    if (opts.help) {
+      var helpBtn = document.createElement('button');
+      helpBtn.type = 'button'; helpBtn.className = 'help-ico'; helpBtn.textContent = '?';
+      helpBtn.setAttribute('data-help', opts.help); helpBtn.setAttribute('aria-label', '説明を見る');
+      labelWrap.appendChild(helpBtn);
+    }
+    head.appendChild(labelWrap);
     var v = el('span', 'meter-val tnum'); v.textContent = opts.display != null ? opts.display : fmtPct(opts.value, 0);
     head.appendChild(v); wrap.appendChild(head);
     var track = el('div', 'meter-track');
