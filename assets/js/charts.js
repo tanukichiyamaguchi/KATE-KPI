@@ -201,8 +201,11 @@
     }
     function clearFocus() { focus.setAttribute('opacity', 0); dots.forEach(function (d) { d.setAttribute('opacity', 0); }); hideTip(); }
     hit.addEventListener('mousemove', onMove);
-    hit.addEventListener('touchstart', function (e) { if (e.touches[0]) onMove(e.touches[0]); }, { passive: true });
-    hit.addEventListener('touchmove', function (e) { if (e.touches[0]) onMove(e.touches[0]); }, { passive: true });
+    // The whole hit rect is the scrub surface (unlike discrete bars, there's no
+    // "gap" to leave scroll alone in) — block vertical page scroll for the
+    // duration of any touch that starts here, same reasoning as enableDragReveal.
+    hit.addEventListener('touchstart', function (e) { if (e.touches[0]) { e.preventDefault(); onMove(e.touches[0]); } }, { passive: false });
+    hit.addEventListener('touchmove', function (e) { if (e.touches[0]) { e.preventDefault(); onMove(e.touches[0]); } }, { passive: false });
     hit.addEventListener('mouseleave', clearFocus);
     hit.addEventListener('touchend', clearFocus);
     hit.addEventListener('touchcancel', clearFocus);
@@ -393,6 +396,7 @@
   // the convention used by bar highlighting).
   function enableDragReveal(svg) {
     var last = null;
+    var active = false; // true once a gesture starts on an actual bar/segment/point
     function resolve(x, y) {
       var e = document.elementFromPoint(x, y);
       return (e && e.__showTip) ? e : null;
@@ -405,9 +409,23 @@
       last = e;
       if (e) e.__showTip(x); else hideTip();
     }
-    function end() { clear(last); last = null; hideTip(); }
-    svg.addEventListener('touchstart', function (ev) { var t = ev.touches[0]; if (t) handle(t.clientX, t.clientY); }, { passive: true });
-    svg.addEventListener('touchmove', function (ev) { var t = ev.touches[0]; if (t) handle(t.clientX, t.clientY); }, { passive: true });
+    function end() { clear(last); last = null; active = false; hideTip(); }
+    // Only hijack the page's vertical scroll once the finger actually lands on a
+    // bar/segment/point — that's the signal the user meant to interact with the
+    // chart, not scroll past it. Once a gesture "belongs" to the chart it keeps
+    // blocking scroll for its duration, even while briefly crossing a gap between
+    // bars, so the page doesn't lurch mid-drag.
+    svg.addEventListener('touchstart', function (ev) {
+      var t = ev.touches[0]; if (!t) return;
+      active = !!resolve(t.clientX, t.clientY);
+      if (active) ev.preventDefault();
+      handle(t.clientX, t.clientY);
+    }, { passive: false });
+    svg.addEventListener('touchmove', function (ev) {
+      var t = ev.touches[0]; if (!t) return;
+      if (active) ev.preventDefault();
+      handle(t.clientX, t.clientY);
+    }, { passive: false });
     svg.addEventListener('touchend', end);
     svg.addEventListener('touchcancel', end);
   }
