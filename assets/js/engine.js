@@ -171,9 +171,13 @@
     var visitedCusts = customers.filter(function (c) { return c.hasVisit; });
     var baseN = visitedCusts.length;
 
-    // Tag each visited reservation with the customer's visit ordinal (1st, 2nd, …)
-    visitedCusts.forEach(function (c) {
-      byCust[c.key].filter(function (r) { return r.isVisited && r.date; }).sort(function (a, b) { return a.date - b.date; })
+    // Tag each reservation — visited AND upcoming (受付待ち) — with the customer's
+    // visit ordinal (1st, 2nd, …), so a future booking also carries which numbered
+    // visit it represents. Visited rows always sort before future rows (date <= asOf
+    // vs. > asOf), so this widening leaves every already-tagged visited ordinal
+    // unchanged; future rows simply gain new ordinals appended after them.
+    customers.forEach(function (c) {
+      byCust[c.key].filter(function (r) { return r.isEffective && r.date; }).sort(function (a, b) { return a.date - b.date; })
         .forEach(function (r, i) { r._ord = i + 1; });
     });
 
@@ -519,16 +523,18 @@
       retail.avgMonthlyAmount = anyRetail && active.length
         ? Math.round(active.reduce(function (s, r) { return s + (r.retailAmount || 0); }, 0) / active.length)
         : null;
-      // visit-count composition per month
-      var comp = mrows.map(function (r, i) {
+      // visit-count composition per month — new/v2/v3/v4 = 会計済み、expNew/expV2/
+      // expV3/expV4 = 受付待ち（見込み）。どちらも顧客単位の共通 _ord（上の
+      // isEffective 全体での採番）を使うため、見込み予約も「何回目の来店予定か」
+      // で内訳できる。
+      var comp = mrows.map(function (r) {
         var mo = r.m;
-        var counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
-        rows.filter(function (x) { return x.staff === name && x.ym === mo && x.isVisited && x.date; }).forEach(function (x) {
-          var v = byCust[x.custKey].filter(function (y) { return y.isVisited && y.date; }).sort(function (a, b) { return a.date - b.date; });
-          var idx = v.indexOf(x);
-          counts[Math.min(4, idx + 1)]++;
+        var vc = { 1: 0, 2: 0, 3: 0, 4: 0 }, pc = { 1: 0, 2: 0, 3: 0, 4: 0 };
+        rows.filter(function (x) { return x.staff === name && x.ym === mo && x.isEffective && x.date; }).forEach(function (x) {
+          var counts = x.isVisited ? vc : pc;
+          counts[Math.min(4, Math.max(1, x._ord || 1))]++;
         });
-        return { m: mo, new: counts[1], v2: counts[2], v3: counts[3], v4: counts[4] };
+        return { m: mo, new: vc[1], v2: vc[2], v3: vc[3], v4: vc[4], expNew: pc[1], expV2: pc[2], expV3: pc[3], expV4: pc[4] };
       });
       // ---- Self-growth (Phase 3): 自己ベスト・累計マイルストーン・育てた常連 --------
       // "Confirmed" months exclude the in-progress current month, so a half-finished
