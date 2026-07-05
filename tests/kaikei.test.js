@@ -485,5 +485,46 @@ h('■ Fixture L: 受付待ちの来店回数内訳（composition の expNew/exp
   check('S1 7月 expV2 は S2(P3) と混ざらず1のまま', s1Jul.expV2, 1);
 }
 
+// ============================================================================
+// Fixture M — 次回予約取得率: キャンセルされた予約は「別日の予約」がなければ
+// 次回予約とみなさない。別日に予約（来店）があれば、途中でキャンセルが
+// あっても次回予約は成立する (visitGotNext は isEffective=キャンセル以外の
+// 直近来店より後の予約有無で判定するため、この仕様を満たす)。
+// ============================================================================
+h('■ Fixture M: キャンセル後の再予約の有無で次回予約取得を判定');
+{
+  const rows = [
+    // A: 1/1来店 → 1/15の予約がキャンセル、他に予約なし → 次回予約取得=false
+    rec({ custKey: 'A', date: '2026-01-01', kaikeiTotal: 5000 }),
+    rec({ custKey: 'A', status: 'お客様キャンセル', date: '2026-01-15' }),
+    // B: 2/1来店 → 2/15の予約がキャンセル、しかし3/5に別予約（来店）あり → 次回予約取得=true
+    rec({ custKey: 'B', date: '2026-02-01', kaikeiTotal: 5000 }),
+    rec({ custKey: 'B', status: 'お客様キャンセル', date: '2026-02-15' }),
+    rec({ custKey: 'B', date: '2026-03-05', kaikeiTotal: 6000 }),
+    // C(スタッフT): 4/1初回・4/10の2回目来店 → 4/25の予約がキャンセル、他に予約なし
+    // → 2回目次回予約取得率=0
+    rec({ staff: 'T', custKey: 'C', date: '2026-04-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'T', custKey: 'C', date: '2026-04-10', kaikeiTotal: 5000 }),
+    rec({ staff: 'T', custKey: 'C', status: 'お客様キャンセル', date: '2026-04-25' }),
+    // D(スタッフT): 5/1初回・5/10の2回目来店 → 5/25の予約がキャンセル、しかし
+    // 6/5に別予約（来店）あり → 2回目次回予約取得率=1
+    rec({ staff: 'T', custKey: 'D', date: '2026-05-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'T', custKey: 'D', date: '2026-05-10', kaikeiTotal: 5000 }),
+    rec({ staff: 'T', custKey: 'D', status: 'お客様キャンセル', date: '2026-05-25' }),
+    rec({ staff: 'T', custKey: 'D', date: '2026-06-05', kaikeiTotal: 6000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-10' });
+  const jan = R.store.monthly.find(m => m.m === '2026-01');
+  const feb = R.store.monthly.find(m => m.m === '2026-02');
+  check('1月 nextRes（Aはキャンセルのみ・再予約なし→0）', jan.nextRes, 0);
+  check('2月 nextRes（Bはキャンセル後に別日来店あり→1）', feb.nextRes, 1);
+
+  const t = R.staff.find(s => s.name === 'T');
+  const apr = t.monthly.find(m => m.m === '2026-04');
+  const may = t.monthly.find(m => m.m === '2026-05');
+  check('4月 nextRes2（Cはキャンセルのみ・再予約なし→0）', apr.nextRes2, 0);
+  check('5月 nextRes2（Dはキャンセル後に別日来店あり→1）', may.nextRes2, 1);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);
