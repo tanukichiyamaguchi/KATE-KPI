@@ -672,7 +672,7 @@
       var overdueCell = c.cycleOverdue
         ? '<span class="chip down">周期超過</span>'
         : '<span class="note-inline">目安 ' + c.ownCycle + '日</span>';
-      return '<tr><td>' + esc(c.name) + '</td><td>' + c.R + '</td><td>' + c.F + '</td><td>' + F.int(c.M) + '</td>' +
+      return '<tr><td>' + esc(c.name) + '</td><td>' + c.R + '</td><td>' + c.F + '</td><td><span class="full-num">' + F.int(c.M) + '</span><span class="compact-num">' + F.compact(c.M) + '</span></td>' +
         '<td style="text-align:left"><span class="seg-tag"><i style="background:' + col + '"></i>' + esc(c.seg) + '</span></td>' +
         '<td style="text-align:left">' + overdueCell + '</td></tr>';
     }).join('') + '</tbody>';
