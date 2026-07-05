@@ -1,4 +1,6 @@
 {
-  "v": 0,
-  "note": "管理ロックは未設定です。データ入力タブの「管理ロック（オーナー用）」で作った暗号文（{\"v\":1,\"salt\":…,\"iv\":…,\"ct\":…}）でこのファイルを置き換えると、データ入力ページの管理操作（連携URLの表示・変更・取り込み・クリア）が管理用の合言葉で保護されます。"
+  "v": 1,
+  "salt": "EVoAIL2/sOzgwQRaINEKxQ==",
+  "iv": "nc5cDVMyUr8T1CbH",
+  "ct": "a3dHCFsjuh9E6Wps4n8uxSFnmw35QtJLUY9z3qMPeSU="
 }
