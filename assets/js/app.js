@@ -132,7 +132,7 @@
 
   // ============================ OVERVIEW ===================================
   function renderOverview() {
-    var A = state.analytics, s = A.store;
+    var A = state.analytics, s = A.store, t = A.trend;
     var head = '<div class="view-title">店舗ダッシュボード</div><div class="view-lead">' + esc(A.meta.periodStart) + '〜' + esc(A.meta.periodEnd) + ' ／ 来店顧客 ' + esc(s.customers) + '人・基準日 ' + esc(A.meta.asOf) + '。</div>';
     var html = '';
 
@@ -167,8 +167,12 @@
       body: '<div id="cFunnel"></div>'
     });
     html += card({
-      col: 'col-7', title: 'コホート 2回目到達率' + help('初回来店した月ごとに顧客をグループ化し、そのグループの何%が2回目来店に到達したかを月次で表示。'), sub: '初回来店した月ごとの、2回目に到達した割合' + (s.maturity.applied ? '（直近の未成熟な月は除外）' : ''), tag: '%',
-      body: chartBox('cCohort', 230)
+      col: 'col-7', title: '月次コホート リピート率' + help('初回来店した月ごとに顧客をグループ化し、そのグループの何%が2回目来店に到達したかを表示。'), sub: '初回獲得月ごとの2回目到達', tag: '%',
+      body: chartBox('cTCohortR', 230)
+    });
+    html += card({
+      col: 'col-12', title: '月次コホート LTV' + help('初回来店した月ごとに顧客をグループ化し、そのグループの現時点までの累計売上を平均したもの。'), sub: '初回獲得月ごとの累計売上', tag: '¥',
+      body: chartBox('cTCohortL', 220)
     });
 
     // 店販 + 新規/再来 + visit-count
@@ -214,12 +218,11 @@
         valueFmt: function (v) { return yen(Math.round(v)); }, yFmt: F.compact, height: 260
       });
     });
-    draw('cCohort', function (el) {
-      C.columns(el, {
-        groups: s.cohort.map(function (c) { return monthShort(c.m); }),
-        series: [{ name: '2回到達率', color: cvar('--series-1'), values: s.cohort.map(function (c) { return c.reach2 * 100; }) }],
-        valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, yMax: 100, height: 230
-      });
+    draw('cTCohortR', function (el) {
+      C.lineArea(el, { xLabels: t.monthlyCohort.map(function (c) { return monthShort(c.m); }), yMax: 100, series: [{ name: 'リピート率', color: cvar('--series-1'), values: t.monthlyCohort.map(function (c) { return c.repeat * 100; }) }], valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230 });
+    });
+    draw('cTCohortL', function (el) {
+      C.columns(el, { groups: t.monthlyCohort.map(function (c) { return monthShort(c.m); }), series: [{ name: 'LTV', color: cvar('--series-4'), values: t.monthlyCohort.map(function (c) { return c.ltv; }) }], valueFmt: yen, yFmt: F.compact, height: 220 });
     });
     draw('cFunnel', function (el) {
       C.funnel(el, {
@@ -528,8 +531,6 @@
         [['visits', '来店数'], ['nextRes', '次回予約率'], ['spend', '客単価'], ['ltv', 'LTV']].map(function (o, i) { return '<button type="button" data-m="' + o[0] + '" aria-pressed="' + (i === 0 ? 'true' : 'false') + '"' + (i === 0 ? ' class="active"' : '') + '>' + o[1] + '</button>'; }).join('') +
         '<span class="seg-thumb" id="dowThumb"></span></div>' + chartBox('cDow', 250)
     });
-    html += card({ col: 'col-6', title: '月次コホート リピート率' + help('初回来店した月ごとに顧客をグループ化し、そのグループの何%が2回目来店に到達したかを表示。'), sub: '初回獲得月ごとの2回目到達', tag: '%', body: chartBox('cTCohortR', 220) });
-    html += card({ col: 'col-6', title: '月次コホート LTV' + help('初回来店した月ごとに顧客をグループ化し、そのグループの現時点までの累計売上を平均したもの。'), sub: '初回獲得月ごとの累計売上', tag: '¥', body: chartBox('cTCohortL', 220) });
     if (t.couponRatio != null) {
       html += card({ col: 'col-6', title: 'クーポン依存度' + help('来店のうち、クーポンを利用した来店の割合（予約データの「クーポン」列から算出）。'), sub: '来店のうちクーポンを利用した割合', body: '<div id="mCoupon"></div>' });
     }
@@ -544,12 +545,6 @@
     mount('trend', head + '<div class="grid">' + html + '</div>');
 
     drawDow();
-    draw('cTCohortR', function (el) {
-      C.lineArea(el, { xLabels: t.monthlyCohort.map(function (c) { return monthShort(c.m); }), yMax: 100, series: [{ name: 'リピート率', color: cvar('--series-1'), values: t.monthlyCohort.map(function (c) { return c.repeat * 100; }) }], valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 220 });
-    });
-    draw('cTCohortL', function (el) {
-      C.columns(el, { groups: t.monthlyCohort.map(function (c) { return monthShort(c.m); }), series: [{ name: 'LTV', color: cvar('--series-4'), values: t.monthlyCohort.map(function (c) { return c.ltv; }) }], valueFmt: yen, yFmt: F.compact, height: 220 });
-    });
     if (t.couponRatio != null) {
       draw('mCoupon', function (el) {
         C.meter(el, { label: 'クーポン利用来店', value: t.couponRatio, display: pct(t.couponRatio * 100, 1), color: cvar('--series-3') });
