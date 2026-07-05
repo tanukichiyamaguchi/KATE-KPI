@@ -325,7 +325,7 @@ svg { display: block; }
 
 /* ---- Head-to-head scoreboard ---------------------------------------------*/
 .vs-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 360px; }
-.vs-table th, .vs-table td { padding: 11px 14px; text-align: right; font-variant-numeric: tabular-nums; }
+.vs-table th, .vs-table td { padding: 11px 14px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .vs-table th:first-child, .vs-table td:first-child { text-align: left; color: var(--ink-secondary); font-weight: 500; white-space: nowrap; }
 .vs-table thead th { font-size: 12.5px; color: var(--ink-primary); font-weight: 600; border-bottom: 1px solid var(--border); }
 .vs-table thead th .vs-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 7px; vertical-align: middle; }
@@ -383,17 +383,32 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
 .seg-tag i { width: 7px; height: 7px; border-radius: 2px; }
 /* Mobile: the fixed min-width above forces horizontal scroll on phone widths
    even though the actual content (short ¥/%/count values) doesn't need it —
-   drop the floor and tighten padding/font so tables fit the viewport instead. */
+   drop the floor and tighten padding/font so tables fit the viewport instead.
+   Only the label/name column (and header text) is allowed to wrap — numeric
+   value cells stay nowrap so a ¥/% figure never breaks mid-digit. */
 @media (max-width: 620px) {
   .vs-table, table.kate-table { min-width: 0; }
-  .vs-table th, .vs-table td { padding: 8px 7px; font-size: 12px; overflow-wrap: break-word; word-break: break-word; }
-  .vs-table th:first-child, .vs-table td:first-child { white-space: normal; }
-  table.kate-table { font-size: 11.5px; table-layout: fixed; }
-  .kate-table th, .kate-table td { padding: 7px 5px; white-space: normal; overflow-wrap: break-word; word-break: break-word; overflow: hidden; }
-  /* Badges (.chip/.seg-tag) are inline-flex, which defaults to a text-width
-     min-width and refuses to shrink inside a fixed table column — override so
-     they wrap/clip with the cell instead of pushing it (and the table) wider. */
-  .kate-table .chip, .kate-table .seg-tag { min-width: 0; max-width: 100%; white-space: normal; word-break: break-word; }
+  .vs-table th, .vs-table td { padding: 8px 7px; font-size: 12px; }
+  .vs-table th:first-child, .vs-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }
+  table.kate-table { font-size: 11px; table-layout: fixed; }
+  .kate-table th, .kate-table td { padding: 7px 5px; overflow: hidden; }
+  .kate-table th, .kate-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }
+  /* The label/name column can afford to give up some width since it wraps
+     freely — hand that room to the value columns instead of splitting evenly. */
+  .kate-table th:first-child, .kate-table td:first-child { width: 24%; }
+  /* Badges (.chip/.seg-tag) and inline status notes (.note-inline, e.g. 「目安
+     45日」) are nowrap by default (inherited from the td) and don't shrink to
+     fit a fixed table column — override so they wrap with the cell instead of
+     silently clipping (or pushing the table wider). */
+  .kate-table .chip, .kate-table .seg-tag, .kate-table .note-inline { min-width: 0; max-width: 100%; white-space: normal; word-break: break-word; }
+}
+/* Very narrow phones (e.g. 320px-wide devices): a few more digits than the
+   above accounts for — shave a bit more font/padding so large ¥ figures
+   (6+ digits) still render in full instead of clipping at the cell edge. */
+@media (max-width: 340px) {
+  .vs-table th, .vs-table td { padding: 7px 5px; font-size: 11px; }
+  table.kate-table { font-size: 10.3px; }
+  .kate-table th, .kate-table td { padding: 6px 3px; }
 }
 
 /* ---- Data view ------------------------------------------------------------*/
