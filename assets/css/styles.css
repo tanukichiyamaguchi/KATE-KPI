@@ -18,9 +18,8 @@
   --glass: rgba(255, 255, 255, 0.82);
 
   --ink-primary: #1d1d1f;
-  --ink-secondary: #58585d;
-  /* muted must still clear WCAG AA (≥4.5:1) on white — #6e6e73 = 5.0:1 */
-  --ink-muted: #6e6e73;
+  --ink-secondary: #6e6e73;
+  --ink-muted: #86868b;
 
   --accent: #0071e3;         /* Apple blue — every interactive/primary role */
   --accent-ink: #0066cc;     /* accent as text (better contrast) */
@@ -42,13 +41,12 @@
   --series-4: #9a3fd1; --series-5: #c9315b; --series-6: #0d8fa8;
   --series-7: #5c6a78; --series-8: #8a6d3b;
 
-  /* Blue monochrome ramp (funnel ordinal + sequential heatmap) — momo's identity
-     hue. Ordinal-validated (validate_palette --ordinal, surface #ffffff):
-     monotone lightness, adjacent ΔL ≥ .06, light end ≥ 2:1 vs surface. */
-  --funnel-1: #8db9ec; --funnel-2: #5c9de8; --funnel-3: #2b7fd6; --funnel-4: #0f62b4; --funnel-5: #084a8c;
-  --seq-0: #eef5fd; --seq-1: #8db9ec; --seq-2: #5c9de8; --seq-3: #2b7fd6; --seq-4: #0f62b4; --seq-5: #084a8c;
-  /* Orange monochrome ramp — aoi's identity hue, same validated step logic. */
-  --funnel-o1: #eda45f; --funnel-o2: #e08a3a; --funnel-o3: #c06a10; --funnel-o4: #96520c; --funnel-o5: #6d3c08;
+  /* Blue monochrome ramp (funnel ordinal + sequential heatmap) — momo's identity hue */
+  --funnel-1: #cfe2fb; --funnel-2: #9dc5f2; --funnel-3: #5c9de8; --funnel-4: #2b7fd6; --funnel-5: #0a5bb0;
+  --seq-0: #eef5fd; --seq-1: #cfe2fb; --seq-2: #9dc5f2; --seq-3: #5c9de8; --seq-4: #2b7fd6; --seq-5: #0a5bb0;
+  /* Orange monochrome ramp — aoi's identity hue, same lightness steps as --funnel-* so
+     a staff-colored ordinal chart still reads as monotonically darkening per staff. */
+  --funnel-o1: #fbe1c7; --funnel-o2: #f5bf85; --funnel-o3: #ec9748; --funnel-o4: #d9720a; --funnel-o5: #a3540a;
 
   --shadow-1: 0 1px 2px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.05);
   --shadow-2: 0 2px 6px rgba(0,0,0,0.06), 0 14px 34px rgba(0,0,0,0.09);
@@ -100,12 +98,9 @@
   --series-4: #9d5fc9; --series-5: #d95e77; --series-6: #2a9fb8;
   --series-7: #8a97a6; --series-8: #b09055;
 
-  /* Dark ramps re-validated (validate_palette --ordinal, surface #1c1c1e): the
-     old #16324d/#1c4f7e steps were near-indistinguishable and the darkest step
-     sat below 2:1 vs the card surface. */
-  --funnel-1: #24507c; --funnel-2: #2b6cae; --funnel-3: #3f8bdc; --funnel-4: #6aa9ec; --funnel-5: #9cc7f5;
-  --seq-0: #14171c; --seq-1: #24507c; --seq-2: #2b6cae; --seq-3: #3f8bdc; --seq-4: #6aa9ec; --seq-5: #9cc7f5;
-  --funnel-o1: #6e4517; --funnel-o2: #97591c; --funnel-o3: #c07322; --funnel-o4: #e6953a; --funnel-o5: #f6c186;
+  --funnel-1: #16324d; --funnel-2: #1c4f7e; --funnel-3: #2b7fd6; --funnel-4: #4f9ae8; --funnel-5: #7db4f0;
+  --seq-0: #14171c; --seq-1: #16324d; --seq-2: #1c4f7e; --seq-3: #2b7fd6; --seq-4: #4f9ae8; --seq-5: #7db4f0;
+  --funnel-o1: #4a2f14; --funnel-o2: #7a4a1a; --funnel-o3: #b06b1e; --funnel-o4: #e0902e; --funnel-o5: #f2b978;
 
   --shadow-1: 0 1px 2px rgba(0,0,0,0.4);
   --shadow-2: 0 8px 30px rgba(0,0,0,0.55);
@@ -119,9 +114,6 @@ body {
   min-height: 100vh; line-height: 1.55; letter-spacing: -0.003em;
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
   transition: background-color .3s ease, color .3s ease;
-  /* footer pinning: short views (データ入力) end right after the footer instead
-     of leaving viewport-heights of dead scroll below it */
-  display: flex; flex-direction: column;
 }
 :lang(ja), [lang="ja"] { line-height: 1.75; }
 h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
@@ -135,8 +127,7 @@ a:hover { text-decoration: underline; }
 svg { display: block; }
 
 /* ---- App shell ------------------------------------------------------------*/
-.app { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 120px; flex: 1; display: flex; flex-direction: column; }
-.app > main { flex: 1 0 auto; }
+.app { max-width: 1120px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 120px; }
 .topbar {
   position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 14px;
   padding: 12px clamp(16px, 4vw, 32px); margin: 0 calc(-1 * clamp(16px, 4vw, 32px));
@@ -147,7 +138,7 @@ svg { display: block; }
 .brand-mark { flex: none; color: var(--ink-primary); line-height: 0; }
 .brand-mark svg { height: 34px; width: auto; display: block; }
 .brand-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.wordmark { font-family: var(--font-display); font-size: 17px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wordmark { font-family: var(--font-display); font-size: 17px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; line-height: 1; white-space: nowrap; }
 .wordmark b { font-weight: 700; }
 .wordmark i { font-style: normal; font-weight: 400; text-transform: lowercase; letter-spacing: .1em; margin: 0 .12em; color: var(--ink-secondary); }
 .brand-sub { font-size: 11px; color: var(--ink-muted); letter-spacing: .02em; }
@@ -175,11 +166,8 @@ svg { display: block; }
 .pill.accent:hover { background: var(--accent-ink); }
 .pill.icon-only { width: 34px; padding: 0; }
 .pill svg { width: 17px; height: 17px; stroke-width: 1.7; }
-/* Badge is capped and truncates its own text so it can never overlap or push
-   the brand block off-screen (「KATE stage LASH／蒲田西口店」 vs badge @375px). */
-.badge-soft { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 11.5px; font-weight: 500; white-space: nowrap; flex: none; max-width: clamp(104px, 30vw, 240px); }
-.badge-soft .dot { width: 6px; height: 6px; border-radius: 980px; background: var(--good); flex: none; }
-.badge-soft #dataBadgeText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.badge-soft { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 11.5px; font-weight: 500; white-space: nowrap; flex: none; }
+.badge-soft .dot { width: 6px; height: 6px; border-radius: 980px; background: var(--good); }
 
 /* ---- Tabs (desktop) -------------------------------------------------------*/
 .tabs-wrap { border-bottom: 1px solid var(--hairline); margin: 14px 0 24px; }
@@ -211,14 +199,10 @@ svg { display: block; }
 .botnav button .t-ico svg { width: 23px; height: 23px; stroke-width: 1.6; }
 .botnav button.active { color: var(--accent); }
 .botnav button:active { transform: scale(.94); }
-/* Content must always clear the fixed bottom nav (~64px + safe-area) with room
-   to spare — the trend heatmap's last rows were hidden under it. */
-@media (max-width: 767px) { .botnav { display: flex; } .app { padding-bottom: calc(64px + 24px + env(safe-area-inset-bottom)); } }
+@media (max-width: 767px) { .botnav { display: flex; } .app { padding-bottom: 84px; } }
 
 /* ---- Grid & cards ---------------------------------------------------------*/
-/* align-items:start — cards keep their natural height instead of stretching to
-   the tallest sibling in the row (which left half-empty cards on desktop) */
-.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 18px; align-items: start; }
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 18px; }
 .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-5 { grid-column: span 5; }
 .col-6 { grid-column: span 6; } .col-7 { grid-column: span 7; } .col-8 { grid-column: span 8; } .col-12 { grid-column: span 12; }
 @media (max-width: 1000px) { .col-3 { grid-column: span 6; } .col-4 { grid-column: span 6; } .col-5, .col-7 { grid-column: span 12; } }
@@ -230,8 +214,6 @@ svg { display: block; }
      of 3 consecutive col-4s) goes full width so no half-empty row is left. */
   .grid > .col-3, .grid > .col-4 { grid-column: span 6 !important; }
   .grid > .col-4 + .col-4 + .col-4 { grid-column: span 12 !important; }
-  /* sub-KPI pair below the hero (客単価・LTV) keeps its 2-up rhythm on phones */
-  .grid > .tile-2up { grid-column: span 6 !important; }
 }
 
 .card {
@@ -296,26 +278,24 @@ svg { display: block; }
 .meter-label-wrap { display: inline-flex; align-items: center; }
 .meter-label { font-size: 13.5px; font-weight: 500; }
 .meter-val { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
-/* track wears a subtle hairline so the un-filled portion reads on both themes;
-   the 目安 tick is a solid 2px ink line (was a 50%-opacity ghost). */
-.meter-track { position: relative; height: 8px; border-radius: 980px; background: var(--track); overflow: visible; box-shadow: inset 0 0 0 1px var(--hairline); }
+.meter-track { position: relative; height: 8px; border-radius: 980px; background: var(--track); overflow: visible; }
 .meter-fill { position: absolute; inset: 0 auto 0 0; width: 0; height: 8px; border-radius: 980px; background: var(--accent); transition: width .8s var(--ease); }
 .meter-fill::after { display: none; }
-.meter-tick { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink-secondary); border-radius: 2px; box-shadow: 0 0 0 1px var(--surface-1); }
+.meter-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink-muted); opacity: .5; border-radius: 2px; }
 .note-inline { font-size: 12px; color: var(--ink-muted); }
 .empty-note { font-size: 13px; line-height: 1.7; color: var(--ink-secondary); background: var(--surface-2); border: 1px dashed var(--border); border-radius: 12px; padding: 16px 18px; }
 .empty-note b { color: var(--ink-primary); font-weight: 600; }
 
-/* ---- Funnel (compact: fits ~half a phone viewport) ------------------------*/
+/* ---- Funnel ---------------------------------------------------------------*/
 .kate-funnel { display: flex; flex-direction: column; }
-.kate-funnel-row { padding: 3px 0; }
-.kate-funnel-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
-.kate-funnel-label { font-size: 13px; font-weight: 500; }
-.kate-funnel-val b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.kate-funnel-val em { font-style: normal; font-size: 11.5px; color: var(--ink-muted); margin-left: 5px; }
-.kate-funnel-track { height: 16px; background: var(--track); border-radius: 6px; overflow: hidden; }
-.kate-funnel-bar { height: 100%; border-radius: 6px; width: 0; transition: width .9s var(--ease); }
-.kate-funnel-conv { font-size: 10.5px; color: var(--ink-muted); padding: 1px 0 2px; display: flex; align-items: center; gap: 5px; line-height: 1.4; }
+.kate-funnel-row { padding: 6px 0; }
+.kate-funnel-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+.kate-funnel-label { font-size: 13.5px; font-weight: 500; }
+.kate-funnel-val b { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.kate-funnel-val em { font-style: normal; font-size: 12px; color: var(--ink-muted); margin-left: 5px; }
+.kate-funnel-track { height: 22px; background: var(--track); border-radius: 7px; overflow: hidden; }
+.kate-funnel-bar { height: 100%; border-radius: 7px; width: 0; transition: width .9s var(--ease); }
+.kate-funnel-conv { font-size: 11.5px; color: var(--ink-muted); padding: 4px 0 6px; display: flex; align-items: center; gap: 6px; }
 .kate-funnel-conv .kate-arrow { color: var(--ink-muted); }
 .kate-funnel-conv b { color: var(--ink-secondary); font-variant-numeric: tabular-nums; }
 
@@ -347,25 +327,13 @@ svg { display: block; }
 .seg-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-1); }
 .seg-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
 .seg-dot { width: 9px; height: 9px; border-radius: 3px; background: var(--seg-color); flex: none; }
-/* status is a small labeled chip (健全/注意/要対応/至急), not an unexplained dot */
-.seg-status-chip { margin-left: auto; flex: none; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 980px; white-space: nowrap; letter-spacing: .02em; }
+.seg-status { margin-left: auto; width: 7px; height: 7px; border-radius: 980px; }
 .seg-people { font-family: var(--font-display); font-size: 27px; font-weight: 600; letter-spacing: -0.02em; margin-top: 8px; font-variant-numeric: tabular-nums; }
 .seg-people small { font-size: 12.5px; font-weight: 500; color: var(--ink-muted); }
 .seg-ratio { height: 4px; border-radius: 980px; background: var(--track); overflow: hidden; margin: 10px 0; }
 .seg-ratio i { display: block; height: 100%; background: var(--seg-color); border-radius: 980px; width: 0; transition: width .8s var(--ease); }
-.seg-rfm { display: flex; gap: 13px; font-size: 11.5px; color: var(--ink-secondary); white-space: nowrap; }
-.seg-rfm span { white-space: nowrap; }
+.seg-rfm { display: flex; gap: 13px; font-size: 11.5px; color: var(--ink-secondary); }
 .seg-rfm b { color: var(--ink-primary); font-variant-numeric: tabular-nums; }
-@media (max-width: 400px) { .seg-rfm { font-size: 10.5px; gap: 10px; } }
-/* RFM highlight strip (most actionable counts, first thing on the tab) */
-.rfm-hl { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.rfm-hl-main b { font-family: var(--font-display); font-size: clamp(28px, 6vw, 36px); font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; display: block; line-height: 1.1; }
-.rfm-hl-main span { font-size: 12px; color: var(--ink-muted); }
-.rfm-hl-rest { font-size: 12.5px; color: var(--ink-secondary); line-height: 1.7; }
-.rfm-hl-rest b { color: var(--ink-primary); font-variant-numeric: tabular-nums; }
-.rfm-hl .pill { margin-left: auto; }
-@media (max-width: 520px) { .rfm-hl .pill { margin-left: 0; width: 100%; } }
-.overdue-note { color: var(--status-serious); font-weight: 600; }
 .seg-action { font-size: 12px; color: var(--ink-secondary); margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--hairline); line-height: 1.5; }
 
 /* ---- Head-to-head scoreboard ---------------------------------------------*/
@@ -380,10 +348,6 @@ svg { display: block; }
 .vs-table td.vs-win { background: var(--accent-soft); }
 .vs-table td.vs-win b { font-weight: 700; color: var(--accent-ink); }
 .vs-table td .vs-lead { font-size: 10px; color: var(--accent-ink); margin-left: 7px; font-weight: 700; letter-spacing: .02em; }
-/* 目安 rows: below-target values in warning ink, at/above get a quiet ✓ —
-   always vs the fixed 目安, never one staff vs the other. */
-.vs-table .vs-under { color: var(--status-warning); }
-.vs-table .vs-ok { font-style: normal; font-size: 11px; color: var(--status-good); margin-left: 3px; font-weight: 700; }
 
 /* ---- Staff ----------------------------------------------------------------*/
 .staff-head { display: flex; align-items: center; gap: 14px; }
@@ -393,7 +357,7 @@ svg { display: block; }
 .staff-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
 .staff-metric b { font-family: var(--font-display); font-size: 21px; font-weight: 600; letter-spacing: -0.02em; display: block; font-variant-numeric: tabular-nums; }
 .staff-metric span { font-size: 11.5px; color: var(--ink-muted); }
-.pb-tag { display: inline-flex; align-items: center; margin-left: 6px; padding: 1px 7px; border-radius: 980px; font-size: 10px; font-weight: 700; letter-spacing: .01em; background: var(--accent-soft); color: var(--accent-ink); white-space: nowrap; }
+.pb-tag { display: inline-flex; align-items: center; margin-left: 6px; padding: 1px 7px; border-radius: 980px; font-size: 10px; font-weight: 700; letter-spacing: .01em; background: var(--accent-soft); color: var(--accent-ink); }
 
 /* ---- 次の一手 (self-growth suggestion) -------------------------------------*/
 .next-hint { margin-top: 18px; padding: 12px 14px; border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: 0 10px 10px 0; font-size: 12.5px; line-height: 1.6; color: var(--ink-secondary); }
@@ -405,7 +369,7 @@ svg { display: block; }
 .sg-row > span { color: var(--ink-muted); min-width: 92px; }
 .sg-row > b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-primary); }
 .sg-row > .sg-na { font-weight: 500; color: var(--ink-muted); }
-.sg-row > em { margin-left: auto; font-style: normal; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.sg-row > em { margin-left: auto; font-style: normal; font-size: 11.5px; font-weight: 600; }
 .sg-up { color: var(--status-good); }
 .sg-down { color: var(--ink-secondary); }
 .sg-flat { color: var(--ink-muted); }
@@ -415,12 +379,7 @@ svg { display: block; }
 .segmented button { appearance: none; border: 0; background: transparent; cursor: pointer; padding: 6px 14px; font-size: 12.5px; font-weight: 500; color: var(--ink-secondary); border-radius: 8px; transition: color .2s; white-space: nowrap; z-index: 1; font-family: var(--font-sans); }
 .segmented button.active { color: var(--ink-primary); font-weight: 600; }
 .segmented .seg-thumb { position: absolute; top: 2px; bottom: 2px; background: var(--surface-1); border-radius: 8px; box-shadow: var(--shadow-1); transition: transform .25s var(--ease), width .25s var(--ease); z-index: 0; }
-@media (max-width: 520px) {
-  /* fill the row, but scroll (not clip) when 5-6 segments outgrow the width */
-  .segmented { display: flex; width: 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-  .segmented::-webkit-scrollbar { display: none; }
-  .segmented button { flex: 1 0 auto; padding: 7px 8px; }
-}
+@media (max-width: 520px) { .segmented { display: flex; width: 100%; } .segmented button { flex: 1; padding: 7px 6px; } }
 
 /* ---- Table ----------------------------------------------------------------*/
 .table-wrap { overflow-x: auto; margin: 0 -6px; -webkit-overflow-scrolling: touch; }
@@ -499,24 +458,10 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
      only one is ever visible. */
   #rfmTable .full-num { display: none; }
   #rfmTable .compact-num { display: inline; }
-  /* 売上サマリー (periodTable): its row labels (日間売上（営業日）) need more
-     than the generic 24% first column, and its 3 value columns are short
-     enough to spare the width. The 「（◯日経過）」 header note doesn't fit a
-     phone column — the same info lives in the 経過日数 line above the table. */
+  /* 売上サマリー (periodTable): its row labels (平均月間売上, 6 chars) need more
+     than the generic 24% first column to stay on one line, and its 3 value
+     columns are short enough to spare the width. */
   .period-table th:first-child, .period-table td:first-child { width: 31%; }
-  .period-table .th-days { display: none; }
-}
-/* ≤480px: R and F columns leave the RFM list (their meaning lives in the F×R
-   map and the sort help) so 名前/M/セグメント/周期 fit without mid-name breaks. */
-@media (max-width: 480px) {
-  #rfmTable .col-rf { display: none; }
-  #rfmTable th:first-child, #rfmTable td:first-child { width: 25%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: normal; }
-  #rfmTable th:nth-child(4), #rfmTable td:nth-child(4) { width: 15%; }
-  #rfmTable th:nth-child(5), #rfmTable td:nth-child(5) { width: 38%; }
-  #rfmTable th:nth-child(6), #rfmTable td:nth-child(6) { width: 22%; }
-  /* with R/F gone the segment badge has room to stay on one line — no more
-     「高ロイヤル顧／客」 mid-word breaks */
-  #rfmTable .seg-tag { white-space: nowrap; }
 }
 /* Very narrow phones (e.g. 320px-wide devices): a few more digits than the
    above accounts for — shave a bit more font/padding so large ¥ figures
@@ -535,29 +480,7 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
   #rfmTable .chip { font-size: 9.5px; padding: 2px 2px; }
 }
 
-/* one big primary stat inside a card (店販実績ほか) */
-.stat-primary b { font-family: var(--font-display); font-size: 28px; font-weight: 600; letter-spacing: -0.02em; display: block; line-height: 1.15; font-variant-numeric: tabular-nums; }
-.stat-primary span { font-size: 11.5px; color: var(--ink-muted); display: block; }
-
-/* ---- Overview hero (今月の着地見込み) ---------------------------------------*/
-.fc-hero-value { font-family: var(--font-display); font-size: clamp(38px, 9vw, 52px); font-weight: 600; letter-spacing: -0.025em; line-height: 1.05; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.fc-hero-sub { font-size: 13px; color: var(--ink-secondary); margin-top: 6px; font-variant-numeric: tabular-nums; }
-.fc-hero-label { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
-
-/* ---- Slim sample-data strip ------------------------------------------------*/
-.card.slim { padding: 10px 16px; }
-.sample-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
-.sample-strip b { font-weight: 600; white-space: nowrap; }
-.sample-strip .note-inline { flex: 1; min-width: 140px; }
-.sample-strip .pill { height: 30px; padding: 0 13px; font-size: 12.5px; margin-left: auto; }
-
 /* ---- Data view ------------------------------------------------------------*/
-/* passphrase / URL forms shouldn't stretch to 900px on desktop */
-.form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; max-width: 560px; }
-.field-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-secondary); margin-bottom: 6px; }
-details.adv > summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--ink-secondary); list-style-position: inside; }
-details.adv > summary:hover { color: var(--ink-primary); }
-details.adv[open] > summary { margin-bottom: 10px; }
 .dropzone { border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); padding: clamp(28px, 6vw, 44px) 24px; text-align: center; background: var(--surface-2); transition: border-color .2s, background .2s, transform .2s; cursor: pointer; }
 .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); }
 .dropzone.drag { transform: scale(1.005); }
@@ -597,16 +520,16 @@ details.adv[open] > summary { margin-bottom: 10px; }
 .help-ico {
   position: relative;
   display: inline-flex; align-items: center; justify-content: center; flex: none;
-  width: 18px; height: 18px; margin-left: 5px; padding: 0; vertical-align: middle;
+  width: 15px; height: 15px; margin-left: 5px; padding: 0; vertical-align: middle;
   border: 1px solid var(--border-strong); border-radius: 50%; background: var(--surface-2);
-  color: var(--ink-muted); font-size: 11px; font-weight: 700; line-height: 1;
+  color: var(--ink-muted); font-size: 10px; font-weight: 700; line-height: 1;
   font-family: var(--font-sans); cursor: pointer; transition: background .15s, color .15s, border-color .15s;
 }
-/* Invisible tap-target extension: the visual stays a subtle 18px ring, but the
-   touchable area becomes 40px — a bare 18px button is below any comfortable
+/* Invisible tap-target extension: the visual stays a subtle 15px ring, but the
+   touchable area becomes ~31px — a 15px button is below any comfortable
    fingertip size. Clicks on the halo hit the button itself (the pseudo-element
    is part of it), so the existing closest('.help-ico') delegation just works. */
-.help-ico::before { content: ''; position: absolute; inset: -11px; border-radius: 50%; }
+.help-ico::before { content: ''; position: absolute; inset: -8px; border-radius: 50%; }
 .help-ico:hover, .help-ico:focus-visible, .help-ico.active { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
 .help-pop {
   position: fixed; z-index: 97; max-width: 260px; padding: 10px 12px;
@@ -619,7 +542,7 @@ details.adv[open] > summary { margin-bottom: 10px; }
 .view { display: none; } .view.active { display: block; animation: viewIn .35s var(--ease); }
 @keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .view.active { animation: none; } }
-.footer { text-align: center; color: var(--ink-muted); font-size: 12px; padding: 40px 0 12px; line-height: 1.8; word-break: keep-all; overflow-wrap: normal; }
+.footer { text-align: center; color: var(--ink-muted); font-size: 12px; padding: 40px 0 12px; line-height: 1.8; }
 .footer b { color: var(--ink-secondary); font-weight: 600; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .status-line { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; }
