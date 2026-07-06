@@ -172,6 +172,41 @@
       body: periodTable(s.revPeriods, 'rev-periods')
     });
 
+    // 今月の着地見込み（確定ベース＋暦日ペース参考値）。比較対象は先月実績、
+    // 無ければ直近3ヶ月平均。会計明細のみのデータは受付待ちが存在しないため、
+    // ¥0見込みは出さずにペース換算を主表示に切り替える。
+    var fc = s.forecast;
+    var fcTargetV = s.revPeriods.prevMonth.monthly != null ? s.revPeriods.prevMonth.monthly : s.revPeriods.last3.monthly;
+    var fcTargetLabel = s.revPeriods.prevMonth.monthly != null ? '先月実績' : '直近3ヶ月平均';
+    var fcMain = fc ? (A.meta.completedOnly ? fc.pace : fc.confirmed) : null;
+    var fcShowMeter = fc && fcTargetV != null && fcMain != null;
+    if (fc) {
+      var fcNote = '<div class="note-inline" style="margin-top:10px">今月 ' + fc.daysElapsed + '日経過 ／ ' + fc.daysInMonth + '日</div>';
+      var fcBody;
+      if (A.meta.completedOnly) {
+        fcBody = '<div class="mini-stats" style="margin-bottom:6px">' +
+          miniStat(fc.pace != null ? yen(fc.pace) : '—', 'このペースなら月末', 'forecast-pace') +
+          miniStat(yen(fc.actual), '今月実績', 'forecast-actual') +
+          '</div>' +
+          (fc.pace == null
+            ? '<div class="note-inline" style="margin-top:8px">今月' + fc.daysElapsed + '日経過。ペース予測は7日目から表示されます。</div>'
+            : (fcShowMeter ? '<div id="mForecast"></div>' : '') + fcNote);
+      } else {
+        fcBody = '<div class="mini-stats" style="margin-bottom:6px">' +
+          miniStat(yen(fc.confirmed), '着地見込み（確定ベース）', 'forecast-confirmed') +
+          miniStat(yen(fc.actual), '今月実績', 'forecast-actual') +
+          miniStat(yen(fc.expected), '受付待ち見込み', 'forecast-expected') +
+          miniStat(fc.pace != null ? yen(fc.pace) : '—', 'ペース参考', 'forecast-pace') +
+          '</div>' +
+          (fcShowMeter ? '<div id="mForecast"></div>' : '<div class="note-inline" style="margin-top:8px">比較できる先月の実績がまだありません。</div>') + fcNote;
+      }
+      html += card({
+        col: 'col-12',
+        title: '今月の着地見込み' + help('今月の会計済み実績に、今月分の受付待ち予約（見込み金額）を足した「確定ベース」の着地見込み。これから入る新規予約は含まない控えめな見積もりです。ペース参考は、実績を経過日数で割って月の日数を掛けた暦日換算で、月の7日目から表示されます。'),
+        body: fcBody
+      });
+    }
+
     // Retention meters + monthly revenue
     html += card({
       col: 'col-5', title: '定着・リピート',
@@ -227,6 +262,17 @@
 
     // draw
     tileSpark('sparkSpend', s.monthly.map(function (m) { return m.spend; }));
+
+    if (fcShowMeter) {
+      draw('mForecast', function (el) {
+        var gap = fcTargetV - fcMain;
+        C.meter(el, {
+          label: '対' + fcTargetLabel + '（' + yen(fcTargetV) + '）',
+          value: fcMain / fcTargetV, display: pct(fcMain / fcTargetV * 100, 0), target: 1,
+          sub: gap > 0 ? fcTargetLabel + 'まであと ' + yen(gap) : fcTargetLabel + 'を上回る見込みです'
+        });
+      });
+    }
 
     draw('mRepeat', function (el) { C.meter(el, { label: 'リピート率（2回到達）', help: '来店顧客のうち、2回目の予約（来店・今後の予約含む）に到達した人の割合。キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。', value: s.repeatRate / 100, display: pct(s.repeatRate), target: 0.7, sub: '目安 70%' }); });
     draw('mNext', function (el) { C.meter(el, { label: '次回予約取得率', help: '来店（会計済み）のうち、その後に何らかの予約・来店（キャンセルは除く）があった割合。1回目〜複数回目まで、来店ごとに1件として集計。', value: s.nextReserveRate / 100, display: pct(s.nextReserveRate), target: 0.6, sub: '目安 60%（来店時に次の予約を取った割合）' }); });
@@ -356,6 +402,14 @@
       var regMile = milestoneProgress(st.regulars3, MILESTONES.regulars);
       var regNote = '・育てた常連 <b data-kpi="staff-' + esc(st.name) + '-regulars3">' + F.int(st.regulars3) + '人</b>' +
         (regMile.maxed ? '（最高節目達成）' : '（次の節目 ' + F.int(regMile.next) + '人）');
+      // 今月の着地見込み（スタッフ版）: 分母（先月、無ければ直近3ヶ月平均）と
+      // 主値（会計明細のみのデータではペース換算）が揃うときだけメーターを出す。
+      var stTargetV = st.revPeriods.prevMonth.monthly != null ? st.revPeriods.prevMonth.monthly : st.revPeriods.last3.monthly;
+      var stFcMain = st.forecast ? (A.meta.completedOnly ? st.forecast.pace : st.forecast.confirmed) : null;
+      var stFcHtml = (stFcMain != null && stTargetV != null) ? '<div id="stForecast' + i + '" style="margin-top:14px"></div>' : '';
+      var streakLabel = st.nextStreak
+        ? '次回予約ストリーク・最長 ' + F.int(st.nextStreak.best)
+        : '次回予約ストリーク';
       html += card({
         col: 'col-6', hoverable: true,
         body: '<div class="staff-head"><div class="staff-avatar" style="background:' + col + '">' + esc(st.name[0].toUpperCase()) + '</div>' +
@@ -364,12 +418,16 @@
           sm(F.int(st.avg.visitsPerMonth), '平均来店 / 月' + help('実績のある月ごとの来店件数を単純平均したもの。')) + sm(yen(st.avg.spend), '平均客単価' + help('月ごとの客単価（予約ベース売上÷予約数）を単純平均したもの。')) +
           sm(pct(st.retail.customerRatio * 100, 1), '店販顧客比率' + help('このスタッフが担当した来店顧客のうち、店販を購入した人の割合。'), 'staff-' + esc(st.name) + '-retail') +
           sm(st.retail.avgMonthlyAmount != null ? yen(st.retail.avgMonthlyAmount) : '—', '平均店販売上 / 月' + help('月ごとの店販売上合計を、実績のある月数で割った平均。'), 'staff-' + esc(st.name) + '-retail-avg') +
+          sm(st.hourlyRevRecent != null ? yen(st.hourlyRevRecent) : '—', '時間あたり売上' + help('直近3ヶ月の会計済み売上の合計 ÷ 施術時間の合計で算出した、施術1時間あたりの売上。自分の生産性の推移を見るための指標で、所要時間の記録がある予約データのみで算出できます。'), 'staff-' + esc(st.name) + '-hourly') +
+          sm(st.nextStreak ? F.int(st.nextStreak.current) + '連続' : '—', streakLabel + help('直近から遡って、連続で「次の予約」を確保できた来店の数。来店から7日以内でまだ次の予約が入っていない来店は「保留」として数えません（会計明細のみのデータでは直近30日の来店を除外）。0に戻っても、次の1件から新しい記録が始まります。'), 'staff-' + esc(st.name) + '-streak') +
           '</div>' +
           '<div style="margin-top:14px" data-kpi="staff-' + esc(st.name) + '-rev-periods">' + periodTable(st.revPeriods) + '</div>' +
+          stFcHtml +
           '<div id="stMeterRepeat' + i + '" style="margin-top:16px"></div>' +
           '<div id="stMeterNext' + i + '"></div>' +
           '<div id="stMeterFix' + i + '"></div>' +
-          personalBestBlock(st) +
+          personalBestBlock(st, asOfMonth) +
+          nurtureBlock(st, i, A.meta) +
           sgPanel(st, asOfMonth) +
           '<div class="next-hint" data-kpi="staff-' + esc(st.name) + '-next-hint">' + esc(nextHintText(st)) + '</div>'
       });
@@ -383,6 +441,9 @@
     html += card({ col: 'col-6', title: 'リピート育成力' + help('このスタッフが直近3ヶ月に初回担当した顧客のうち、2回目・3回目・4回目の予約に到達した人の割合（予約ベース。キャンセル後の再予約は到達扱い）。'), sub: '直近3ヶ月に初回担当した顧客の 2〜4回目への到達率', body: chartBox('cStaffRepeat', 230) });
     if (A.store.retail.hasAmount) {
       html += card({ col: 'col-6', title: '店販売上の推移' + help('月ごとの店販売上金額の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffRetail', 230) });
+    }
+    if (staff.some(function (st) { return st.hourlyRev; })) {
+      html += card({ col: 'col-6', title: '時間あたり売上の推移' + help('月ごとの会計済み売上 ÷ 施術時間（時間換算）。自分の生産性が上がっているかを過去の自分と比べるための指標で、所要時間の記録がある予約データのみで算出。'), sub: '施術1時間あたりの売上', tag: '¥', body: chartBox('cStaffHourly', 230) });
     }
     if (staff.some(function (st) { return st.utilization; })) {
       html += card({ col: 'col-6', title: '月次 施術時間と稼働率' + help('稼働率＝施術時間の合計 ÷ 営業可能時間（9:00-20:00固定）。予約データに所要時間の記録がある場合のみ算出可能。'), sub: '予約枠の使われ方（営業時間 9-20時想定）', tag: '%', body: chartBox('cStaffUtil', 230) });
@@ -400,6 +461,27 @@
       draw('stMeterFix' + i, function (el) {
         C.meter(el, { label: '固定化率（3回到達）', help: '2回目の予約に到達した顧客のうち、3回目の予約も取った割合（予約ベース）。', value: st.fixationRate || 0, display: st.fixationRate == null ? '—' : pct(st.fixationRate * 100), color: cvar(STAFF_COLOR[st.name]), target: 0.3, sub: '目安 30%' });
       });
+      // 今月の着地見込み（スタッフ版）— カード生成時と同じゲート条件で描画
+      var stTargetV = st.revPeriods.prevMonth.monthly != null ? st.revPeriods.prevMonth.monthly : st.revPeriods.last3.monthly;
+      var stTargetLabel = st.revPeriods.prevMonth.monthly != null ? '先月' : '直近3ヶ月平均';
+      var stFcMain = st.forecast ? (A.meta.completedOnly ? st.forecast.pace : st.forecast.confirmed) : null;
+      if (stFcMain != null && stTargetV != null) {
+        draw('stForecast' + i, function (el) {
+          var gap = stTargetV - stFcMain;
+          C.meter(el, {
+            label: '今月の着地見込み',
+            help: '今月の会計済み実績＋今月分の受付待ち見込み（会計明細のみのデータでは暦日ペース換算）。これから入る新規予約は含まない控えめな見積もりで、比較対象は' + stTargetLabel + 'の実績。',
+            value: stFcMain / stTargetV, display: yen(stFcMain), color: cvar(STAFF_COLOR[st.name]), target: 1,
+            sub: gap > 0 ? stTargetLabel + ' ' + yen(stTargetV) + ' まであと ' + yen(gap) : stTargetLabel + 'を上回る見込みです'
+          });
+        });
+      }
+      // 指名率スパークライン（新規客の育成ブロック内）
+      if (A.meta.anyShimei) {
+        draw('stShimei' + i, function (el) {
+          C.sparkline(el, st.monthly.map(function (m) { return m.shimeiRate == null ? null : m.shimeiRate * 100; }), cvar(STAFF_COLOR[st.name]));
+        });
+      }
     });
     // 月次予約数の比較: 月ごとのクラスターにスタッフ別の積み上げ棒をまとめて表示
     // （新規/2回目/3回目/4回目以上、会計済み＝濃色・受付待ち＝同色を薄くして重畳）。
@@ -462,6 +544,17 @@
         });
       });
     }
+    if (staff.some(function (st) { return st.hourlyRev; })) {
+      draw('cStaffHourly', function (el) {
+        C.lineArea(el, {
+          xLabels: months, area: false,
+          series: staff.filter(function (st) { return st.hourlyRev; }).map(function (st) {
+            return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.hourlyRev.map(function (h) { return h.value; }) };
+          }),
+          valueFmt: yen, yFmt: F.compact, height: 230
+        });
+      });
+    }
     if (staff.some(function (st) { return st.utilization; })) {
       draw('cStaffUtil', function (el) {
         C.columns(el, {
@@ -509,7 +602,7 @@
   }
 
   // 自己ベスト（月間の最高記録・自分の過去比のみ／他スタッフとは比較しない）
-  function personalBestBlock(st) {
+  function personalBestBlock(st, asOfMonth) {
     var pb = st.personalBest;
     if (pb.confirmedMonths < 2) {
       return '<div class="self-growth"><div class="sg-title">自己ベスト</div>' +
@@ -525,7 +618,45 @@
       cell('月間売上', pb.rev, pb.latestIsBest.rev, function (v) { return yen(v); }, null, pbHelp) +
       cell('月間平均単価', pb.spend, pb.latestIsBest.spend, function (v) { return yen(v); }, null, pbHelp) +
       cell('月間店販売上', pb.retail, pb.latestIsBest.retail, function (v) { return yen(v); }, null, pbHelp);
-    return '<div class="self-growth"><div class="sg-title">自己ベスト</div><div class="staff-metrics" style="margin-top:10px">' + cells + '</div></div>';
+    // 自己ベスト追走（今月）: 進行中の当月実績を、確定済みの自己ベストと並べて
+    // 「あと◯で更新」を前向きに表示。当月に活動が無ければ出さない。
+    var chase = '';
+    var cur = asOfMonth ? st.monthly.filter(function (m) { return m.m === asOfMonth; })[0] : null;
+    if (cur && (cur.actual > 0 || cur.revActual > 0)) {
+      var chaseHelp = help('今月はまだ集計中。確定した自己ベストへの追走表示です。月の途中で差が大きく見えるのは正常です。');
+      function chaseRow(label, curV, best, fmt) {
+        if (!best) return '';
+        return '<div class="sg-row"><span>' + label + chaseHelp + '</span><b>' + fmt(curV) + '</b>' +
+          (curV >= best.v
+            ? '<em class="sg-up">自己ベスト更新中</em>'
+            : '<em class="sg-flat">あと' + fmt(best.v - curV) + 'で自己ベスト</em>') + '</div>';
+      }
+      chase = '<div style="margin-top:10px">' +
+        chaseRow('今月の来店', cur.actual, pb.visits, function (v) { return F.int(v) + '件'; }) +
+        chaseRow('今月の売上', cur.revActual, pb.rev, yen) +
+        '</div>';
+    }
+    return '<div class="self-growth"><div class="sg-title">自己ベスト</div><div class="staff-metrics" style="margin-top:10px">' + cells + '</div>' + chase + '</div>';
+  }
+
+  // 新規客の育成（③）: 担当した新規客がリピートに育っていく途中経過の見える化。
+  // 他スタッフとの比較ではなく、自分が「いま育てている」顧客数を示す。
+  function nurtureBlock(st, i, meta) {
+    var rows = '<div class="sg-row"><span>2回目の予約が入っている新規客' +
+      help('担当した新規のお客様（来店1回）のうち、すでに次の予約が入っている人数。これから入る予約に依存するため、受付待ちを含む予約データでのみ算出できます。') +
+      '</span><b data-kpi="staff-' + esc(st.name) + '-nurturing">' + (st.nurturing != null ? F.int(st.nurturing) + '人' : '—') + '</b></div>';
+    rows += '<div class="sg-row"><span>今月2回目のご来店' +
+      help('初回を担当したお客様のうち、今月2回目の来店に到達した人数。新規客がリピートに育った数。') +
+      '</span><b data-kpi="staff-' + esc(st.name) + '-second-reached">' + F.int(st.secondReached) + '人</b></div>';
+    if (meta.anyShimei) {
+      var lastShimei = null;
+      st.monthly.forEach(function (m) { if (m.shimeiRate != null) lastShimei = m.shimeiRate; });
+      rows += '<div class="sg-row"><span>指名率（直近月）' +
+        help('来店のうち指名予約だった割合。「指名なし」以外の値を指名として数えます。下の線は月ごとの推移。') +
+        '</span><b data-kpi="staff-' + esc(st.name) + '-shimei">' + (lastShimei != null ? pct(lastShimei * 100, 0) : '—') + '</b></div>' +
+        '<div class="spark" id="stShimei' + i + '"></div>';
+    }
+    return '<div class="self-growth"><div class="sg-title">新規客の育成</div>' + rows + '</div>';
   }
 
   // 次の一手：目安との差が最も大きい「成熟済み」の指標を1件だけ提案。競争ではなく
