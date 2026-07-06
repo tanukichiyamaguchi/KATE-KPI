@@ -1,6 +1,6 @@
 {
   "name": "kate-kpi-dashboard",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "KATEstageLASH 蒲田西口店 — reservation-based KPI dashboard (static, client-side)",
   "private": true,
   "scripts": {
