@@ -161,6 +161,7 @@
         firstEffMonth: firstEff ? firstEff.ym : null,
         firstVisitDate: firstVisit ? firstVisit.date : null,
         firstVisitMonth: firstVisit ? firstVisit.ym : null,
+        secondVisitMonth: visits.length > 1 ? visits[1].ym : null,
         firstVisitStaff: firstVisit ? firstVisit.staff : (firstEff ? firstEff.staff : null),
         firstVisitDow: firstVisit ? firstVisit.dow : null,
         firstCoupon: firstEff ? (firstEff.coupon || null) : null,
@@ -407,6 +408,23 @@
       last3: retailBucket(last3Months), prevMonth: retailBucket([prevYm]), currentMonth: retailBucket([currentYm])
     } : null;
 
+    // ---- 今月の着地見込み（①） ------------------------------------------------
+    // confirmed = 今月の会計済み実績 + 今月分の受付待ち見込み。これから入る新規
+    // 予約は含まない控えめな見積もり。pace は実績÷経過日数×月の日数の暦日換算
+    // 参考値で、月初はブレが大きいため7日目から（それまでは null＝「まだ測れない」。
+    // 0 ではない — confirmed の 0 は正当な 0、pace の null は未計測)。
+    function forecastOf(actual, expected) {
+      var daysElapsed = asOf.getDate();
+      var dim = daysInMonth(currentYm);
+      return {
+        m: currentYm, daysElapsed: daysElapsed, daysInMonth: dim,
+        actual: actual, expected: expected, confirmed: actual + expected,
+        pace: (daysElapsed >= 7 && actual > 0) ? Math.round(actual / daysElapsed * dim) : null
+      };
+    }
+    var curMonthRow = monthly.filter(function (r) { return r.m === currentYm; })[0];
+    var forecast = forecastOf(curMonthRow ? curMonthRow.revActual : 0, curMonthRow ? curMonthRow.revExpected : 0);
+
     // ---- Cohort (first-visit month → 2nd-visit reach) -----------------------
     // A cohort month whose customers haven't yet had 45 days to return is dropped
     // (completed-checkout sources only) rather than shown as a misleadingly low bar.
@@ -449,6 +467,7 @@
         var next2 = vis2.filter(function (r) { return visitGotNext(r); }).length;
         var rst = retailStats(vis);
         var immature = monthImmature(mo);          // right-censored recent month → not measurable
+        var shimeiN = anyShimei && vis.length ? vis.filter(shimeiOn).length : null;
         return {
           m: mo, res: res, actual: vis.length, exp: fut.length, rev: rev, revActual: revActual,
           spend: res ? Math.round(rev / res) : null,   // 予約ベース客単価＝予約ベース売上÷予約数（元ワークブック準拠）
@@ -461,6 +480,7 @@
           nextResImmature: immature,
           retailRatio: rst.attachRate, retailAmount: rst.amount, retailBuyers: rst.buyers,
           retailBuyingVisits: rst.buyingVisits,
+          shimeiCnt: shimeiN, shimeiRate: shimeiN === null ? null : shimeiN / vis.length,
           durMin: vis.reduce(function (s, r) { return s + (r.dur || 0); }, 0)
         };
       });
@@ -486,6 +506,14 @@
     // corresponding personal-best/milestone fields below are numbers or null
     // (a salon that never records retail sales shouldn't show a false "0件").
     var anyRetail = visitedRows.some(function (r) { return r.hasRetail; });
+    // 指名（指名予約有無）: データセットに一つでも値があれば集計対象。判定は
+    // リベラルに「なし/無 を含まない非空文字」（実データの値は 指名なし/指名予約/
+    // 指名あり）。指名は予約時点で確定する情報なので右打ち切り補正は不要。
+    var anyShimei = rows.some(function (r) { return r.shimei && String(r.shimei).trim(); });
+    function shimeiOn(r) {
+      var s = r.shimei && String(r.shimei).trim();
+      return !!s && !/なし|無/.test(s);
+    }
     // currentYm (the in-progress month, excluded from personal-best comparisons)
     // is defined up with the period buckets.
 
@@ -497,6 +525,15 @@
       // 次の一手 sample-size gate below (unrelated to reach()).
       var acqAll = customers.filter(function (c) { return c.firstVisitStaff === name && c.hasVisit; });
       var acqMature = acqAll.filter(custMature);
+      // ---- 新規客の育成（③） -----------------------------------------------
+      // nurturing = 来店1回でこれからの予約（2回目）が入っている顧客数。将来予約の
+      // 有無に依存するため、会計明細のみのデータでは 0 ではなく null（0人と表示
+      // したら嘘になる）。secondReached = 今月2回目の来店に到達した顧客数（0は
+      // 「今月」ラベルの下では正直な0なので常に数値）。
+      var nurturing = hasFuture
+        ? acqAll.filter(function (c) { return c.Fvis === 1 && byCust[c.key].some(function (r) { return r.isFuture; }); }).length
+        : null;
+      var secondReached = acqAll.filter(function (c) { return c.secondVisitMonth === currentYm; }).length;
       // リピート率（2回到達）・固定化率（3回目到達）・リピート育成力チャートの母数：
       // 直近3ヶ月（今月を含まない確定3ヶ月）にこのスタッフが初回担当した顧客の
       // コホート。「到達」は予約ベース（Fres、キャンセル後の再予約を考慮・
@@ -547,6 +584,40 @@
         nextRes: meanMonths(activeRecent, function (r) { return r.nextRes; }),
         retailCustomerRatio: retailStats(staffVisRecent).customerRatio
       };
+      // ---- 次回予約ストリーク（②）: 連続で次の予約を確保できた来店数 ----------
+      // 右打ち切り対応: 予約データ（hasFuture）では、直近7日以内で未再予約の来店は
+      // 「保留」として対象から外す（切らない・伸ばさない — 来店直後でまだ次の予約を
+      // 入れていないだけの客で記録が0に戻るのを防ぐ）。会計明細のみのデータでは
+      // 次回来店の証拠が現れるまで時間が要るため、直近30日の来店を一律除外。
+      var streakEligible = staffVis.filter(function (r) {
+        if (!r.date) return false;
+        if (!hasFuture) return dayDiff(asOf, r.date) >= MATURITY_DAYS;
+        return visitGotNext(r) || dayDiff(asOf, r.date) >= 7;
+      }).sort(function (a, b) { return (a.date - b.date) || ((a.start || 0) - (b.start || 0)); });
+      var nextStreak = null;
+      if (streakEligible.length) {
+        var stBest = 0, stRun = 0;
+        streakEligible.forEach(function (r) {
+          if (visitGotNext(r)) { stRun++; if (stRun > stBest) stBest = stRun; } else stRun = 0;
+        });
+        var stCur = 0;
+        for (var sk = streakEligible.length - 1; sk >= 0 && visitGotNext(streakEligible[sk]); sk--) stCur++;
+        nextStreak = { current: stCur, best: stBest, n: streakEligible.length };
+      }
+      // ---- 今月の着地見込み（①・スタッフ版）: 当月行が無ければ null ------------
+      var stCurRow = mrows.filter(function (r) { return r.m === currentYm; })[0];
+      var stForecast = stCurRow ? forecastOf(stCurRow.revActual, stCurRow.rev - stCurRow.revActual) : null;
+      // ---- 時間あたり売上（④）: 実績売上 ÷ 施術時間。dur は予約データのみ -------
+      var hourlyRev = anyDur ? mrows.map(function (r) {
+        return { m: r.m, value: r.durMin > 0 ? Math.round(r.revActual / (r.durMin / 60)) : null };
+      }) : null;
+      // 直近3ヶ月はプール平均（Σ売上 ÷ Σ時間）。¥/h は時間に対する率なので、
+      // 月次単純平均だと来店1件だけの月に引きずられる。
+      var recentDurRows = mrows.filter(function (r) { return last3Months.indexOf(r.m) !== -1; });
+      var recentDurMin = recentDurRows.reduce(function (s, r) { return s + r.durMin; }, 0);
+      var hourlyRevRecent = anyDur && recentDurMin > 0
+        ? Math.round(recentDurRows.reduce(function (s, r) { return s + r.revActual; }, 0) / (recentDurMin / 60))
+        : null;
       var retail = retailStats(staffVis);
       // 平均店販売上/月 = Σ月次店販金額 ÷ active月数 (店販金額データが無ければ null)
       retail.avgMonthlyAmount = anyRetail && active.length
@@ -604,7 +675,10 @@
         reach2: reach(2), reach3: reach(3), reach4: reach(4), fixationRate: fixationRate, retail: retail, monthly: mrows, composition: comp,
         personalBest: personalBest, regulars3: regulars3,
         revPeriods: periodStats(staffVis),
-        utilization: utilizationMonthly(mrows)
+        utilization: utilizationMonthly(mrows),
+        forecast: stForecast, nextStreak: nextStreak,
+        nurturing: nurturing, secondReached: secondReached,
+        hourlyRev: hourlyRev, hourlyRevRecent: hourlyRevRecent
       };
     });
 
@@ -715,6 +789,7 @@
         totalRows: rows.length,
         undatedRows: rows.filter(function (r) { return !r.date; }).length,   // rows whose 来店日 couldn't be parsed
         completedOnly: !hasFuture,   // 会計明細など、これからの予約が無い（＝直近月は打ち切り）
+        anyShimei: anyShimei,        // 指名予約有無の列に値があるデータか（指名率カードのゲート）
         generatedAt: options.now || null
       },
       store: {
@@ -730,7 +805,7 @@
         funnel: funnel, churn: churn, cancel: cancel, route: route, retail: retail,
         ltv: { current: Math.round(ltv.current), predicted: Math.round(ltv.predicted), expectedVisits: round(ltv.expectedVisits, 2), observedVisits: round(ltv.observedVisits, 2) },
         monthly: monthly, cohort: cohort, visitCountBreakdown: visitCountBreakdown, newMix: newMix, serviceRetailMonthly: serviceRetailMonthly,
-        revPeriods: revPeriods, retailPeriods: retailPeriods
+        revPeriods: revPeriods, retailPeriods: retailPeriods, forecast: forecast
       },
       staff: staff,
       trend: {
