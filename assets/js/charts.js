@@ -38,7 +38,17 @@
     var a = Math.abs(n);
     if (a >= 1e8) return (n / 1e8).toFixed(a >= 1e9 ? 0 : 1).replace(/\.0$/, '') + '億';
     if (a >= 1e4) return (n / 1e4).toFixed(a >= 1e5 ? 0 : 1).replace(/\.0$/, '') + '万';
-    if (a >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
+    // No "k" notation: this dashboard is for Japanese salon owners — 1,000-9,999
+    // renders in full (the old ¥8.6k read as 8.6万円 to some readers).
+    return fmtInt(n);
+  }
+  // Canonical Japanese money notation (万-based, never "k"): < ¥10,000 renders
+  // in full ("8,600"), >= ¥10,000 as 万 with one decimal, trailing .0 stripped
+  // ("0.9万" / "4.7万" / "116.2万"). Callers prepend ¥ where needed.
+  function fmtMan(n) {
+    var a = Math.abs(n);
+    if (a >= 1e8) return (n / 1e8).toFixed(1).replace(/\.0$/, '') + '億';
+    if (a >= 1e4) return (n / 1e4).toFixed(1).replace(/\.0$/, '') + '万';
     return fmtInt(n);
   }
   function fmtPct(n, d) { return (n * 100).toFixed(d == null ? 0 : d) + '%'; }
@@ -101,7 +111,15 @@
     var lg = el('div', 'kate-legend');
     items.forEach(function (it) {
       var s = el('span', 'kate-legend-item');
-      var dot = el('i', 'kate-legend-dot'); dot.style.background = it.color;
+      var dot = el('i', 'kate-legend-dot');
+      if (it.hatch) {
+        // mirror the 45° hatch used on 未確定 (見込み) bars so the swatch
+        // matches the mark it stands for
+        dot.style.background = 'repeating-linear-gradient(45deg,' + it.color + ' 0 2px, transparent 2px 5px)';
+        dot.style.border = '1px solid ' + it.color;
+      } else {
+        dot.style.background = it.color;
+      }
       if (it.dashed) dot.classList.add('is-line');
       s.appendChild(dot); s.appendChild(document.createTextNode(it.label));
       lg.appendChild(s);
@@ -109,6 +127,28 @@
     container.appendChild(lg);
     return lg;
   }
+
+  // 45° hatch pattern (series color strokes on transparent) — the shared visual
+  // language for 未確定/見込み values across every column chart. One pattern per
+  // color per SVG, created lazily in a <defs> owned by that SVG.
+  var hatchSeq = 0;
+  function hatchFill(svg, color) {
+    svg.__hatch = svg.__hatch || {};
+    if (svg.__hatch[color]) return 'url(#' + svg.__hatch[color] + ')';
+    var id = 'kh' + (++hatchSeq);
+    var defs = svg.__hatchDefs;
+    if (!defs) { defs = svgEl('defs'); svg.insertBefore(defs, svg.firstChild); svg.__hatchDefs = defs; }
+    var p = svgEl('pattern', { id: id, width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
+    p.appendChild(svgEl('rect', { width: 6, height: 6, fill: color, 'fill-opacity': 0.13 }));
+    p.appendChild(svgEl('line', { x1: 1, y1: 0, x2: 1, y2: 6, stroke: color, 'stroke-width': 2 }));
+    defs.appendChild(p);
+    svg.__hatch[color] = id;
+    return 'url(#' + id + ')';
+  }
+  // Group labels may be plain strings or { l: '7月', s: '集計中' } — the sub is
+  // rendered as a second, smaller line under the month (集計中 / 見込み).
+  function groupParts(g) { return (g && typeof g === 'object') ? g : { l: g, s: null }; }
+  function groupTitle(g) { var p = groupParts(g); return p.l + (p.s ? '・' + p.s : ''); }
 
   var ink = { primary: function () { return cssVar('--text-primary', '#0b0b0b'); }, secondary: function () { return cssVar('--text-secondary', '#52514e'); }, muted: function () { return cssVar('--text-muted', '#898781'); }, grid: function () { return cssVar('--gridline', '#e1e0d9'); }, surface: function () { return cssVar('--surface-1', '#fff'); }, axis: function () { return cssVar('--axis', '#c3c2b7'); } };
 
@@ -244,7 +284,8 @@
   // opts: { groups:[label], series:[{name,color?,values:[]}], stacked?, height, valueFmt, totalFmt?, yFmt }
   function columns(container, opts) {
     var w = width(container), h = opts.height || 260;
-    var padL = opts.padL || 36, padR = 14, padT = opts.stacked ? 26 : 22, padB = 34;
+    var anySub = opts.groups.some(function (g) { return groupParts(g).s; });
+    var padL = opts.padL || 36, padR = 14, padT = opts.stacked ? 26 : 22, padB = anySub ? 40 : 34;
     var svg = mount(container, w, h);
     var groups = opts.groups, series = opts.series, ng = groups.length;
     var plotW = w - padL - padR, plotH = h - padT - padB;
@@ -264,9 +305,14 @@
     }
 
     groups.forEach(function (glabel, gi) {
+      var parts = groupParts(glabel), title = groupTitle(glabel);
       var cx = padL + band * gi + band / 2;
-      var t = svgEl('text', { x: cx, y: h - 12, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11 });
-      t.textContent = glabel; svg.appendChild(t);
+      var t = svgEl('text', { x: cx, y: anySub ? h - 21 : h - 12, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11 });
+      t.textContent = parts.l; svg.appendChild(t);
+      if (parts.s) {
+        var ts = svgEl('text', { x: cx, y: h - 9, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 9 });
+        ts.textContent = parts.s; svg.appendChild(ts);
+      }
       if (opts.stacked) {
         var barW = Math.min(24, band * 0.62), x = cx - barW / 2, acc = 0;
         series.forEach(function (s, si) {
@@ -274,11 +320,17 @@
           var y0 = yat(acc), y1 = yat(acc + v); acc += v;
           var rectH = Math.max(0, y0 - y1);
           var isTop = (function () { for (var k = si + 1; k < series.length; k++) if (series[k].values[gi] > 0) return false; return true; })();
-          var rect = svgEl('rect', { x: x, y: y1, width: barW, height: 0, fill: s.color || seriesColor(si), rx: isTop ? 4 : 0 });
+          var color = s.color || seriesColor(si);
+          var rect = svgEl('rect', { x: x, y: y1, width: barW, height: 0, fill: s.hatch ? hatchFill(svg, color) : color, rx: isTop ? 4 : 0 });
+          // segment separation: hatched (見込み) segments carry a series-color
+          // outline (doubles as the 未確定 cue), solid segments a 1px
+          // surface-color stroke so adjacent ordinal steps never fuse
+          rect.setAttribute('stroke', s.hatch ? color : ink.surface());
+          rect.setAttribute('stroke-width', 1);
           rect.style.cursor = 'default'; svg.appendChild(rect);
           animateAttr(rect, 'height', 0, rectH, 700, gi * 40 + si * 30);
           animateAttr(rect, 'y', y0, y1, 700, gi * 40 + si * 30);
-          bindBarTip(rect, svg, w, glabel, s, si, v, opts);
+          bindBarTip(rect, svg, w, title, s, si, v, opts, color);
         });
         if (acc > 0) {
           fitValueLabel(svg, cx, yat(acc) - 7, (opts.totalFmt || opts.valueFmt || fmtCompact)(acc), barW + 6, 10.5);
@@ -289,11 +341,13 @@
         series.forEach(function (s, si) {
           var v = Math.max(0, s.values[gi]);
           var x = cx - innerW / 2 + si * (bw + GAP), y1 = yat(v), rectH = padT + plotH - y1;
-          var rect = svgEl('rect', { x: x, y: padT + plotH, width: bw, height: 0, fill: s.color || seriesColor(si), rx: Math.min(4, bw / 2) });
+          var color = s.color || seriesColor(si);
+          var rect = svgEl('rect', { x: x, y: padT + plotH, width: bw, height: 0, fill: s.hatch ? hatchFill(svg, color) : color, rx: Math.min(4, bw / 2) });
+          if (s.hatch) { rect.setAttribute('stroke', color); rect.setAttribute('stroke-width', 1); }
           svg.appendChild(rect);
           animateAttr(rect, 'height', 0, rectH, 700, gi * 40 + si * 40);
           animateAttr(rect, 'y', padT + plotH, y1, 700, gi * 40 + si * 40);
-          bindBarTip(rect, svg, w, glabel, s, si, v, opts);
+          bindBarTip(rect, svg, w, title, s, si, v, opts, color);
           if (showBarLabels && v > 0) {
             fitValueLabel(svg, x + bw / 2, y1 - 5, (opts.totalFmt || opts.valueFmt || fmtCompact)(v), bw, 9);
           }
@@ -301,7 +355,7 @@
       }
     });
     enableDragReveal(svg);
-    if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si) }; }));
+    if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si), hatch: s.hatch }; }));
   }
   // ==================== CLUSTERED STACKED COLUMNS ==========================
   // Like columns({stacked:true}) but bars are grouped into visual clusters
@@ -347,10 +401,17 @@
     var showTotals = (clusterBand / clusterSize) >= 18;
     function colorFor(s, si, bi) { return (typeof s.color === 'function' ? s.color(bi) : s.color) || seriesColor(si); }
     groups.forEach(function (glabel, ci) {
+      var parts = groupParts(glabel), title = groupTitle(glabel);
       var clusterCx = padL + clusterBand * ci + clusterBand / 2;
       var groupInnerW = barW * clusterSize + innerGap * (clusterSize - 1);
-      var t = svgEl('text', { x: clusterCx, y: h - (showSubLabels ? 25 : 12), 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11, 'font-weight': 600 });
-      t.textContent = glabel; svg.appendChild(t);
+      var t = svgEl('text', { x: clusterCx, y: h - (showSubLabels ? 25 : (parts.s ? 21 : 12)), 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11, 'font-weight': 600 });
+      // when the per-bar staff labels occupy the second line, the 集計中/見込み
+      // qualifier joins the month inline; otherwise it gets its own small line
+      t.textContent = showSubLabels ? title : parts.l; svg.appendChild(t);
+      if (parts.s && !showSubLabels) {
+        var qs = svgEl('text', { x: clusterCx, y: h - 9, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 9 });
+        qs.textContent = parts.s; svg.appendChild(qs);
+      }
       for (var k = 0; k < clusterSize; k++) {
         var bi = ci * clusterSize + k;
         var bx = clusterCx - groupInnerW / 2 + k * (barW + innerGap);
@@ -368,12 +429,14 @@
           var rectH = Math.max(0, y0 - y1);
           var isTop = (function () { for (var kk = si + 1; kk < series.length; kk++) if ((series[kk].values[bi] || 0) > 0) return false; return true; })();
           var color = colorFor(s, si, bi);
-          var rect = svgEl('rect', { x: bx, y: y1, width: barW, height: 0, fill: color, rx: isTop ? 3 : 0 });
+          var rect = svgEl('rect', { x: bx, y: y1, width: barW, height: 0, fill: s.hatch ? hatchFill(svg, color) : color, rx: isTop ? 3 : 0 });
           if (s.opacity != null) rect.setAttribute('fill-opacity', s.opacity);
+          rect.setAttribute('stroke', s.hatch ? color : ink.surface());
+          rect.setAttribute('stroke-width', 1);
           rect.style.cursor = 'default'; svg.appendChild(rect);
           animateAttr(rect, 'height', 0, rectH, 700, ci * 40 + si * 20);
           animateAttr(rect, 'y', y0, y1, 700, ci * 40 + si * 20);
-          bindBarTip(rect, svg, w, glabel + (opts.subLabels ? ' ・ ' + opts.subLabels[bi] : ''), s, si, v, opts, color);
+          bindBarTip(rect, svg, w, title + (opts.subLabels ? ' ・ ' + opts.subLabels[bi] : ''), s, si, v, opts, color);
         });
         if (showTotals && acc > 0) {
           fitValueLabel(svg, bx + barW / 2, yat(acc) - 6, (opts.totalFmt || opts.valueFmt || fmtCompact)(acc), barW + 4, 9.5);
@@ -511,23 +574,63 @@
 
   // ============================ HEATMAP (F×R) ==============================
   // opts: { matrix:[[]], rowLabels, colLabels, height, hueVar, cellLabel }
+  // sRGB helpers for the heatmap's per-cell text color: the cell background is
+  // `base` at some fill-opacity over the card surface, so the *effective* color
+  // (and hence the readable ink) depends on both.
+  function hexRgb(hex) {
+    var m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+    if (!m) return null;
+    var n = parseInt(m[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function blendOver(fg, bg, a) { return [0, 1, 2].map(function (i) { return fg[i] * a + bg[i] * (1 - a); }); }
+  function relLum(rgb) {
+    var c = rgb.map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  }
   function heatmap(container, opts) {
     var m = opts.matrix, rows = m.length, cols = m[0].length;
-    var w = width(container), cell = Math.min(64, (w - 44) / cols), h = cell * rows + 46;
+    var wAvail = width(container);
+    // Keep cells at a readable minimum: when the container is narrower than
+    // minCell×cols the SVG keeps its natural size and the container scrolls
+    // horizontally instead of crushing cells/labels into each other.
+    var minCell = opts.minCell || 26;
+    var cell = Math.max(minCell, Math.min(64, (wAvail - 44) / cols));
+    var w = Math.max(wAvail, 44 + cell * cols + 2), h = cell * rows + 46;
     var svg = mount(container, w, h);
+    if (w > wAvail + 1) {
+      container.style.overflowX = 'auto';
+      container.style.webkitOverflowScrolling = 'touch';
+      svg.style.minWidth = w + 'px';
+    } else { container.style.overflowX = ''; svg.style.minWidth = ''; }
     var padL = 40, padT = 22;
     var max = Math.max.apply(null, m.reduce(function (a, r) { return a.concat(r); }, [0])) || 1;
     var base = opts.hue || cssVar('--series-1', '#2a78d6');
-    opts.colLabels.forEach(function (cl, c) { var t = svgEl('text', { x: padL + c * cell + cell / 2, y: padT - 8, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11 }); t.textContent = cl; svg.appendChild(t); });
+    var baseRgb = hexRgb(base), surfRgb = hexRgb(ink.surface()) || [255, 255, 255];
+    // narrow cells → thin the column labels (every 2nd) so they can't overlap
+    var labelEvery = cell < 34 && cols > 6 ? 2 : 1;
+    opts.colLabels.forEach(function (cl, c) {
+      if (c % labelEvery !== 0) return;
+      var t = svgEl('text', { x: padL + c * cell + cell / 2, y: padT - 8, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11 }); t.textContent = cl; svg.appendChild(t);
+    });
     opts.rowLabels.forEach(function (rl, r) { var t = svgEl('text', { x: padL - 8, y: padT + r * cell + cell / 2 + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': 11 }); t.textContent = rl; svg.appendChild(t); });
     for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) {
       (function (r, c) {
         var v = m[r][c], intensity = v / max;
         var x = padL + c * cell, y = padT + r * cell;
-        var rect = svgEl('rect', { x: x + 1.5, y: y + 1.5, width: cell - 3, height: cell - 3, rx: 6, fill: base, 'fill-opacity': v === 0 ? 0.05 : (0.14 + intensity * 0.82) });
+        var alpha = v === 0 ? 0.05 : (0.14 + intensity * 0.82);
+        var rect = svgEl('rect', { x: x + 1.5, y: y + 1.5, width: cell - 3, height: cell - 3, rx: 6, fill: base, 'fill-opacity': alpha });
         svg.appendChild(rect);
         if (!noAnim()) { rect.style.opacity = 0; rect.getBoundingClientRect(); rect.style.transition = 'opacity .5s ease ' + ((r + c) * 45) + 'ms'; rect.style.opacity = 1; }
-        if (v > 0) { var t = svgEl('text', { x: x + cell / 2, y: y + cell / 2 + 4, 'text-anchor': 'middle', fill: intensity > 0.55 ? '#fff' : ink.secondary(), 'font-size': 12, 'font-weight': 600 }); t.textContent = v; svg.appendChild(t); }
+        if (v > 0) {
+          // pick ink by the cell's effective background luminance (base blended
+          // over the surface at the cell's alpha) — dark cells get white text,
+          // light cells near-black, in both themes.
+          var cellLum = baseRgb ? relLum(blendOver(baseRgb, surfRgb, alpha)) : (intensity > 0.55 ? 0 : 1);
+          var t = svgEl('text', { x: x + cell / 2, y: y + cell / 2 + 4, 'text-anchor': 'middle', fill: cellLum < 0.32 ? '#ffffff' : '#1d1d1f', 'font-size': 12, 'font-weight': 600 }); t.textContent = v; svg.appendChild(t);
+        } else if (opts.showZero) {
+          var tz = svgEl('text', { x: x + cell / 2, y: y + cell / 2 + 4, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11, opacity: 0.55 }); tz.textContent = '0'; svg.appendChild(tz);
+        }
         function show(clientX) { rect.setAttribute('stroke', base); rect.setAttribute('stroke-width', 2); var box = svg.getBoundingClientRect(); showTip('<div class="kate-tip-row"><span>' + esc(opts.rowLabels[r]) + ' × ' + esc(opts.colLabels[c]) + '</span><b>' + v + esc(opts.unit || '人') + '</b></div>', clientX, box.top + y); }
         rect.__showTip = show;
         rect.__clearHi = function () { rect.removeAttribute('stroke'); };
@@ -665,7 +768,7 @@
   global.KATE.charts = {
     lineArea: lineArea, columns: columns, columnClusters: columnClusters, donut: donut, funnel: funnel, heatmap: heatmap,
     hbars: hbars, scatter: scatter, gauge: gauge, meter: meter, sparkline: sparkline, countUp: countUp,
-    fmt: { int: fmtInt, yen: fmtYen, compact: fmtCompact, pct: fmtPct }, seriesColor: seriesColor, cssVar: cssVar,
+    fmt: { int: fmtInt, yen: fmtYen, compact: fmtCompact, man: fmtMan, pct: fmtPct }, seriesColor: seriesColor, cssVar: cssVar,
     setInstant: function (b) { instant = !!b; }
   };
 })(typeof window !== 'undefined' ? window : globalThis);
