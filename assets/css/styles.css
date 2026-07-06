@@ -1,61 +1,63 @@
 /* ============================================================================
  * KATEstageLASH 蒲田西口店 — KPI Dashboard · Design System
  * ----------------------------------------------------------------------------
- * Editorial / Apple-grade minimalism. Monochrome ink on white & light-gray,
- * generous whitespace, system typography (SF Pro / Hiragino on Apple, Noto
- * elsewhere), one restrained blue accent. No gradients, no glassmorphism decor,
- * no emoji — line icons only. Data palette validated CVD-safe via the dataviz tool.
+ * iOS-native (Apple HIG) look: grouped background (#F2F2F7 / #000), white
+ * inset-grouped cards, iOS system colors (systemBlue tint), Large Title
+ * typography, hairline separators at the rgba(60,60,67,.29) "0.5px look",
+ * blur tab/nav bars. System typography (SF Pro / Hiragino on Apple).
+ * Token NAMES are stable API for app.js/charts.js — values only here.
  * ==========================================================================*/
 
 /* ---- Tokens: LIGHT (default) ---------------------------------------------*/
 :root {
   color-scheme: light;
-  --page-bg: #f5f5f7;
-  --surface-1: #ffffff;
-  --surface-2: #f5f5f7;
-  --surface-3: #ececee;
+  --page-bg: #f2f2f7;                    /* iOS systemGroupedBackground */
+  --surface-1: #ffffff;                  /* grouped cell */
+  --surface-2: rgba(120, 120, 128, 0.12); /* iOS tertiary fill (chips/fields/segmented) */
+  --surface-3: rgba(120, 120, 128, 0.2);
   --surface-elevated: #ffffff;
-  --glass: rgba(255, 255, 255, 0.82);
+  --glass: rgba(242, 242, 247, 0.78);    /* nav/tab bar material */
 
-  --ink-primary: #1d1d1f;
-  --ink-secondary: #6e6e73;
-  --ink-muted: #86868b;
+  --ink-primary: #000000;                /* iOS label */
+  --ink-secondary: rgba(60, 60, 67, 0.72); /* deepened vs iOS .6 to hold ~4.5:1 on #F2F2F7 */
+  --ink-muted: rgba(60, 60, 67, 0.6);    /* iOS secondaryLabel — captions/section headers */
 
-  --accent: #0071e3;         /* Apple blue — every interactive/primary role */
-  --accent-ink: #0066cc;     /* accent as text (better contrast) */
-  --accent-soft: #e8f1fd;
+  --accent: #007aff;         /* iOS systemBlue — every interactive/primary role */
+  --accent-ink: #007aff;     /* accent as text (iOS uses tint directly) */
+  --accent-soft: rgba(0, 122, 255, 0.15); /* iOS "tinted" button fill */
 
-  --border: #d2d2d7;
-  --border-strong: #c7c7cc;
-  --hairline: rgba(0, 0, 0, 0.08);
-  --gridline: #ebebef;
-  --baseline: #d2d2d7;
-  --track: #e8e8ed;
+  --border: rgba(60, 60, 67, 0.29);      /* iOS separator */
+  --border-strong: rgba(60, 60, 67, 0.36);
+  --hairline: rgba(60, 60, 67, 0.29);    /* 1px at .29 alpha = the iOS .5px look */
+  --gridline: #ebebf0;
+  --baseline: #c6c6c8;                   /* iOS opaqueSeparator */
+  --track: rgba(120, 120, 128, 0.12);    /* meter/progress track fill */
 
-  --good: #1a8a5a; --good-ink: #167a4f;
-  --warn: #b25000; --bad: #c9315b; --bad-ink: #b52a50;
-  --status-good: #1a8a5a; --status-warning: #b25000; --status-serious: #c9315b; --status-critical: #d70015;
+  --good: #34c759; --good-ink: #248a3d;  /* systemGreen / its darkened text variant */
+  --warn: #ff9500; --bad: #ff3b30; --bad-ink: #ff3b30;
+  --status-good: #34c759; --status-warning: #ff9500; --status-serious: #ff3b30; --status-critical: #d70015;
 
-  /* Data palette — validated CVD-safe on #ffffff */
-  --series-1: #0071e3; --series-2: #d9660a; --series-3: #1a8a5a;
-  --series-4: #9a3fd1; --series-5: #c9315b; --series-6: #0d8fa8;
-  --series-7: #5c6a78; --series-8: #8a6d3b;
+  /* Data palette — iOS system colors (blue/orange staff pair stays CVD-safe) */
+  --series-1: #007aff; --series-2: #ff9500; --series-3: #34c759;
+  --series-4: #af52de; --series-5: #ff2d55; --series-6: #32ade6;
+  --series-7: #8e8e93; --series-8: #a2845e;
 
-  /* Blue monochrome ramp (funnel ordinal + sequential heatmap) — momo's identity hue */
-  --funnel-1: #cfe2fb; --funnel-2: #9dc5f2; --funnel-3: #5c9de8; --funnel-4: #2b7fd6; --funnel-5: #0a5bb0;
-  --seq-0: #eef5fd; --seq-1: #cfe2fb; --seq-2: #9dc5f2; --seq-3: #5c9de8; --seq-4: #2b7fd6; --seq-5: #0a5bb0;
-  /* Orange monochrome ramp — aoi's identity hue, same lightness steps as --funnel-* so
-     a staff-colored ordinal chart still reads as monotonically darkening per staff. */
-  --funnel-o1: #fbe1c7; --funnel-o2: #f5bf85; --funnel-o3: #ec9748; --funnel-o4: #d9720a; --funnel-o5: #a3540a;
+  /* Blue monochrome ramp (funnel ordinal + sequential heatmap) — momo's identity
+     hue, rebased on systemBlue; endpoints tuned for the white grouped cells. */
+  --funnel-1: #cfe4ff; --funnel-2: #9cc7ff; --funnel-3: #5ea4f7; --funnel-4: #2d82e8; --funnel-5: #0a5fc2;
+  --seq-0: #edf5ff; --seq-1: #cfe4ff; --seq-2: #9cc7ff; --seq-3: #5ea4f7; --seq-4: #2d82e8; --seq-5: #0a5fc2;
+  /* Orange monochrome ramp — aoi's identity hue (systemOrange), same lightness
+     steps as --funnel-* so staff-colored ordinal charts darken monotonically. */
+  --funnel-o1: #ffe3c2; --funnel-o2: #ffc27d; --funnel-o3: #f79a3e; --funnel-o4: #e07800; --funnel-o5: #a85a00;
 
-  --shadow-1: 0 1px 2px rgba(0,0,0,0.04), 0 4px 14px rgba(0,0,0,0.05);
-  --shadow-2: 0 2px 6px rgba(0,0,0,0.06), 0 14px 34px rgba(0,0,0,0.09);
+  --shadow-1: none;                       /* iOS inset-grouped cards are flat */
+  --shadow-2: 0 2px 8px rgba(0,0,0,0.08), 0 12px 34px rgba(0,0,0,0.14); /* popovers/toasts only */
 
-  --radius-lg: 20px; --radius: 16px; --radius-sm: 11px;
-  --ease: cubic-bezier(.4, 0, .2, 1);
+  --radius-lg: 12px; --radius: 10px; --radius-sm: 8px;
+  --ease: cubic-bezier(.25, .1, .25, 1);
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", system-ui, "Segoe UI", Roboto, sans-serif;
-  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
   --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
 
   /* chart-facing aliases */
@@ -68,41 +70,41 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page-bg: #000000;
-  --surface-1: #1c1c1e;
-  --surface-2: #2c2c2e;
-  --surface-3: #3a3a3c;
-  --surface-elevated: #1c1c1e;
-  --glass: rgba(28, 28, 30, 0.82);
+  --page-bg: #000000;                     /* iOS dark grouped background */
+  --surface-1: #1c1c1e;                   /* elevated grouped cell */
+  --surface-2: rgba(120, 120, 128, 0.24); /* iOS dark tertiary fill */
+  --surface-3: rgba(120, 120, 128, 0.36);
+  --surface-elevated: #2c2c2e;            /* popovers/tooltips (secondary elevated) */
+  --glass: rgba(28, 28, 30, 0.75);
 
-  --ink-primary: #f5f5f7;
-  --ink-secondary: #a1a1a6;
-  --ink-muted: #86868b;
+  --ink-primary: #ffffff;
+  --ink-secondary: rgba(235, 235, 245, 0.66);
+  --ink-muted: rgba(235, 235, 245, 0.56);
 
-  --accent: #2997ff;
-  --accent-ink: #2997ff;
-  --accent-soft: #16324d;
+  --accent: #0a84ff;         /* iOS systemBlue (dark) */
+  --accent-ink: #0a84ff;
+  --accent-soft: rgba(10, 132, 255, 0.22);
 
-  --border: #38383a;
-  --border-strong: #48484a;
-  --hairline: rgba(255, 255, 255, 0.10);
-  --gridline: #2a2a2c;
-  --baseline: #38383a;
-  --track: #2c2c2e;
+  --border: rgba(84, 84, 88, 0.65);       /* iOS dark separator */
+  --border-strong: rgba(84, 84, 88, 0.8);
+  --hairline: rgba(84, 84, 88, 0.6);
+  --gridline: #303034;
+  --baseline: #48484a;
+  --track: rgba(120, 120, 128, 0.24);
 
   --good: #30d158; --good-ink: #30d158;
-  --warn: #ff9f0a; --bad: #ff5e7a; --bad-ink: #ff5e7a;
-  --status-good: #30d158; --status-warning: #ff9f0a; --status-serious: #ff6482; --status-critical: #ff453a;
+  --warn: #ff9f0a; --bad: #ff453a; --bad-ink: #ff6961;
+  --status-good: #30d158; --status-warning: #ff9f0a; --status-serious: #ff453a; --status-critical: #ff6961;
 
-  --series-1: #2b86d8; --series-2: #cf7f28; --series-3: #2aa878;
-  --series-4: #9d5fc9; --series-5: #d95e77; --series-6: #2a9fb8;
-  --series-7: #8a97a6; --series-8: #b09055;
+  --series-1: #0a84ff; --series-2: #ff9f0a; --series-3: #30d158;
+  --series-4: #bf5af2; --series-5: #ff375f; --series-6: #64d2ff;
+  --series-7: #98989d; --series-8: #ac8e68;
 
-  --funnel-1: #16324d; --funnel-2: #1c4f7e; --funnel-3: #2b7fd6; --funnel-4: #4f9ae8; --funnel-5: #7db4f0;
-  --seq-0: #14171c; --seq-1: #16324d; --seq-2: #1c4f7e; --seq-3: #2b7fd6; --seq-4: #4f9ae8; --seq-5: #7db4f0;
-  --funnel-o1: #4a2f14; --funnel-o2: #7a4a1a; --funnel-o3: #b06b1e; --funnel-o4: #e0902e; --funnel-o5: #f2b978;
+  --funnel-1: #123a63; --funnel-2: #17548f; --funnel-3: #2478d1; --funnel-4: #4d9bf5; --funnel-5: #85bdff;
+  --seq-0: #15181d; --seq-1: #123a63; --seq-2: #17548f; --seq-3: #2478d1; --seq-4: #4d9bf5; --seq-5: #85bdff;
+  --funnel-o1: #4a2e10; --funnel-o2: #7a4a15; --funnel-o3: #b06e1c; --funnel-o4: #e8932e; --funnel-o5: #ffb566;
 
-  --shadow-1: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-1: none;
   --shadow-2: 0 8px 30px rgba(0,0,0,0.55);
 }
 
@@ -154,35 +156,39 @@ svg { display: block; }
 .asof { font-size: 12px; color: var(--ink-muted); font-variant-numeric: tabular-nums; display: none; }
 @media (min-width: 720px) { .asof { display: inline-flex; align-items: center; gap: 6px; } }
 
+/* iOS buttons: default = "tinted" (rgba tint fill, tint text), .accent = "filled"
+   (tint bg, white text). Press feedback is iOS's opacity dip, not a scale. */
 .pill {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 15px;
-  border-radius: 980px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-primary);
-  font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; font-family: var(--font-sans);
-  transition: background .2s, border-color .2s, transform .1s var(--ease), box-shadow .2s;
+  border-radius: 980px; border: none; background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: var(--font-sans);
+  letter-spacing: -0.1px; transition: background .2s, opacity .15s;
 }
-.pill:hover { border-color: var(--border-strong); background: var(--surface-2); }
-.pill:active { transform: scale(.97); }
-.pill.accent { background: var(--accent); color: #fff; border-color: transparent; }
-.pill.accent:hover { background: var(--accent-ink); }
+.pill:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.pill:active { opacity: .4; }
+.pill.accent { background: var(--accent); color: #fff; }
+.pill.accent:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
 .pill.icon-only { width: 34px; padding: 0; }
 .pill svg { width: 17px; height: 17px; stroke-width: 1.7; }
-.badge-soft { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 11.5px; font-weight: 500; white-space: nowrap; flex: none; }
-.badge-soft .dot { width: 6px; height: 6px; border-radius: 980px; background: var(--good); }
+.badge-soft { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 11px; font-weight: 600; white-space: nowrap; flex: none; }
+.badge-soft .dot { width: 7px; height: 7px; border-radius: 980px; background: var(--good); }
 
-/* ---- Tabs (desktop) -------------------------------------------------------*/
-.tabs-wrap { border-bottom: 1px solid var(--hairline); margin: 14px 0 24px; }
-.tabs { position: relative; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+/* ---- Tabs (desktop): iOS-style — active tab is a subtle tint pill ---------*/
+.tabs-wrap { margin: 16px 0 20px; }
+.tabs { position: relative; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px 0; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
   appearance: none; border: 0; background: transparent; cursor: pointer; position: relative;
-  padding: 11px 14px 15px; font-size: 14px; font-weight: 500; color: var(--ink-secondary);
-  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; transition: color .2s; font-family: var(--font-sans);
+  padding: 8px 14px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--ink-secondary);
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  transition: color .2s, background .2s; font-family: var(--font-sans); letter-spacing: -0.2px;
 }
 .tab .t-ico { display: inline-flex; }
 .tab .t-ico svg { width: 17px; height: 17px; stroke-width: 1.7; }
-.tab:hover { color: var(--ink-primary); }
-.tab.active { color: var(--ink-primary); font-weight: 600; }
-.tab-underline { position: absolute; bottom: -1px; height: 2px; background: var(--accent); border-radius: 2px; transition: transform .25s var(--ease), width .25s var(--ease); }
+.tab:hover { color: var(--ink-primary); background: var(--surface-2); }
+.tab.active { color: var(--accent); font-weight: 600; background: var(--accent-soft); }
+.tab.active:hover { background: var(--accent-soft); }
+.tab-underline { display: none; }
 @media (max-width: 767px) { .tabs-wrap { display: none; } }
 
 /* ---- Bottom nav (mobile) --------------------------------------------------*/
@@ -202,12 +208,12 @@ svg { display: block; }
 @media (max-width: 767px) { .botnav { display: flex; } .app { padding-bottom: 84px; } }
 
 /* ---- Grid & cards ---------------------------------------------------------*/
-.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 18px; }
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
 .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-5 { grid-column: span 5; }
 .col-6 { grid-column: span 6; } .col-7 { grid-column: span 7; } .col-8 { grid-column: span 8; } .col-12 { grid-column: span 12; }
 @media (max-width: 1000px) { .col-3 { grid-column: span 6; } .col-4 { grid-column: span 6; } .col-5, .col-7 { grid-column: span 12; } }
 @media (max-width: 620px) {
-  .grid { gap: 14px; }
+  .grid { gap: 12px; }
   .grid > [class*="col-"] { grid-column: span 12 !important; }
   /* KPI stat tiles (col-3/col-4) stay 2-up on phones — full-width tiles triple
      the scroll distance for three short numbers. A trailing odd tile (the 3rd
@@ -216,16 +222,17 @@ svg { display: block; }
   .grid > .col-4 + .col-4 + .col-4 { grid-column: span 12 !important; }
 }
 
+/* iOS inset-grouped card: white cell, 12px radius, no border, no shadow.
+   The title bar is styled as the 13px gray iOS section header (CSS-only
+   approximation of the header-above-card pattern — DOM stays as-is). */
 .card {
-  background: var(--surface-1); border-radius: var(--radius-lg); padding: clamp(18px, 2.4vw, 26px);
-  box-shadow: var(--shadow-1); position: relative; transition: transform .25s var(--ease), box-shadow .25s var(--ease);
+  background: var(--surface-1); border-radius: var(--radius-lg); padding: 16px;
+  box-shadow: var(--shadow-1); position: relative;
 }
-:root[data-theme="dark"] .card { border: 1px solid var(--hairline); }
-.card.hoverable:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
-.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
-.card-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
-.card-sub { font-size: 12.5px; color: var(--ink-muted); margin-top: 3px; }
-.card-tag { font-size: 11px; color: var(--ink-muted); font-weight: 500; padding: 3px 9px; border-radius: 980px; background: var(--surface-2); white-space: nowrap; }
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.card-title { font-size: 13px; font-weight: 500; letter-spacing: -0.08px; color: var(--ink-muted); line-height: 1.5; }
+.card-sub { font-size: 12px; color: var(--ink-muted); margin-top: 2px; letter-spacing: -0.08px; }
+.card-tag { font-size: 11px; color: var(--ink-muted); font-weight: 600; padding: 3px 9px; border-radius: 980px; background: var(--surface-2); white-space: nowrap; }
 
 .reveal { opacity: 0; transform: translateY(10px); }
 .reveal.in { opacity: 1; transform: none; transition: opacity .5s var(--ease), transform .5s var(--ease); }
@@ -257,41 +264,42 @@ svg { display: block; }
 .hero-metric b { display: block; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .hero-metric span { font-size: 12px; color: var(--ink-muted); }
 
-/* ---- Stat tiles -----------------------------------------------------------*/
-.stat { display: flex; flex-direction: column; gap: 8px; min-height: 122px; }
-.stat-top { display: flex; align-items: center; gap: 9px; }
-.stat-ico { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--surface-2); color: var(--accent-ink); flex: none; }
-.stat-ico svg { width: 17px; height: 17px; stroke-width: 1.7; }
-.stat-label { font-size: 13px; color: var(--ink-secondary); font-weight: 500; }
-.stat-value { font-family: var(--font-display); font-size: clamp(27px, 4.4vw, 32px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.05; font-variant-numeric: tabular-nums; }
+/* ---- Stat tiles (iOS .kpi look) -------------------------------------------*/
+.stat { display: flex; flex-direction: column; gap: 7px; min-height: 118px; }
+.stat-top { display: flex; align-items: center; gap: 8px; }
+.stat-ico { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-2); color: var(--accent-ink); flex: none; }
+.stat-ico svg { width: 16px; height: 16px; stroke-width: 1.7; }
+.stat-label { font-size: 12px; color: var(--ink-muted); font-weight: 400; letter-spacing: -0.1px; }
+.stat-value { font-family: var(--font-display); font-size: clamp(24px, 4vw, 28px); font-weight: 700; letter-spacing: -0.6px; line-height: 1.08; font-variant-numeric: tabular-nums; }
 .stat-value .unit { font-size: .5em; font-weight: 500; color: var(--ink-muted); margin-left: 3px; }
-.stat-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; font-size: 12px; color: var(--ink-muted); flex-wrap: wrap; }
-.chip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 980px; font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.chip.up { color: var(--good-ink); background: color-mix(in srgb, var(--good) 12%, transparent); }
+.stat-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; font-size: 11px; color: var(--ink-muted); flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px; border-radius: 980px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chip.up { color: var(--good-ink); background: color-mix(in srgb, var(--good) 14%, transparent); }
 .chip.down { color: var(--bad-ink); background: color-mix(in srgb, var(--bad) 12%, transparent); }
 .chip.flat { color: var(--ink-secondary); background: var(--surface-2); }
 .spark { height: 30px; margin-top: 2px; }
 
-/* ---- Meter (clean progress, no gloss) -------------------------------------*/
-.meter { margin: 7px 0 14px; }
+/* ---- Meter (iOS rowstat: 6px track, rounded tint fill, 2px target tick) ---*/
+.meter { margin: 6px 0 14px; }
 .meter-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
 .meter-label-wrap { display: inline-flex; align-items: center; }
-.meter-label { font-size: 13.5px; font-weight: 500; }
-.meter-val { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.meter-track { position: relative; height: 8px; border-radius: 980px; background: var(--track); overflow: visible; }
-.meter-fill { position: absolute; inset: 0 auto 0 0; width: 0; height: 8px; border-radius: 980px; background: var(--accent); transition: width .8s var(--ease); }
+.meter-label { font-size: 15px; font-weight: 400; letter-spacing: -0.3px; }
+.meter-val { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; font-variant-numeric: tabular-nums; }
+.meter-track { position: relative; height: 6px; border-radius: 3px; background: var(--track); overflow: visible; }
+.meter-fill { position: absolute; inset: 0 auto 0 0; width: 0; height: 6px; border-radius: 3px; background: var(--accent); transition: width .8s var(--ease); }
 .meter-fill::after { display: none; }
-.meter-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink-muted); opacity: .5; border-radius: 2px; }
+.meter-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink-muted); opacity: .5; border-radius: 1px; }
+.meter .note-inline { font-size: 11px; }
 .note-inline { font-size: 12px; color: var(--ink-muted); }
-.empty-note { font-size: 13px; line-height: 1.7; color: var(--ink-secondary); background: var(--surface-2); border: 1px dashed var(--border); border-radius: 12px; padding: 16px 18px; }
+.empty-note { font-size: 13px; line-height: 1.7; color: var(--ink-secondary); background: var(--surface-2); border-radius: var(--radius); padding: 14px 16px; }
 .empty-note b { color: var(--ink-primary); font-weight: 600; }
 
 /* ---- Funnel ---------------------------------------------------------------*/
 .kate-funnel { display: flex; flex-direction: column; }
 .kate-funnel-row { padding: 6px 0; }
 .kate-funnel-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
-.kate-funnel-label { font-size: 13.5px; font-weight: 500; }
-.kate-funnel-val b { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.kate-funnel-label { font-size: 15px; font-weight: 400; letter-spacing: -0.3px; }
+.kate-funnel-val b { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; font-variant-numeric: tabular-nums; }
 .kate-funnel-val em { font-style: normal; font-size: 12px; color: var(--ink-muted); margin-left: 5px; }
 .kate-funnel-track { height: 22px; background: var(--track); border-radius: 7px; overflow: hidden; }
 .kate-funnel-bar { height: 100%; border-radius: 7px; width: 0; transition: width .9s var(--ease); }
@@ -302,7 +310,7 @@ svg { display: block; }
 /* ---- Horizontal bars ------------------------------------------------------*/
 .kate-hbars { display: flex; flex-direction: column; gap: 14px; }
 .kate-hbar-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 6px; }
-.kate-hbar-label { font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kate-hbar-label { font-size: 15px; font-weight: 400; letter-spacing: -0.3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kate-hbar-val { white-space: nowrap; }
 .kate-hbar-val b { font-weight: 600; font-variant-numeric: tabular-nums; }
 .kate-hbar-val em { font-style: normal; font-size: 11.5px; color: var(--ink-muted); margin-left: 5px; }
@@ -322,9 +330,8 @@ svg { display: block; }
 .kate-tip-row b { font-variant-numeric: tabular-nums; }
 
 /* ---- RFM segments ---------------------------------------------------------*/
-.seg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
-.seg-card { border: 1px solid var(--hairline); border-radius: var(--radius); padding: 16px; background: var(--surface-1); transition: transform .2s var(--ease), box-shadow .2s; }
-.seg-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-1); }
+.seg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.seg-card { border: none; border-radius: var(--radius-lg); padding: 16px; background: var(--surface-1); }
 .seg-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
 .seg-dot { width: 9px; height: 9px; border-radius: 3px; background: var(--seg-color); flex: none; }
 .seg-status { margin-left: auto; width: 7px; height: 7px; border-radius: 980px; }
@@ -337,10 +344,10 @@ svg { display: block; }
 .seg-action { font-size: 12px; color: var(--ink-secondary); margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--hairline); line-height: 1.5; }
 
 /* ---- Head-to-head scoreboard ---------------------------------------------*/
-.vs-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 360px; }
+.vs-table { width: 100%; border-collapse: collapse; font-size: 15px; letter-spacing: -0.2px; min-width: 360px; }
 .vs-table th, .vs-table td { padding: 11px 14px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.vs-table th:first-child, .vs-table td:first-child { text-align: left; color: var(--ink-secondary); font-weight: 500; white-space: nowrap; }
-.vs-table thead th { font-size: 12.5px; color: var(--ink-primary); font-weight: 600; border-bottom: 1px solid var(--border); }
+.vs-table th:first-child, .vs-table td:first-child { text-align: left; color: var(--ink-secondary); font-weight: 400; white-space: nowrap; }
+.vs-table thead th { font-size: 13px; color: var(--ink-primary); font-weight: 600; border-bottom: 1px solid var(--hairline); }
 .vs-table thead th .vs-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 7px; vertical-align: middle; }
 .vs-table tbody tr { border-bottom: 1px solid var(--hairline); }
 .vs-table tbody tr:last-child { border-bottom: 0; }
@@ -355,12 +362,12 @@ svg { display: block; }
 .staff-name { font-size: 17px; font-weight: 600; }
 .staff-name span { font-size: 12px; color: var(--ink-muted); font-weight: 400; display: block; }
 .staff-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
-.staff-metric b { font-family: var(--font-display); font-size: 21px; font-weight: 600; letter-spacing: -0.02em; display: block; font-variant-numeric: tabular-nums; }
+.staff-metric b { font-family: var(--font-display); font-size: 21px; font-weight: 700; letter-spacing: -0.5px; display: block; font-variant-numeric: tabular-nums; }
 .staff-metric span { font-size: 11.5px; color: var(--ink-muted); }
 .pb-tag { display: inline-flex; align-items: center; margin-left: 6px; padding: 1px 7px; border-radius: 980px; font-size: 10px; font-weight: 700; letter-spacing: .01em; background: var(--accent-soft); color: var(--accent-ink); }
 
-/* ---- 次の一手 (self-growth suggestion) -------------------------------------*/
-.next-hint { margin-top: 18px; padding: 12px 14px; border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: 0 10px 10px 0; font-size: 12.5px; line-height: 1.6; color: var(--ink-secondary); }
+/* ---- 次の一手 (self-growth suggestion) — iOS tinted banner ------------------*/
+.next-hint { margin-top: 16px; padding: 12px 14px; background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: 12px; font-size: 13px; letter-spacing: -0.2px; line-height: 1.6; color: var(--ink-primary); }
 
 /* ---- Self-growth panel (vs the staff member's own past average) -----------*/
 .self-growth { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--hairline); }
@@ -374,25 +381,27 @@ svg { display: block; }
 .sg-down { color: var(--ink-secondary); }
 .sg-flat { color: var(--ink-muted); }
 
-/* ---- Segmented control ----------------------------------------------------*/
-.segmented { display: inline-flex; padding: 2px; background: var(--surface-2); border-radius: 10px; gap: 2px; position: relative; }
-.segmented button { appearance: none; border: 0; background: transparent; cursor: pointer; padding: 6px 14px; font-size: 12.5px; font-weight: 500; color: var(--ink-secondary); border-radius: 8px; transition: color .2s; white-space: nowrap; z-index: 1; font-family: var(--font-sans); }
+/* ---- Segmented control (iOS) ----------------------------------------------*/
+.segmented { display: inline-flex; padding: 2px; background: var(--surface-2); border-radius: 9px; gap: 2px; position: relative; }
+.segmented button { appearance: none; border: 0; background: transparent; cursor: pointer; padding: 6px 14px; font-size: 13px; font-weight: 500; color: var(--ink-primary); border-radius: 7px; transition: color .2s; white-space: nowrap; z-index: 1; font-family: var(--font-sans); letter-spacing: -0.1px; }
 .segmented button.active { color: var(--ink-primary); font-weight: 600; }
-.segmented .seg-thumb { position: absolute; top: 2px; bottom: 2px; background: var(--surface-1); border-radius: 8px; box-shadow: var(--shadow-1); transition: transform .25s var(--ease), width .25s var(--ease); z-index: 0; }
+.segmented .seg-thumb { position: absolute; top: 2px; bottom: 2px; background: var(--surface-1); border-radius: 7px; box-shadow: 0 1px 4px rgba(0,0,0,.12), 0 0 1px rgba(0,0,0,.08); transition: transform .25s var(--ease), width .25s var(--ease); z-index: 0; }
+:root[data-theme="dark"] .segmented .seg-thumb { background: #636366; } /* iOS dark segmented knob */
 @media (max-width: 520px) { .segmented { display: flex; width: 100%; } .segmented button { flex: 1; padding: 7px 6px; } }
 
 /* ---- Table ----------------------------------------------------------------*/
 .table-wrap { overflow-x: auto; margin: 0 -6px; -webkit-overflow-scrolling: touch; }
 .table-wrap.tall { max-height: min(64vh, 620px); overflow: auto; }
-table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 480px; }
-.kate-table th { text-align: right; font-size: 11.5px; font-weight: 600; color: var(--ink-muted); padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; z-index: 2; background: var(--surface-1); cursor: pointer; user-select: none; }
+table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; letter-spacing: -0.2px; min-width: 480px; }
+.kate-table th { text-align: right; font-size: 12px; font-weight: 500; color: var(--ink-muted); padding: 10px 12px; border-bottom: 1px solid var(--hairline); white-space: nowrap; position: sticky; top: 0; z-index: 2; background: var(--surface-1); cursor: pointer; user-select: none; }
 .kate-table th:first-child, .kate-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface-1); }
 .kate-table th:first-child { z-index: 3; }
 .kate-table th.sorted { color: var(--accent-ink); }
 .kate-table th.sorted::after { content: " ↓"; } .kate-table th.sorted.asc::after { content: " ↑"; }
-.kate-table td { padding: 10px 12px; border-bottom: 1px solid var(--hairline); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kate-table td { padding: 11px 12px; border-bottom: 1px solid var(--hairline); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kate-table tbody tr:last-child td { border-bottom: 0; }
 .kate-table tbody tr:hover td { background: var(--surface-2); }
-.seg-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 980px; font-size: 11.5px; font-weight: 500; background: var(--surface-2); }
+.seg-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 980px; font-size: 12px; font-weight: 500; background: var(--surface-2); }
 .seg-tag i { width: 7px; height: 7px; border-radius: 2px; }
 /* #rfmTable's M column: full comma-grouped figure by default (desktop has the
    room); swapped for an abbreviated one on narrow phones, see the media query
@@ -497,20 +506,23 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
 .map-chips { display: flex; flex-wrap: wrap; gap: 7px; }
 .map-chip { font-size: 12px; padding: 4px 11px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); display: inline-flex; align-items: center; gap: 6px; }
 .map-chip i { width: 6px; height: 6px; border-radius: 980px; background: var(--good); }
-.sheet-input { flex: 1; min-width: 220px; height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-primary); font-size: 13.5px; font-family: var(--font-sans); }
-.sheet-input:focus-visible { outline: 2px solid var(--accent); border-color: var(--accent); }
+/* iOS filled field: gray fill, 10px radius, no border */
+.sheet-input { flex: 1; min-width: 220px; height: 40px; padding: 0 12px; border-radius: 10px; border: none; background: var(--surface-2); color: var(--ink-primary); font-size: 15px; letter-spacing: -0.2px; font-family: var(--font-sans); }
+.sheet-input::placeholder { color: var(--ink-muted); }
+.sheet-input:focus-visible { outline: 2px solid var(--accent); }
 
-.toast { position: fixed; left: 50%; bottom: 92px; transform: translate(-50%, 16px); z-index: 95; background: var(--ink-primary); color: var(--surface-1); padding: 11px 20px; border-radius: 980px; font-size: 13px; font-weight: 500; box-shadow: var(--shadow-2); opacity: 0; transition: all .3s var(--ease); pointer-events: none; max-width: 90vw; }
+/* iOS toast: blur capsule, hairline edge */
+.toast { position: fixed; left: 50%; bottom: 92px; transform: translate(-50%, 16px); z-index: 95; background: var(--glass); backdrop-filter: blur(20px) saturate(1.8); -webkit-backdrop-filter: blur(20px) saturate(1.8); color: var(--ink-primary); border: 1px solid var(--hairline); padding: 11px 20px; border-radius: 14px; font-size: 13px; font-weight: 500; letter-spacing: -0.1px; box-shadow: var(--shadow-2); opacity: 0; transition: all .3s var(--ease); pointer-events: none; max-width: 90vw; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
-.toast.err { background: var(--bad); color: #fff; } .toast.ok { background: var(--good); color: #fff; }
+.toast.err { background: var(--bad); color: #fff; border-color: transparent; } .toast.ok { background: var(--good); color: #fff; border-color: transparent; }
 
 /* ---- Section heading & misc ----------------------------------------------*/
-.section-title { display: flex; align-items: center; gap: 12px; margin: 34px 2px 4px; font-size: 12px; font-weight: 600; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .05em; }
-.section-title::after { content: ""; flex: 1; height: 1px; background: var(--hairline); }
-.view-title { font-family: var(--font-display); font-weight: 600; font-size: clamp(24px, 4vw, 32px); letter-spacing: -0.02em; margin: 20px 0 4px; }
-.view-lead { color: var(--ink-secondary); font-size: 14px; margin-bottom: 6px; line-height: 1.6; }
+/* iOS grouped-list section header: 13px secondary ink above the content */
+.section-title { display: flex; align-items: center; gap: 12px; margin: 26px 2px 0; font-size: 13px; font-weight: 500; color: var(--ink-muted); letter-spacing: -0.08px; }
+.view-title { font-family: var(--font-display); font-weight: 700; font-size: 34px; letter-spacing: -0.5px; line-height: 1.2; margin: 16px 0 2px; }
+.view-lead { color: var(--ink-muted); font-size: 13px; letter-spacing: -0.1px; margin-bottom: 12px; line-height: 1.6; }
 .mini-stats { display: flex; gap: 22px; flex-wrap: wrap; }
-.mini-stat b { font-family: var(--font-display); font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mini-stat b { font-family: var(--font-display); font-size: 19px; font-weight: 700; letter-spacing: -0.4px; font-variant-numeric: tabular-nums; }
 .mini-stat span { font-size: 11.5px; color: var(--ink-muted); display: block; }
 .chart-box { margin-top: 8px; }
 .chart-toggle { font-size: 11.5px; color: var(--ink-secondary); background: var(--surface-2); border: 0; border-radius: 980px; padding: 4px 11px; cursor: pointer; font-weight: 500; }
@@ -521,20 +533,20 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 13.5px; mi
   position: relative;
   display: inline-flex; align-items: center; justify-content: center; flex: none;
   width: 15px; height: 15px; margin-left: 5px; padding: 0; vertical-align: middle;
-  border: 1px solid var(--border-strong); border-radius: 50%; background: var(--surface-2);
+  border: none; border-radius: 50%; background: var(--surface-2);
   color: var(--ink-muted); font-size: 10px; font-weight: 700; line-height: 1;
-  font-family: var(--font-sans); cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+  font-family: var(--font-sans); cursor: pointer; transition: background .15s, color .15s;
 }
 /* Invisible tap-target extension: the visual stays a subtle 15px ring, but the
    touchable area becomes ~31px — a 15px button is below any comfortable
    fingertip size. Clicks on the halo hit the button itself (the pseudo-element
    is part of it), so the existing closest('.help-ico') delegation just works. */
 .help-ico::before { content: ''; position: absolute; inset: -8px; border-radius: 50%; }
-.help-ico:hover, .help-ico:focus-visible, .help-ico.active { background: var(--accent-soft); color: var(--accent-ink); border-color: var(--accent); }
+.help-ico:hover, .help-ico:focus-visible, .help-ico.active { background: var(--accent-soft); color: var(--accent-ink); }
 .help-pop {
   position: fixed; z-index: 97; max-width: 260px; padding: 10px 12px;
-  background: var(--surface-elevated); color: var(--ink-primary); border: 1px solid var(--border);
-  border-radius: 10px; box-shadow: var(--shadow-2); font-size: 12.5px; line-height: 1.55;
+  background: var(--surface-elevated); color: var(--ink-primary); border: 1px solid var(--hairline);
+  border-radius: 12px; box-shadow: var(--shadow-2); font-size: 13px; letter-spacing: -0.1px; line-height: 1.55;
   opacity: 0; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease; pointer-events: none;
 }
 .help-pop.show { opacity: 1; transform: translateY(0); }
