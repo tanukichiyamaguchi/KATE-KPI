@@ -470,10 +470,10 @@
     function custHasVisit(k) { return !!custVisitSet[k]; }
 
     // ---- スタッフ稼働率 (M26・P4-4・予約データ限定) -----------------------------
-    // Σ施術時間(分) ÷ 営業可能時間（9:00-20:00固定・将来設定化）。会計明細には
+    // Σ施術時間(分) ÷ 稼働可能時間（1人1日8時間勤務・将来設定化）。会計明細には
     // 所要時間が無いため、dur を一件も持たないデータセットでは算出しない。
     var anyDur = visitedRows.some(function (r) { return r.dur != null; });
-    var OPERATING_HOURS = 11;   // 9:00-20:00
+    var OPERATING_HOURS = 8;   // 1日8時間勤務想定
     function daysInMonth(mo) { var p = mo.split('-'); return new Date(+p[0], +p[1], 0).getDate(); }
     function utilizationMonthly(mrows) {
       return anyDur ? mrows.map(function (r) {
