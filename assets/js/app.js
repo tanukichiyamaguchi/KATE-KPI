@@ -72,6 +72,9 @@
     upload: '<path d="M12 16V5"/><path d="M7.5 9.5 12 5l4.5 4.5"/><path d="M5 15v3.2A2.8 2.8 0 0 0 7.8 21h8.4a2.8 2.8 0 0 0 2.8-2.8V15"/>'
   };
   function svgIco(name) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || '') + '</svg>'; }
+  // iOS padlock (filled, systemGray) — used beside the 合言葉/管理ロック fields,
+  // exactly as in the approved prototype's データ screen.
+  function lockSvg() { return '<svg width="18" height="18" viewBox="0 0 16 20" fill="currentColor" aria-hidden="true" class="field-ico"><rect x="1" y="8" width="14" height="11" rx="2.5"/><path d="M4 8V6a4 4 0 0 1 8 0v2h-2V6a2 2 0 0 0-4 0v2Z"/></svg>'; }
   function injectNavIcons() { Array.prototype.forEach.call(document.querySelectorAll('.t-ico[data-ico]'), function (s) { if (!s.firstChild) s.innerHTML = svgIco(s.dataset.ico); }); }
 
   // ---- career milestones (Phase 3 — self-growth, never compared between staff) --
@@ -127,9 +130,20 @@
   // ---- card + chart mount helpers -----------------------------------------
   function card(opts) {
     // opts: {title, sub, tag, col, body(html), id}
-    return '<div class="card reveal ' + (opts.col || 'col-12') + (opts.hoverable ? ' hoverable' : '') + '"' + (opts.id ? ' id="' + opts.id + '"' : '') + '>' +
-      (opts.title ? '<div class="card-head"><div><div class="card-title">' + opts.title + '</div>' + (opts.sub ? '<div class="card-sub">' + opts.sub + '</div>' : '') + '</div>' + (opts.tag ? '<span class="card-tag">' + opts.tag + '</span>' : '') + '</div>' : '') +
-      opts.body + '</div>';
+    // iOS grouped-list idiom (approved prototype's .gsec/.gsec-h): the title,
+    // sub and tag render as a 13px gray section header OUTSIDE the white card,
+    // inset 16px, with sub/tag right-aligned on the same header line; the white
+    // rounded cell contains only the body. The grid column class stays on the
+    // OUTER wrapper so the 12-col grid keeps working, and every id/data-kpi/
+    // chart mount inside the body is untouched. Cards called without a title
+    // (banner, stat tiles, reset row…) stay plain white cells.
+    var cls = (opts.col || 'col-12') + (opts.hoverable ? ' hoverable' : '');
+    var idAttr = opts.id ? ' id="' + opts.id + '"' : '';
+    if (!opts.title) return '<div class="card reveal ' + cls + '"' + idAttr + '>' + opts.body + '</div>';
+    var meta = (opts.sub ? '<span class="card-sub">' + opts.sub + '</span>' : '') + (opts.tag ? '<span class="card-tag">' + opts.tag + '</span>' : '');
+    return '<div class="gsec reveal ' + cls + '"' + idAttr + '>' +
+      '<div class="card-head"><div class="card-title">' + opts.title + '</div>' + (meta ? '<div class="card-hmeta">' + meta + '</div>' : '') + '</div>' +
+      '<div class="card">' + opts.body + '</div></div>';
   }
   function chartBox(id, h) { return '<div class="chart-box" id="' + id + '"' + (h ? ' style="min-height:' + h + 'px"' : '') + '></div>'; }
   // register a chart draw so resize/theme can replay it
@@ -176,7 +190,7 @@
     html += card({
       col: 'col-5', title: '定着・リピート',
       sub: '来店顧客 ' + s.customers + '人が母数',
-      body: '<div id="mRepeat" data-kpi="repeat-rate"></div><div id="mNext" data-kpi="next-reserve-rate"></div><div id="mFix" data-kpi="fixation-rate"></div>' +
+      body: '<div class="cell-list"><div id="mRepeat" data-kpi="repeat-rate"></div><div id="mNext" data-kpi="next-reserve-rate"></div><div id="mFix" data-kpi="fixation-rate"></div></div>' +
         '<div class="note-inline" style="margin-top:10px">来店周期の中央値 <b>' + s.visitCycleMedianDays + '日</b>。</div>'
     });
     html += card({
@@ -276,10 +290,13 @@
   function heroMetric(v, unit, label, isYen) {
     return '<div class="hero-metric"><b>' + (isYen ? '¥' : '') + v + (unit && !isYen ? '<span style="font-size:.55em;opacity:.7"> ' + unit + '</span>' : '') + '</b><span>' + label + '</span></div>';
   }
+  // Prototype .kpi tile: 12px gray label on top, 24px/700 value, 11px caption.
+  // (`ico` stays in the signature for call-site stability but is no longer
+  // rendered — the prototype's KPI tiles carry no icon chrome.)
   function statTile(ico, label, value, unit, foot, sparkId, dataKpi) {
     return card({
       col: 'col-4', hoverable: true,
-      body: '<div class="stat"' + (dataKpi ? ' data-kpi="' + dataKpi + '"' : '') + '><div class="stat-top"><span class="stat-ico">' + svgIco(ico) + '</span><span class="stat-label">' + label + '</span></div>' +
+      body: '<div class="stat"' + (dataKpi ? ' data-kpi="' + dataKpi + '"' : '') + '><div class="stat-top"><span class="stat-label">' + label + '</span></div>' +
         '<div class="stat-value">' + (unit === '¥' ? '¥' : '') + '<span class="cu" data-to="' + (typeof value === 'string' ? value.replace(/[^\d.]/g, '') : value) + '" data-unit="' + (unit === '¥' ? 'yen' : (unit === '%' ? 'pct' : 'int')) + '">' + value + '</span>' + (unit && unit !== '¥' ? '<span class="unit">' + unit + '</span>' : '') + '</div>' +
         (sparkId ? '<div class="spark" id="' + sparkId + '"></div>' : '') +
         '<div class="stat-foot">' + foot + '</div></div>'
@@ -366,9 +383,9 @@
           sm(st.retail.avgMonthlyAmount != null ? yen(st.retail.avgMonthlyAmount) : '—', '平均店販売上 / 月' + help('月ごとの店販売上合計を、実績のある月数で割った平均。'), 'staff-' + esc(st.name) + '-retail-avg') +
           '</div>' +
           '<div style="margin-top:14px" data-kpi="staff-' + esc(st.name) + '-rev-periods">' + periodTable(st.revPeriods) + '</div>' +
-          '<div id="stMeterRepeat' + i + '" style="margin-top:16px"></div>' +
+          '<div class="cell-list" style="margin-top:10px"><div id="stMeterRepeat' + i + '"></div>' +
           '<div id="stMeterNext' + i + '"></div>' +
-          '<div id="stMeterFix' + i + '"></div>' +
+          '<div id="stMeterFix' + i + '"></div></div>' +
           personalBestBlock(st) +
           sgPanel(st, asOfMonth) +
           '<div class="next-hint" data-kpi="staff-' + esc(st.name) + '-next-hint">' + esc(nextHintText(st)) + '</div>'
@@ -740,20 +757,20 @@
       html += card({
         col: 'col-12', title: '合言葉で店舗データを表示' + help('お店のスプレッドシートのURLを暗号化したものがこのアプリに同梱されています。合言葉を入力すると、この端末で復元されて自動連携が始まります（合言葉の入力は端末ごとに最初の1回だけ）。'),
         sub: 'この端末で初めて使うときは、お店の合言葉を入力してください（1回だけ）',
-        body: '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
-          '<input type="password" id="sharedPassInput" class="sheet-input" autocomplete="off" placeholder="合言葉">' +
-          '<button class="pill accent" id="sharedPassBtn" type="button">読み込む</button>' +
-          '</div>'
+        body: '<div class="field">' + lockSvg() +
+          '<input type="password" id="sharedPassInput" autocomplete="off" placeholder="合言葉">' +
+          '</div>' +
+          '<button class="btn-ios" id="sharedPassBtn" type="button" style="margin-top:14px">読み込む</button>'
       });
     }
     if (ownerLocked) {
       html += card({
         col: 'col-12', title: '管理者メニュー' + help('スプレッドシート連携の設定（URLの表示を含む）・ファイル取り込み・データのクリアなどの管理操作は、管理用の合言葉でロックされています。ロック解除はこのページを開いている間だけ有効で、端末には何も保存されません。'),
         sub: '連携設定などの管理操作は、管理用の合言葉（店の合言葉とは別）でロックされています',
-        body: '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
-          '<input type="password" id="ownerPassInput" class="sheet-input" autocomplete="off" placeholder="管理用の合言葉">' +
-          '<button class="pill accent" id="ownerPassBtn" type="button">ロック解除</button>' +
-          '</div>'
+        body: '<div class="field">' + lockSvg() +
+          '<input type="password" id="ownerPassInput" autocomplete="off" placeholder="管理用の合言葉">' +
+          '</div>' +
+          '<button class="btn-ios" id="ownerPassBtn" type="button" style="margin-top:14px">ロック解除</button>'
       });
       mount('data', head + '<div class="grid">' + html + '</div>');
       wireUpload();

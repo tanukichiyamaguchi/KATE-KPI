@@ -234,6 +234,27 @@ svg { display: block; }
 .card-sub { font-size: 12px; color: var(--ink-muted); margin-top: 2px; letter-spacing: -0.08px; }
 .card-tag { font-size: 11px; color: var(--ink-muted); font-weight: 600; padding: 3px 9px; border-radius: 980px; background: var(--surface-2); white-space: nowrap; }
 
+/* ==== iOS grouped-list idiom（承認済みプロトタイプの .gsec/.gsec-h） ====
+   card() はタイトル付きの場合、見出しを白いカードの「外」に 13px グレーの
+   セクションヘッダーとして出す。sub/tag は同じヘッダー行の右側にまとめる。 */
+.gsec > .card-head { margin-bottom: 7px; padding: 0 16px; align-items: baseline; flex-wrap: wrap; row-gap: 2px; }
+/* タイトルが右側の補足に押し潰されて数文字ずつ折り返さないよう、
+   タイトルに最低幅を確保し、入り切らない補足は次の行に落とす */
+.gsec > .card-head .card-title { flex: 1 1 auto; min-width: 62%; }
+.card-hmeta { display: flex; align-items: center; gap: 8px; flex: none; text-align: right; }
+.card-hmeta .card-sub { margin-top: 0; }
+/* メーター等を iOS のセル列として区切るヘアライン */
+.cell-list > * + * { border-top: 1px solid var(--hairline); padding-top: 11px; margin-top: 11px; }
+/* iOS の入力フィールド（プロトタイプ .field） */
+.field { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border-radius: 10px; padding: 10px 12px; max-width: 560px; }
+.field:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.field input { flex: 1; min-width: 0; border: none; background: none; font-family: inherit; font-size: 17px; letter-spacing: -0.4px; color: var(--ink-primary); outline: none; }
+.field input::placeholder { color: var(--ink-muted); }
+.field-ico { color: var(--ink-muted); flex: none; }
+/* iOS Filled ボタン（プロトタイプ .btn.filled） */
+.btn-ios { display: block; width: 100%; max-width: 560px; border: none; border-radius: 12px; padding: 13px; font-family: inherit; font-size: 17px; font-weight: 600; letter-spacing: -0.4px; background: var(--accent); color: #fff; cursor: pointer; transition: opacity .15s; }
+.btn-ios:active { opacity: .4; }
+
 .reveal { opacity: 0; transform: translateY(10px); }
 .reveal.in { opacity: 1; transform: none; transition: opacity .5s var(--ease), transform .5s var(--ease); }
 @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1 !important; transform: none !important; } }
