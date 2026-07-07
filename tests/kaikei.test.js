@@ -376,8 +376,8 @@ h('■ Fixture I: 呼び戻しリスト（周期超過）とスタッフ稼働�
   const u = R2.staff.find(function (s) { return s.name === 'U'; });
   const feb = u.utilization.find(function (m) { return m.m === '2026-02'; });
   check('utilization 2月 minutes（60+90）', feb.minutes, 150);
-  check('utilization 2月 capacity（28日×11h×60分）', feb.capacity, 28 * 11 * 60);
-  check('utilization 2月 rate（150/18480）', feb.rate, 150 / (28 * 11 * 60), 1e-9);
+  check('utilization 2月 capacity（28日×8h×60分）', feb.capacity, 28 * 8 * 60);
+  check('utilization 2月 rate（150/13440）', feb.rate, 150 / (28 * 8 * 60), 1e-9);
 }
 
 // ============================================================================
