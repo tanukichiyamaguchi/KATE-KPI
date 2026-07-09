@@ -119,16 +119,16 @@ h('■ Fixture C: revActual/revExpected の分解');
 }
 
 // ============================================================================
-// Fixture D — スタッフ平均は mean-of-months（元ワークブック準拠・pooled ではない）
+// Fixture D — スタッフ平均は pooled（件数で重み付け／オーナー確定・mean-of-months ではない）
 // ============================================================================
 // Staff 'X': month A (2 visits, 1 got-next => 50%), month B (8 visits, 6 got-next
-// => 75%). Mean-of-months gives (0.5+0.75)/2=0.625; visit-weighted pooled would
-// give (1+6)/(2+8)=0.7. The workbook uses mean-of-months, so 0.625 is expected.
+// => 75%). Pooled (visit-weighted) gives (1+6)/(2+8)=0.7; mean-of-months would
+// give (0.5+0.75)/2=0.625. 件数の少ない月を過大評価しないため pooled 0.7 が期待値。
 // "Got next" is manufactured by giving those customers a later visit in 2026-08
 // under a different staff ('Y') so it doesn't pollute X's own monthly counts.
 // A dummy future row elsewhere sets hasFuture=true so month-maturity never gates
 // this fixture (isolating the averaging behaviour from the P1-2 concern).
-h('■ Fixture D: スタッフ平均は mean-of-months 次回予約取得率');
+h('■ Fixture D: スタッフ平均は pooled（件数で重み付け）次回予約取得率');
 {
   const rows = [
     rec({ staff: 'X', custKey: 'XA1', date: '2026-05-01', kaikeiTotal: 6000 }),
@@ -160,30 +160,34 @@ h('■ Fixture D: スタッフ平均は mean-of-months 次回予約取得率');
   const monthB = x.monthly.find(m => m.m === '2026-06');
   check('monthA.nextRes (1/2)', monthA.nextRes, 0.5);
   check('monthB.nextRes (6/8)', monthB.nextRes, 0.75);
-  // mean-of-months: (0.5+0.75)/2 = 0.625 — NOT the visit-weighted pooled 0.7
-  check('avg.nextRes は mean-of-months (0.625、加重0.7ではない)', x.avg.nextRes, 0.625);
+  // pooled (件数で重み付け): (1+6)/(2+8) = 0.7 — NOT the mean-of-months 0.625
+  check('avg.nextRes は pooled (0.7、単純平均0.625ではない)', x.avg.nextRes, 0.7);
+  check('avg.nextResNum (次回確保 1+6=7)', x.avg.nextResNum, 7);
+  check('avg.nextResDen (来店 2+8=10)', x.avg.nextResDen, 10);
 }
 
 // ============================================================================
-// Fixture E (oracle) — サンプルデータの mean-of-months 期待値を固定（回帰オラクル）
+// Fixture E (oracle) — サンプルデータの pooled 平均値を固定（回帰オラクル）
 // ============================================================================
-// staff.avg.{spend,nextRes,nextRes2} have no ground-truth.json coverage (see
-// tests/validate.js). These mean-of-months values reproduce the salon's published
-// 各スタッフ workbook (momo は 客単価6270・次回0.602 まで完全一致) and are pinned
-// here so a future regression is caught even without an external oracle.
-h('■ Fixture E: サンプルデータの mean-of-months 値を固定（回帰オラクル）');
+// staff.avg.{spend,nextRes,nextRes2} は pooled（件数で重み付け・オーナー確定）に
+// 変更。プール平均は Σ分子/Σ分母で、来店の少ない月に引きずられない。将来の回帰を
+// 外部オラクル無しでも捕まえるため、独立再計算で確認した値をここに固定する。
+h('■ Fixture E: サンプルデータの pooled 平均値を固定（回帰オラクル）');
 {
   require(path.join(__dirname, '..', 'assets', 'js', 'sample-data.js'));
   const data = globalThis.KATE.SAMPLE_RESERVATIONS;
   const R = engine.compute(data, { asOf: '2026-07-03' });
   const momo = R.staff.find(s => s.name === 'momo');
   const aoi = R.staff.find(s => s.name === 'aoi');
-  check('momo avg.spend (ワークブック 6270 と一致)', momo.avg.spend, 6270);
-  check('momo avg.nextRes (ワークブック 0.602 と一致)', momo.avg.nextRes, 0.6019287506047886, 1e-6);
-  check('momo avg.nextRes2', momo.avg.nextRes2, 0.5613041112155543, 1e-6);
-  check('aoi avg.spend', aoi.avg.spend, 6842);
-  check('aoi avg.nextRes', aoi.avg.nextRes, 0.7733333333333333, 1e-6);
-  check('aoi avg.nextRes2', aoi.avg.nextRes2, 0.5, 1e-6);
+  // pooled: 客単価=Σ予約ベース売上÷Σ予約数、次回=Σ次回確保来店÷Σ来店
+  check('momo avg.spend (pooled ¥6266)', momo.avg.spend, 6266);
+  check('momo avg.nextRes (pooled 273/472)', momo.avg.nextRes, 273 / 472, 1e-9);
+  check('momo avg.nextResNum', momo.avg.nextResNum, 273);
+  check('momo avg.nextResDen', momo.avg.nextResDen, 472);
+  check('momo avg.nextRes2 (pooled)', momo.avg.nextRes2, 0.46715328467153283, 1e-6);
+  check('aoi avg.spend (pooled ¥6808)', aoi.avg.spend, 6808);
+  check('aoi avg.nextRes (pooled 46/80=0.575・単純平均0.773ではない)', aoi.avg.nextRes, 0.575, 1e-9);
+  check('aoi avg.nextRes2 (pooled)', aoi.avg.nextRes2, 0.5, 1e-6);
   check('store.retail.customerRatio (人ベース)', R.store.retail.customerRatio, 11 / 359, 1e-6);
   check('store.retail.attachRate (会計ベース)', R.store.retail.attachRate, 11 / 552, 1e-6);
 }
@@ -376,8 +380,10 @@ h('■ Fixture I: 呼び戻しリスト（周期超過）とスタッフ稼働�
   const u = R2.staff.find(function (s) { return s.name === 'U'; });
   const feb = u.utilization.find(function (m) { return m.m === '2026-02'; });
   check('utilization 2月 minutes（60+90）', feb.minutes, 150);
-  check('utilization 2月 capacity（28日×8h×60分）', feb.capacity, 28 * 8 * 60);
-  check('utilization 2月 rate（150/13440）', feb.rate, 150 / (28 * 8 * 60), 1e-9);
+  // 稼働可能時間＝実稼働日（施術のあった日数）×8h×60分。U は2/5・2/10の2日稼働。
+  check('utilization 2月 workDays（実稼働2日）', feb.workDays, 2);
+  check('utilization 2月 capacity（2日×8h×60分＝960）', feb.capacity, 2 * 8 * 60);
+  check('utilization 2月 rate（150/960）', feb.rate, 150 / (2 * 8 * 60), 1e-9);
 }
 
 // ============================================================================
@@ -583,6 +589,35 @@ h('■ Fixture O: meta.asOf は日本時間でも指定日のまま（UTC変換�
   const got = execFileSync(process.execPath, ['-e', script], { env: Object.assign({}, process.env, { TZ: 'Asia/Tokyo' }) }).toString();
   check('TZ=Asia/Tokyo でも meta.asOf は 2026-07-03', got === '2026-07-03' ? 1 : 0, 1, 0);
   if (got !== '2026-07-03') console.log(`         got=${JSON.stringify(got)}`);
+}
+
+// ============================================================================
+// Fixture T — 固定化率の分母は「実来店2回目（Fvis>=2）」、分子は「そのうち3回目
+// 予約あり（Fres>=3）」（オーナー確定の定義）。予約ベースの分母とは区別する。
+// ============================================================================
+// C1: 実来店2回＋3回目の受付待ち → Fvis=2, Fres=3 → 分母○ 分子○
+// C2: 実来店2回のみ → Fvis=2, Fres=2 → 分母○ 分子×
+// C3: 実来店1回＋2回目3回目の受付待ち → Fvis=1, Fres=3 → 分母×(まだ2回来ていない)
+// 固定化率 = 分子1(C1) ÷ 分母2(C1,C2) = 0.5。もし旧・予約ベース(Fres>=2分母,
+// Fres>=3分子)なら 2/3=0.667 になるため、両定義を確実に区別できる。
+h('■ Fixture T: 固定化率の分母＝実来店2回目・分子＝そのうち3回目予約あり');
+{
+  const rows = [
+    rec({ custKey: 'C1', date: '2026-05-01', kaikeiTotal: 5000 }),
+    rec({ custKey: 'C1', date: '2026-05-20', kaikeiTotal: 5000 }),
+    rec({ custKey: 'C1', status: '受付待ち', date: '2026-07-20', yoyakuTotal: 5000 }),
+    rec({ custKey: 'C2', date: '2026-05-02', kaikeiTotal: 5000 }),
+    rec({ custKey: 'C2', date: '2026-05-22', kaikeiTotal: 5000 }),
+    rec({ custKey: 'C3', date: '2026-05-03', kaikeiTotal: 5000 }),
+    rec({ custKey: 'C3', status: '受付待ち', date: '2026-07-21', yoyakuTotal: 5000 }),
+    rec({ custKey: 'C3', status: '受付待ち', date: '2026-08-21', yoyakuTotal: 5000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-03' });
+  check('固定化率 分母（実来店2回目 C1,C2）', R.store.fixDenom, 2);
+  check('固定化率 分子（実来店2回目＆3回目予約 C1）', R.store.fixNumer, 1);
+  check('固定化率 = 1/2 = 50.0%', R.store.fixationRate, 50.0, 0.05);
+  // 参考: 旧・予約ベース分母(Fres>=2)なら3人・分子(Fres>=3)なら2人＝66.7%だった
+  check('リピート率 分子（予約ベース Fres>=2 は C1,C2,C3 の3人）', R.store.repeatNumer, 3);
 }
 
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
