@@ -645,5 +645,38 @@ h('■ Fixture U: 固定化率の分子はキャンセルのみ(再予約なし)
   check('固定化率 = 1/2 = 50.0%', R.store.fixationRate, 50.0, 0.05);
 }
 
+// ============================================================================
+// Fixture V — ファネルの継続率/離脱率の母数は実来店(Fvis>=n)で補正、到達バーは予約
+// ベース(Fres>=n)のまま。まだ来店前(2回目が受付待ち)の顧客が離脱率を押し上げない。
+// ============================================================================
+// A: 実来店3回 → Fvis=3, Fres=3
+// B: 実来店2回＋3回目受付待ち → Fvis=2, Fres=3
+// C: 実来店2回のみ → Fvis=2, Fres=2
+// D: 実来店1回＋2回目受付待ち(来店前) → Fvis=1, Fres=2
+// n=2段: 到達people(Fres>=2)=4人(A,B,C,D), 継続母数(Fvis>=2)=3人(A,B,C 来店前のDを除外),
+//   継続分子(Fvis>=2&Fres>=3)=2人(A,B) → 継続66.7%。旧バー比なら 2/4=50% だったので
+//   来店前のDを母数から外したことで離脱率が下がる（＝予約ベースの過大離脱を補正）。
+h('■ Fixture V: ファネル継続率は実来店で母数補正・到達は予約ベース');
+{
+  const rows = [
+    rec({ custKey: 'A', date: '2026-05-01', kaikeiTotal: 6000 }),
+    rec({ custKey: 'A', date: '2026-05-10', kaikeiTotal: 6000 }),
+    rec({ custKey: 'A', date: '2026-05-20', kaikeiTotal: 6000 }),
+    rec({ custKey: 'B', date: '2026-05-02', kaikeiTotal: 6000 }),
+    rec({ custKey: 'B', date: '2026-05-12', kaikeiTotal: 6000 }),
+    rec({ custKey: 'B', status: '受付待ち', date: '2026-08-02', yoyakuTotal: 6000 }),
+    rec({ custKey: 'C', date: '2026-05-03', kaikeiTotal: 6000 }),
+    rec({ custKey: 'C', date: '2026-05-13', kaikeiTotal: 6000 }),
+    rec({ custKey: 'D', date: '2026-05-04', kaikeiTotal: 6000 }),
+    rec({ custKey: 'D', status: '受付待ち', date: '2026-08-04', yoyakuTotal: 6000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-03' });
+  const n2 = R.store.funnel[1];   // 2回段
+  check('2回 到達人数（予約ベース Fres>=2: A,B,C,D）', n2.people, 4);
+  check('2→3 継続母数（実来店 Fvis>=2: A,B,C・来店前Dは除外）', n2.contDen, 3);
+  check('2→3 継続分子（Fvis>=2 かつ Fres>=3: A,B）', n2.contNum, 2);
+  check('2→3 継続率 = 2/3 ≒ 66.7%（旧バー比2/4=50%ではない）', n2.cont, 2 / 3, 1e-9);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);

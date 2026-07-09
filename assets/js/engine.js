@@ -255,9 +255,19 @@
     // counting a rebooking after a cancellation but not the cancellation itself),
     // not a time-elapsed guess — a brand-new customer with no 2nd reservation yet
     // correctly counts as "not yet reached 2", the same as any other customer.
+    // 到達人数(バー)は予約ベース(Fres): 受付待ちの予約も「到達」に数える。
+    // ただし段間の継続率/離脱率の母数は「実際にn回来店した人(Fvis>=n)」に補正する。
+    // 2回目がまだ受付待ち(来店前)の顧客は、構造上まだ(n+1)回目を予約しようがない
+    // ため、これを母数に含めると離脱率が過大に出る。分子は予約ベースのまま
+    // ((n+1)回目の受付待ち・キャンセル後の再予約を計上)＝固定化率と同じ考え方。
     var funnel = [1, 2, 3, 4, 5].map(function (n) {
       var people = visitedCusts.filter(function (c) { return c.Fres >= n; }).length;
-      return { n: n, people: people, reach: baseN ? people / baseN : 0 };
+      var contDen = visitedCusts.filter(function (c) { return c.Fvis >= n; }).length;
+      var contNum = visitedCusts.filter(function (c) { return c.Fvis >= n && c.Fres >= n + 1; }).length;
+      return {
+        n: n, people: people, reach: baseN ? people / baseN : 0,
+        contDen: contDen, contNum: contNum, cont: contDen ? contNum / contDen : null
+      };
     });
     var repeatRate = baseN ? funnel[1].people / baseN : 0;
     // 固定化率: 「実際に2回来店した顧客のうち、3回目の予約も確保した割合」。
