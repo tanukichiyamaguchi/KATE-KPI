@@ -302,8 +302,9 @@ svg { display: block; }
 
 /* ---- Meter (iOS rowstat: 6px track, rounded tint fill, 2px target tick) ---*/
 .meter { margin: 6px 0 14px; }
-.meter-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
-.meter-label-wrap { display: inline-flex; align-items: center; }
+.meter-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; flex-wrap: wrap; gap: 2px 10px; }
+.meter-label-wrap { display: inline-flex; align-items: center; flex: 1 1 auto; min-width: 0; }
+.meter-val { margin-left: auto; flex: none; }
 .meter-label { font-size: 15px; font-weight: 400; letter-spacing: -0.3px; }
 .meter-val { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; font-variant-numeric: tabular-nums; }
 .meter-track { position: relative; height: 6px; border-radius: 3px; background: var(--track); overflow: visible; }
@@ -373,6 +374,7 @@ svg { display: block; }
 .vs-table tbody tr { border-bottom: 1px solid var(--hairline); }
 .vs-table tbody tr:last-child { border-bottom: 0; }
 .vs-table td b { font-weight: 500; }
+.vs-table td .vs-frac { display: block; font-size: 11px; color: var(--ink-muted); font-weight: 400; margin-top: 2px; letter-spacing: -0.2px; white-space: nowrap; }
 .vs-table td.vs-win { background: var(--accent-soft); }
 .vs-table td.vs-win b { font-weight: 700; color: var(--accent-ink); }
 .vs-table td .vs-lead { font-size: 10px; color: var(--accent-ink); margin-left: 7px; font-weight: 700; letter-spacing: .02em; }
@@ -440,7 +442,10 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
 @media (max-width: 620px) {
   .vs-table, table.kate-table { min-width: 0; }
   .vs-table th, .vs-table td { padding: 8px 7px; font-size: 12px; }
-  .vs-table th:first-child, .vs-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }
+  /* 指標名（第1列）は語の途中で1文字ずつ縦積みにならないよう keep-all で
+     折り返し、かつ最小幅を確保して2行以内に収める。分子÷分母の下段は小さく。 */
+  .vs-table th:first-child, .vs-table td:first-child { white-space: normal; word-break: keep-all; overflow-wrap: normal; min-width: 5.5em; }
+  .vs-table td .vs-frac { font-size: 10px; }
   table.kate-table { font-size: 11px; table-layout: fixed; }
   .kate-table th, .kate-table td { padding: 7px 5px; overflow: hidden; }
   .kate-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }

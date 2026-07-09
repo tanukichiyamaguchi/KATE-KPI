@@ -260,9 +260,13 @@
       return { n: n, people: people, reach: baseN ? people / baseN : 0 };
     });
     var repeatRate = baseN ? funnel[1].people / baseN : 0;
-    // 固定化率: 全顧客に対する到達率ではなく、「2回来店した顧客のうち3回目の
-    // 予約を取った割合」という条件付き継続率（funnel の 継続/離脱 表示と同じ考え方）。
-    var fixationRate = funnel[1].people ? funnel[2].people / funnel[1].people : 0;
+    // 固定化率: 「実際に2回来店した顧客のうち、3回目の予約も確保した割合」。
+    // 分母＝実来店2回目（Fvis>=2・会計ベース）、分子＝そのうち3回目の予約が有る人
+    // （Fres>=3＝来店済み or 受付待ち、キャンセル後の再予約も計上）。リピート率の
+    // 「2回到達」（予約ベース分子）とは母集団が異なる（オーナー確定の定義）。
+    var fix2Visit = visitedCusts.filter(function (c) { return c.Fvis >= 2; }).length;
+    var fix3Reserve = visitedCusts.filter(function (c) { return c.Fvis >= 2 && c.Fres >= 3; }).length;
+    var fixationRate = fix2Visit ? fix3Reserve / fix2Visit : 0;
 
     // ---- Next-reservation rate (per visit) ----------------------------------
     // A visit "secured a next reservation" if the customer has any later effective reservation.
@@ -449,8 +453,9 @@
         var next2 = vis2.filter(function (r) { return visitGotNext(r); }).length;
         var rst = retailStats(vis);
         var immature = monthImmature(mo);          // right-censored recent month → not measurable
+        var visitDays = uniqCount(vis.filter(function (r) { return r.date; }), function (r) { return r.date.getTime(); });
         return {
-          m: mo, res: res, actual: vis.length, exp: fut.length, rev: rev, revActual: revActual,
+          m: mo, res: res, actual: vis.length, exp: fut.length, rev: rev, revActual: revActual, visitDays: visitDays,
           spend: res ? Math.round(rev / res) : null,   // 予約ベース客単価＝予約ベース売上÷予約数（元ワークブック準拠）
           new: newN,
           cancel: confVisitors.length ? canc.length / confVisitors.length : null,
@@ -470,15 +475,20 @@
     function custHasVisit(k) { return !!custVisitSet[k]; }
 
     // ---- スタッフ稼働率 (M26・P4-4・予約データ限定) -----------------------------
-    // Σ施術時間(分) ÷ 稼働可能時間（1人1日8時間勤務・将来設定化）。会計明細には
-    // 所要時間が無いため、dur を一件も持たないデータセットでは算出しない。
+    // 稼働率＝Σ施術時間(分) ÷ 稼働可能時間。稼働可能時間は「その月に実際に施術が
+    // あった日数 × 8時間（1人1日8時間勤務）」（オーナー確定）。暦日固定だと休みの
+    // 多いスタッフほど不当に低く出るため、実稼働日ベースにする。会計明細には所要
+    // 時間が無いため dur を一件も持たないデータセットでは算出しない。
+    // 進行中の当月・未来月・未成熟月は他の成熟依存指標と同様 rate=null にして
+    // チャートに描かせない（3日分しかない当月が『急落』に見えるのを防ぐ）。
     var anyDur = visitedRows.some(function (r) { return r.dur != null; });
     var OPERATING_HOURS = 8;   // 1日8時間勤務想定
     function daysInMonth(mo) { var p = mo.split('-'); return new Date(+p[0], +p[1], 0).getDate(); }
     function utilizationMonthly(mrows) {
       return anyDur ? mrows.map(function (r) {
-        var capacity = daysInMonth(r.m) * OPERATING_HOURS * 60;
-        return { m: r.m, minutes: r.durMin, capacity: capacity, rate: capacity ? r.durMin / capacity : 0 };
+        var capacity = r.visitDays * OPERATING_HOURS * 60;   // 実稼働日 × 8h × 60分
+        var measurable = r.m < currentYm && !monthImmature(r.m) && r.visitDays > 0;
+        return { m: r.m, minutes: r.durMin, capacity: capacity, workDays: r.visitDays, rate: measurable ? r.durMin / capacity : null };
       }) : null;
     }
 
@@ -506,46 +516,62 @@
       // null (not 0) when there's no recent-cohort base yet — a brand-new staff
       // hasn't "failed" to retain anyone, there just hasn't been anyone to test yet.
       function reach(n) { return acqRecent.length ? acqRecent.filter(function (c) { return c.Fres >= n; }).length / acqRecent.length : null; }
-      // 固定化率: 全コホートに対する到達率ではなく、「2回目に到達した顧客のうち
-      // 3回目の予約も取った割合」という条件付き継続率（店舗全体の fixationRate と
-      // 同じ考え方）。2回到達者がまだいなければ null。
-      var reach2Count = acqRecent.filter(function (c) { return c.Fres >= 2; }).length;
-      var reach3Count = acqRecent.filter(function (c) { return c.Fres >= 3; }).length;
-      var fixationRate = reach2Count ? reach3Count / reach2Count : null;
+      // 固定化率: 「このスタッフが直近3ヶ月に初回担当し、実際に2回来店した顧客の
+      // うち、3回目の予約も確保した割合」。分母＝実来店2回目（Fvis>=2）、分子＝
+      // そのうち3回目の予約が有る人（Fres>=3・受付待ち含む・再予約も計上）。
+      // 実来店2回目がまだいなければ null（新任は母数不足で測定不能＝正直な表示）。
+      var fix2Visit = acqRecent.filter(function (c) { return c.Fvis >= 2; }).length;
+      var fix3Reserve = acqRecent.filter(function (c) { return c.Fvis >= 2 && c.Fres >= 3; }).length;
+      var fixationRate = fix2Visit ? fix3Reserve / fix2Visit : null;
       var mature = active.filter(function (r) { return !r.nextResImmature; });
-      // Mean-of-months (元ワークブック準拠): simple average of the per-month values
-      // over months where the value is defined — NOT visit-weighted (pooled). This
-      // matches the salon's published 各スタッフ workbook exactly.
-      function meanMonths(list, valueFn) {
-        var vals = [];
-        list.forEach(function (r) { var v = valueFn(r); if (v != null && isFinite(v)) vals.push(v); });
-        return vals.length ? vals.reduce(function (a, b) { return a + b; }, 0) / vals.length : null;
+      // プール平均（件数で重み付け／オーナー確定）: 月ごとの率を単純平均するのでなく、
+      // 分子合計 ÷ 分母合計で集計する。月次単純平均だと来店の少ない月（新任の当月
+      // など）が大きな月と同じ重みになり、率が実態より膨らむため。sum(numKey)/
+      // sum(denKey) を返し、率の付随として分子分母の実数も返せるようにする。
+      function poolSum(list, numKey, denKey, gate) {
+        var num = 0, den = 0;
+        list.forEach(function (r) {
+          var d = r[denKey];
+          if (d && (!gate || r[gate] != null)) { num += r[numKey]; den += d; }
+        });
+        return { num: num, den: den, rate: den ? num / den : null };
       }
+      // 客単価＝予約ベース売上合計 ÷ 予約数合計、次回予約取得率＝次回確保来店合計 ÷
+      // 来店合計。次回系は月次率が定義された月（!immature）だけをプールする。
+      var spendAll = poolSum(active, 'rev', 'res');
+      var nextAll = poolSum(active, 'nextCnt', 'visN', 'nextRes');
+      var next2All = poolSum(active, 'next2Cnt', 'vis2N', 'nextRes2');
       var avg = {
         months: active.length,
         visitsPerMonth: active.length ? round(active.reduce(function (s, r) { return s + r.actual; }, 0) / active.length, 1) : 0,
         revPerMonth: active.length ? Math.round(active.reduce(function (s, r) { return s + r.rev; }, 0) / active.length) : 0,
-        spend: (function () { var m = meanMonths(active, function (r) { return r.spend; }); return m == null ? 0 : Math.round(m); })(),
+        spend: spendAll.rate == null ? 0 : Math.round(spendAll.rate),
+        spendRev: spendAll.num, spendRes: spendAll.den,   // 分子(円)・分母(予約件数)
         newPerMonth: active.length ? round(active.reduce(function (s, r) { return s + r.new; }, 0) / active.length, 1) : 0,
-        cancel: (function () { var m = meanMonths(active, function (r) { return r.cancel; }); return m == null ? 0 : m; })(),
-        nextRes: meanMonths(active, function (r) { return r.nextRes; }),
-        nextRes2: meanMonths(active, function (r) { return r.nextRes2; }),
-        // Denominators for the min-N gate on 次の一手 (P3-4) — Σ mature-month visits,
-        // not months, since a candidate needs enough *visits* behind it to be trustworthy.
-        nextResN: mature.reduce(function (s, r) { return s + r.visN; }, 0),
-        nextRes2N: mature.reduce(function (s, r) { return s + r.vis2N; }, 0)
+        nextRes: nextAll.rate,
+        nextResNum: nextAll.num, nextResDen: nextAll.den,   // 分子(次回確保来店)・分母(来店)
+        nextRes2: next2All.rate,
+        nextRes2Num: next2All.num, nextRes2Den: next2All.den,
+        // 次の一手 の最小N判定に使う分母（来店数ベース）
+        nextResN: nextAll.den,
+        nextRes2N: next2All.den
       };
       // スタッフ比較表（vsMetrics）専用：直近3ヶ月（今月を含まない確定3ヶ月）限定の
-      // 平均。全期間平均の avg とは別に持たせ、比較表以外（スタッフカードの2×2
-      // グリッドや自分の推移など）は従来通り全期間の avg を使い続ける。
+      // プール平均。全期間平均の avg とは別に持たせる。
       var activeRecent = active.filter(function (r) { return last3Months.indexOf(r.m) !== -1; });
       var staffVis = rows.filter(function (r) { return r.staff === name && r.isVisited; });
       var staffVisRecent = staffVis.filter(function (r) { return last3Months.indexOf(r.ym) !== -1; });
+      var spendRecent = poolSum(activeRecent, 'rev', 'res');
+      var nextRecent = poolSum(activeRecent, 'nextCnt', 'visN', 'nextRes');
+      var retailRecentStats = retailStats(staffVisRecent);
       var avgRecent = {
         visitsPerMonth: activeRecent.length ? round(activeRecent.reduce(function (s, r) { return s + r.actual; }, 0) / activeRecent.length, 1) : 0,
-        spend: (function () { var m = meanMonths(activeRecent, function (r) { return r.spend; }); return m == null ? 0 : Math.round(m); })(),
-        nextRes: meanMonths(activeRecent, function (r) { return r.nextRes; }),
-        retailCustomerRatio: retailStats(staffVisRecent).customerRatio
+        spend: spendRecent.rate == null ? 0 : Math.round(spendRecent.rate),
+        spendRev: spendRecent.num, spendRes: spendRecent.den,
+        nextRes: nextRecent.rate,
+        nextResNum: nextRecent.num, nextResDen: nextRecent.den,
+        retailCustomerRatio: retailRecentStats.customerRatio,
+        retailBuyers: retailRecentStats.buyers, retailVisitCustomers: retailRecentStats.visitCustomers
       };
       var retail = retailStats(staffVis);
       // 平均店販売上/月 = Σ月次店販金額 ÷ active月数 (店販金額データが無ければ null)
@@ -599,9 +625,18 @@
       // so it deliberately spans all-time, not just the last 3 months.
       var regulars3 = visitedCusts.filter(function (c) { return c.firstVisitStaff === name && c.Fres >= 3; }).length;
 
+      // 分母・分子（人数）を UI で明示するための実数。reach2/3/4 は acqRecent が母数、
+      // fixation は「実来店2回目」が母数。
+      var reachDen = acqRecent.length;
+      var reach2Num = acqRecent.filter(function (c) { return c.Fres >= 2; }).length;
+      var reach3Num = acqRecent.filter(function (c) { return c.Fres >= 3; }).length;
+      var reach4Num = acqRecent.filter(function (c) { return c.Fres >= 4; }).length;
       return {
         name: name, avg: avg, avgRecent: avgRecent, acquired: acqAll.length, matureAcquired: acqMature.length, acqRecentN: acqRecent.length,
         reach2: reach(2), reach3: reach(3), reach4: reach(4), fixationRate: fixationRate, retail: retail, monthly: mrows, composition: comp,
+        // 分母分子（人）: リピート率/育成力 = reachNum/reachDen、固定化率 = fixNumer/fixDenom
+        reachDen: reachDen, reach2Num: reach2Num, reach3Num: reach3Num, reach4Num: reach4Num,
+        fixDenom: fix2Visit, fixNumer: fix3Reserve,
         personalBest: personalBest, regulars3: regulars3,
         revPeriods: periodStats(staffVis),
         utilization: utilizationMonthly(mrows)
@@ -726,6 +761,11 @@
         customers: baseN,
         repeatRate: round(repeatRate * 100, 1), fixationRate: round(fixationRate * 100, 1),
         nextReserveRate: round(nextReserveRate * 100, 1), visitCycleMedianDays: visitCycleMedianDays,
+        // 分母・分子（UI 明示用）: リピート率 = 2回予約到達 ÷ 来店客、固定化率 =
+        // 実来店2回目&3回予約 ÷ 実来店2回目、次回予約取得率 = 次回確保来店 ÷ 来店。
+        repeatNumer: funnel[1].people, repeatDenom: baseN,
+        fixNumer: fix3Reserve, fixDenom: fix2Visit,
+        nextReserveNumer: nextReserveCount, nextReserveDenom: actualVisits,
         maturity: { applied: !hasFuture, days: REPEAT_MATURITY_DAYS, matureCustomers: matureN, totalCustomers: baseN },
         funnel: funnel, churn: churn, cancel: cancel, route: route, retail: retail,
         ltv: { current: Math.round(ltv.current), predicted: Math.round(ltv.predicted), expectedVisits: round(ltv.expectedVisits, 2), observedVisits: round(ltv.observedVisits, 2) },
