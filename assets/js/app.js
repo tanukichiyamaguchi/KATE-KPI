@@ -146,9 +146,11 @@
     var cls = (opts.col || 'col-12') + (opts.hoverable ? ' hoverable' : '');
     var idAttr = opts.id ? ' id="' + opts.id + '"' : '';
     if (!opts.title) return '<div class="card reveal ' + cls + '"' + idAttr + '>' + opts.body + '</div>';
-    var meta = (opts.sub ? '<span class="card-sub">' + opts.sub + '</span>' : '') + (opts.tag ? '<span class="card-tag">' + opts.tag + '</span>' : '');
-    return '<div class="gsec reveal ' + cls + '"' + idAttr + '>' +
-      '<div class="card-head"><div class="card-title">' + opts.title + '</div>' + (meta ? '<div class="card-hmeta">' + meta + '</div>' : '') + '</div>' +
+    // ヘッダー行はタイトル（左）＋タグチップ（右）のみ。補足文(sub)は横幅を圧迫して
+    // はみ出す原因になるため、ヘッダーの下の全幅行に置いて自然に折り返させる。
+    var head = '<div class="card-head"><div class="card-title">' + opts.title + '</div>' + (opts.tag ? '<span class="card-tag">' + opts.tag + '</span>' : '') + '</div>';
+    var sub = opts.sub ? '<div class="card-sub">' + opts.sub + '</div>' : '';
+    return '<div class="gsec reveal ' + cls + '"' + idAttr + '>' + head + sub +
       '<div class="card">' + opts.body + '</div></div>';
   }
   function chartBox(id, h) { return '<div class="chart-box" id="' + id + '"' + (h ? ' style="min-height:' + h + 'px"' : '') + '></div>'; }
