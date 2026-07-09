@@ -443,10 +443,13 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
 @media (max-width: 620px) {
   .vs-table, table.kate-table { min-width: 0; }
   .vs-table th, .vs-table td { padding: 8px 7px; font-size: 12px; }
-  /* 指標名（第1列）は語の途中で1文字ずつ縦積みにならないよう keep-all で
-     折り返し、かつ最小幅を確保して2行以内に収める。分子÷分母の下段は小さく。 */
-  .vs-table th:first-child, .vs-table td:first-child { white-space: normal; word-break: keep-all; overflow-wrap: normal; min-width: 5.5em; }
-  .vs-table td .vs-frac { font-size: 10px; }
+  /* スタッフ比較表は横スクロールさせず必ず画面内に収める。固定レイアウトで列幅を
+     等分し、指標名（第1列）だけ広めに確保。値は nowrap のまま、分子÷分母の下段は
+     ÷ で自然に折り返せるようにして、はみ出しを防ぐ。 */
+  .vs-table { table-layout: fixed; width: 100%; }
+  /* 指標名（第1列）は語の途中で1文字ずつ縦積みにならないよう keep-all で折り返す。 */
+  .vs-table th:first-child, .vs-table td:first-child { white-space: normal; word-break: keep-all; overflow-wrap: normal; width: 38%; }
+  .vs-table td .vs-frac { font-size: 10px; white-space: normal; overflow-wrap: anywhere; }
   table.kate-table { font-size: 11px; table-layout: fixed; }
   .kate-table th, .kate-table td { padding: 7px 5px; overflow: hidden; }
   .kate-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }

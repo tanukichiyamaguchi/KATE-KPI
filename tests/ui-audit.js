@@ -166,6 +166,15 @@ const WIDTHS = [320, 375, 390, 414, 1280];
           });
           if (!culprits.length) out.push({ type: 'h-overflow', text: 'page ' + document.documentElement.scrollWidth + 'px / vw' + docW });
         }
+        // 5) スタッフ比較表は横スクロールさせず画面内に必ず収める設計。.table-wrap は
+        //    overflow-x:auto なので #4 の全体検査では拾えないため個別に確認する。
+        var vt = document.querySelector('.vs-table');
+        if (vt && vt.offsetParent) {
+          var vw = vt.closest('.table-wrap');
+          if (vw && vt.scrollWidth > vw.clientWidth + 2) {
+            out.push({ type: 'vs-table-overflow', text: vt.scrollWidth + 'px > wrap ' + vw.clientWidth + 'px' });
+          }
+        }
         return out;
       });
       // dedupe identical findings within a tab so one bad column doesn't
