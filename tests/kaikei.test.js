@@ -620,5 +620,30 @@ h('■ Fixture T: 固定化率の分母＝実来店2回目・分子＝そのう�
   check('リピート率 分子（予約ベース Fres>=2 は C1,C2,C3 の3人）', R.store.repeatNumer, 3);
 }
 
+// ============================================================================
+// Fixture U — 固定化率の分子: 3回目をキャンセルし別日の再予約が無い顧客は省く
+// （オーナー確認事項）。キャンセル後に別日の再予約があれば「3回目の予約有り」と数える。
+// ============================================================================
+// X: 実来店2回 → 3回目を予約したが「お客様キャンセル」→ 別日の再予約なし
+//    → Fvis=2（分母○）だが Fres=2（キャンセルは実効予約に数えない）→ 分子×
+// Y: 実来店2回 → 3回目キャンセル → その後 別日に受付待ちで再予約
+//    → Fvis=2（分母○）かつ Fres=3（再予約が実効予約）→ 分子○
+h('■ Fixture U: 固定化率の分子はキャンセルのみ(再予約なし)を省く');
+{
+  const rows = [
+    rec({ custKey: 'X', date: '2026-05-01', kaikeiTotal: 6000 }),
+    rec({ custKey: 'X', date: '2026-05-20', kaikeiTotal: 6000 }),
+    rec({ custKey: 'X', status: 'お客様キャンセル', date: '2026-06-10' }),
+    rec({ custKey: 'Y', date: '2026-05-02', kaikeiTotal: 6000 }),
+    rec({ custKey: 'Y', date: '2026-05-21', kaikeiTotal: 6000 }),
+    rec({ custKey: 'Y', status: 'お客様キャンセル', date: '2026-06-11' }),
+    rec({ custKey: 'Y', status: '受付待ち', date: '2026-08-01', yoyakuTotal: 6000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-03' });
+  check('固定化率 分母（実来店2回目 X,Y）', R.store.fixDenom, 2);
+  check('固定化率 分子（3回目の予約が現存する Y のみ・X は除外）', R.store.fixNumer, 1);
+  check('固定化率 = 1/2 = 50.0%', R.store.fixationRate, 50.0, 0.05);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);
