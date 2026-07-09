@@ -236,13 +236,13 @@ svg { display: block; }
 
 /* ==== iOS grouped-list idiom（承認済みプロトタイプの .gsec/.gsec-h） ====
    card() はタイトル付きの場合、見出しを白いカードの「外」に 13px グレーの
-   セクションヘッダーとして出す。sub/tag は同じヘッダー行の右側にまとめる。 */
-.gsec > .card-head { margin-bottom: 7px; padding: 0 16px; align-items: baseline; flex-wrap: wrap; row-gap: 2px; }
-/* タイトルが右側の補足に押し潰されて数文字ずつ折り返さないよう、
-   タイトルに最低幅を確保し、入り切らない補足は次の行に落とす */
-.gsec > .card-head .card-title { flex: 1 1 auto; min-width: 62%; }
-.card-hmeta { display: flex; align-items: center; gap: 8px; flex: none; text-align: right; }
-.card-hmeta .card-sub { margin-top: 0; }
+   セクションヘッダーとして出す。ヘッダー行はタイトル（左）＋タグ（右）のみ。
+   補足文(sub)はヘッダー下の全幅行に置き、狭い画面でも自然に折り返させる
+   （右寄せの固定幅コンテナに入れると横スクロールの原因になるため）。 */
+.gsec > .card-head { margin-bottom: 5px; padding: 0 16px; align-items: baseline; gap: 8px; }
+.gsec > .card-head .card-title { flex: 1 1 auto; min-width: 0; }
+.gsec > .card-head .card-tag { flex: none; }
+.gsec > .card-sub { padding: 0 16px; margin: 0 0 7px; }
 /* メーター等を iOS のセル列として区切るヘアライン */
 .cell-list > * + * { border-top: 1px solid var(--hairline); padding-top: 11px; margin-top: 11px; }
 /* iOS の入力フィールド（プロトタイプ .field） */
@@ -325,9 +325,10 @@ svg { display: block; }
 .kate-funnel-val em { font-style: normal; font-size: 12px; color: var(--ink-muted); margin-left: 5px; }
 .kate-funnel-track { height: 22px; background: var(--track); border-radius: 7px; overflow: hidden; }
 .kate-funnel-bar { height: 100%; border-radius: 7px; width: 0; transition: width .9s var(--ease); }
-.kate-funnel-conv { font-size: 11.5px; color: var(--ink-muted); padding: 4px 0 6px; display: flex; align-items: center; gap: 6px; }
+.kate-funnel-conv { font-size: 11.5px; color: var(--ink-muted); padding: 4px 0 6px; display: flex; align-items: center; gap: 3px 6px; flex-wrap: wrap; }
 .kate-funnel-conv .kate-arrow { color: var(--ink-muted); }
 .kate-funnel-conv b { color: var(--ink-secondary); font-variant-numeric: tabular-nums; }
+.kate-funnel-conv .kate-funnel-frac { font-style: normal; font-size: 10.5px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 
 /* ---- Horizontal bars ------------------------------------------------------*/
 .kate-hbars { display: flex; flex-direction: column; gap: 14px; }

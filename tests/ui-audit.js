@@ -133,6 +133,39 @@ const WIDTHS = [320, 375, 390, 414, 1280];
             }
           }
         }
+        // 4) page-level horizontal overflow: a phone page must never scroll
+        //    sideways. Wide tables/charts are allowed BEHIND an
+        //    overflow-x:auto scroll container; anything else poking past the
+        //    viewport's right edge is the 「横スクロール」bug. Name the widest
+        //    offending leaf so the failure is actionable.
+        var docW = document.documentElement.clientWidth;
+        if (document.documentElement.scrollWidth > docW + 1) {
+          function inScrollX(el) {
+            for (var p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+              var ox = getComputedStyle(p).overflowX;
+              if ((ox === 'auto' || ox === 'scroll') && p.scrollWidth > p.clientWidth + 2) return true;
+            }
+            return false;
+          }
+          var all = document.body.querySelectorAll('*'), culprits = [];
+          for (var o = 0; o < all.length; o++) {
+            var e2 = all[o];
+            if (!e2.offsetParent) continue;
+            var r2 = e2.getBoundingClientRect();
+            if (r2.right > docW + 1 && !inScrollX(e2)) {
+              var sel = (e2.id ? '#' + e2.id : (typeof e2.className === 'string' && e2.className.trim()
+                ? '.' + e2.className.trim().split(/\s+/).slice(0, 2).join('.') : e2.tagName.toLowerCase()));
+              culprits.push({ w: Math.round(r2.right), sel: sel });
+            }
+          }
+          culprits.sort(function (a, b) { return b.w - a.w; });
+          var seenC = {};
+          culprits.slice(0, 30).forEach(function (c) {
+            if (seenC[c.sel]) return; seenC[c.sel] = 1;
+            out.push({ type: 'h-overflow', text: c.sel + ' →' + c.w + 'px / vw' + docW });
+          });
+          if (!culprits.length) out.push({ type: 'h-overflow', text: 'page ' + document.documentElement.scrollWidth + 'px / vw' + docW });
+        }
         return out;
       });
       // dedupe identical findings within a tab so one bad column doesn't

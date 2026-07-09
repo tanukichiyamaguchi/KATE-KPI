@@ -500,9 +500,14 @@
       wrap.appendChild(row);
       if (!noAnim()) requestAnimationFrame(function () { setTimeout(function () { bar.style.width = (s.value / max * 100) + '%'; }, 120 + i * 110); });
       if (i < opts.stages.length - 1) {
-        var next = opts.stages[i + 1].value, drop = s.value ? 1 - next / s.value : 0;
+        // 継続率は stage.cont（実来店ベースで母数補正済み）を優先。無ければ従来どおり
+        // バー比（次段/現段）にフォールバック。分母・分子があれば併記する。
+        var cont = (s.cont != null) ? s.cont
+          : (s.value ? opts.stages[i + 1].value / s.value : 0);
         var conv = el('div', 'kate-funnel-conv');
-        conv.innerHTML = '<span class="kate-arrow">↓</span> 継続 <b>' + fmtPct(next / (s.value || 1), 0) + '</b> · 離脱 ' + fmtPct(drop, 0);
+        var frac = (s.contNum != null && s.contDen != null)
+          ? ' <em class="kate-funnel-frac">' + fmtInt(s.contNum) + '人 ÷ ' + fmtInt(s.contDen) + '人</em>' : '';
+        conv.innerHTML = '<span class="kate-arrow">↓</span> 継続 <b>' + fmtPct(cont, 0) + '</b> · 離脱 ' + fmtPct(1 - cont, 0) + frac;
         wrap.appendChild(conv);
       }
     });

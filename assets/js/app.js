@@ -146,9 +146,11 @@
     var cls = (opts.col || 'col-12') + (opts.hoverable ? ' hoverable' : '');
     var idAttr = opts.id ? ' id="' + opts.id + '"' : '';
     if (!opts.title) return '<div class="card reveal ' + cls + '"' + idAttr + '>' + opts.body + '</div>';
-    var meta = (opts.sub ? '<span class="card-sub">' + opts.sub + '</span>' : '') + (opts.tag ? '<span class="card-tag">' + opts.tag + '</span>' : '');
-    return '<div class="gsec reveal ' + cls + '"' + idAttr + '>' +
-      '<div class="card-head"><div class="card-title">' + opts.title + '</div>' + (meta ? '<div class="card-hmeta">' + meta + '</div>' : '') + '</div>' +
+    // ヘッダー行はタイトル（左）＋タグチップ（右）のみ。補足文(sub)は横幅を圧迫して
+    // はみ出す原因になるため、ヘッダーの下の全幅行に置いて自然に折り返させる。
+    var head = '<div class="card-head"><div class="card-title">' + opts.title + '</div>' + (opts.tag ? '<span class="card-tag">' + opts.tag + '</span>' : '') + '</div>';
+    var sub = opts.sub ? '<div class="card-sub">' + opts.sub + '</div>' : '';
+    return '<div class="gsec reveal ' + cls + '"' + idAttr + '>' + head + sub +
       '<div class="card">' + opts.body + '</div></div>';
   }
   function chartBox(id, h) { return '<div class="chart-box" id="' + id + '"' + (h ? ' style="min-height:' + h + 'px"' : '') + '></div>'; }
@@ -206,7 +208,7 @@
 
     // Funnel + cohort
     html += card({
-      col: 'col-5', title: 'リテンション ファネル' + help('来店顧客のうち、1回目→2回目→3回目→4回目→5回目の予約に到達した人数・割合。「到達」は予約ベースで判定し、キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。'),
+      col: 'col-5', title: 'リテンション ファネル' + help('各バーの到達人数は予約ベース：受付待ちの予約も「到達」に数え、キャンセルのみで次の予約が無い場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。段の間の継続率／離脱率は「実際にその回数まで来店した人」を母数にする（まだ来店前＝2回目が受付待ちの顧客は、構造上まだ次の予約を取りようがないため母数から除く）。分子は予約ベースのまま次回の予約を数えるので、固定化率と同じ考え方。'),
       sub: '来店顧客 ' + s.customers + '人が母数（1回 → 5回 到達）',
       body: '<div id="cFunnel"></div>'
     });
@@ -269,7 +271,7 @@
     });
     draw('cFunnel', function (el) {
       C.funnel(el, {
-        stages: s.funnel.map(function (f, i) { return { label: f.n + '回', value: f.people, sub: pct(f.reach * 100, 0) + ' 到達' }; })
+        stages: s.funnel.map(function (f, i) { return { label: f.n + '回', value: f.people, sub: pct(f.reach * 100, 0) + ' 到達', cont: f.cont, contNum: f.contNum, contDen: f.contDen }; })
       });
     });
     draw('cVisitComp', function (el) {
