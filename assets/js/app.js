@@ -371,7 +371,7 @@
       { label: '平均月間売上', help: '直近3ヶ月の、来店のあった月数で割った平均月間売上（会計済みのみ）。', fmt: function (st) { return yenOrDash(st.revPeriods.last3.monthly); } },
       { label: '平均日間売上', help: '直近3ヶ月の会計済み売上を、営業日（会計が1件以上あった日数）で割った平均。', fmt: function (st) { return yenOrDash(st.revPeriods.last3.daily); } },
       { label: '平均客単価', help: '直近3ヶ月の客単価。予約ベース売上の合計 ÷ 予約数の合計（件数で重み付けしたプール平均）。', fmt: function (st) { return yen(st.avgRecent.spend); },
-        sub: function (st) { return st.avgRecent.spendRes ? frac(st.avgRecent.spendRev, st.avgRecent.spendRes) + '円÷件' : ''; } },
+        sub: function (st) { return st.avgRecent.spendRes ? yenCompact(st.avgRecent.spendRev) + ' ÷ ' + F.int(st.avgRecent.spendRes) + '件' : ''; } },
       { label: 'リピート率（2回到達）', help: 'このスタッフが直近3ヶ月に初回担当した顧客のうち、2回目の予約（来店・今後の予約含む）に到達した人の割合。キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。', fmt: function (st) { return pctOrDash(st.reach2); },
         sub: function (st) { return st.reach2 == null ? '' : frac(st.reach2Num, st.reachDen, '人'); } },
       { label: '次回予約取得率', help: 'このスタッフが直近3ヶ月に担当した来店のうち、その後に何らかの予約・来店があった割合。次回を確保した来店の合計 ÷ 来店の合計（件数で重み付けしたプール平均）。', fmt: function (st) { return pctOrDash(st.avgRecent.nextRes); },
