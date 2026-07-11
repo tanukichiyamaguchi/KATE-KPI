@@ -475,8 +475,6 @@
         var nextCnt = vis.filter(function (r) { return r.date && visitGotNext(r); }).length;
         var vis2 = vis.filter(function (r) { return r._ord === 2; });
         var next2 = vis2.filter(function (r) { return visitGotNext(r); }).length;
-        var vis3 = vis.filter(function (r) { return r._ord === 3; });
-        var next3 = vis3.filter(function (r) { return visitGotNext(r); }).length;
         var rst = retailStats(vis);
         var immature = monthImmature(mo);          // right-censored recent month → not measurable
         var visitDays = uniqCount(vis.filter(function (r) { return r.date; }), function (r) { return r.date.getTime(); });
@@ -488,8 +486,7 @@
           cancelCnt: canc.length, cancelDen: confVisitors.length,
           nextRes: immature || !vis.length ? null : nextCnt / vis.length,
           nextRes2: immature || !vis2.length ? null : next2 / vis2.length,   // 2回目来店の次回予約取得率
-          nextRes3: immature || !vis3.length ? null : next3 / vis3.length,   // 3回目来店の次回予約取得率
-          nextCnt: nextCnt, visN: vis.length, next2Cnt: next2, vis2N: vis2.length, next3Cnt: next3, vis3N: vis3.length,
+          nextCnt: nextCnt, visN: vis.length, next2Cnt: next2, vis2N: vis2.length,
           nextResImmature: immature,
           retailRatio: rst.attachRate, retailAmount: rst.amount, retailBuyers: rst.buyers,
           retailBuyingVisits: rst.buyingVisits,
@@ -568,7 +565,6 @@
       var spendAll = poolSum(active, 'rev', 'res');
       var nextAll = poolSum(active, 'nextCnt', 'visN', 'nextRes');
       var next2All = poolSum(active, 'next2Cnt', 'vis2N', 'nextRes2');
-      var next3All = poolSum(active, 'next3Cnt', 'vis3N', 'nextRes3');
       var avg = {
         months: active.length,
         visitsPerMonth: active.length ? round(active.reduce(function (s, r) { return s + r.actual; }, 0) / active.length, 1) : 0,
@@ -579,9 +575,7 @@
         nextRes: nextAll.rate,
         nextResNum: nextAll.num, nextResDen: nextAll.den,   // 分子(次回確保来店)・分母(来店)
         nextRes2: next2All.rate,
-        nextRes2Num: next2All.num, nextRes2Den: next2All.den,
-        nextRes3: next3All.rate,
-        nextRes3Num: next3All.num, nextRes3Den: next3All.den
+        nextRes2Num: next2All.num, nextRes2Den: next2All.den
       };
       // スタッフ比較表（vsMetrics）専用：直近3ヶ月（今月を含まない確定3ヶ月）限定の
       // プール平均。全期間平均の avg とは別に持たせる。
@@ -590,8 +584,6 @@
       var staffVisRecent = staffVis.filter(function (r) { return last3Months.indexOf(r.ym) !== -1; });
       var spendRecent = poolSum(activeRecent, 'rev', 'res');
       var nextRecent = poolSum(activeRecent, 'nextCnt', 'visN', 'nextRes');
-      var next2Recent = poolSum(activeRecent, 'next2Cnt', 'vis2N', 'nextRes2');
-      var next3Recent = poolSum(activeRecent, 'next3Cnt', 'vis3N', 'nextRes3');
       var retailRecentStats = retailStats(staffVisRecent);
       var avgRecent = {
         visitsPerMonth: activeRecent.length ? round(activeRecent.reduce(function (s, r) { return s + r.actual; }, 0) / activeRecent.length, 1) : 0,
@@ -599,10 +591,6 @@
         spendRev: spendRecent.num, spendRes: spendRecent.den,
         nextRes: nextRecent.rate,
         nextResNum: nextRecent.num, nextResDen: nextRecent.den,
-        nextRes2: next2Recent.rate,
-        nextRes2Num: next2Recent.num, nextRes2Den: next2Recent.den,
-        nextRes3: next3Recent.rate,
-        nextRes3Num: next3Recent.num, nextRes3Den: next3Recent.den,
         retailCustomerRatio: retailRecentStats.customerRatio,
         retailBuyers: retailRecentStats.buyers, retailVisitCustomers: retailRecentStats.visitCustomers
       };
