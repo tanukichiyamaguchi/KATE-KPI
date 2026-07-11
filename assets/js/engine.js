@@ -575,10 +575,7 @@
         nextRes: nextAll.rate,
         nextResNum: nextAll.num, nextResDen: nextAll.den,   // 分子(次回確保来店)・分母(来店)
         nextRes2: next2All.rate,
-        nextRes2Num: next2All.num, nextRes2Den: next2All.den,
-        // 次の一手 の最小N判定に使う分母（来店数ベース）
-        nextResN: nextAll.den,
-        nextRes2N: next2All.den
+        nextRes2Num: next2All.num, nextRes2Den: next2All.den
       };
       // スタッフ比較表（vsMetrics）専用：直近3ヶ月（今月を含まない確定3ヶ月）限定の
       // プール平均。全期間平均の avg とは別に持たせる。

@@ -224,6 +224,17 @@
     if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si), dashed: s.dashed }; }));
   }
 
+  // A value label floating on/above a bar (stacked total, per-bar value, or
+  // cluster total) shows the bare number only — no ¥/万/億/k/%/件/人 unit
+  // suffix — since the axis and the card's tag chip already establish the
+  // unit; repeating it on every bar just adds clutter and, for money, forces
+  // long strings to compress illegibly. Strips a leading currency symbol and
+  // any trailing non-numeric suffix, keeping digits/commas/one decimal point.
+  function stripUnit(text) {
+    var s = String(text).replace(/^[¥$€]/, '');
+    var m = /^([+\-]?[\d,]*\.?\d+)/.exec(s);
+    return m ? m[1] : s;
+  }
   // Centered value label above a bar. If the natural text would be wider than
   // maxWidth, it's compressed via SVG textLength (not wrapped) so it never
   // overflows the bar it sits above — used for per-bar/per-cluster totals,
@@ -231,7 +242,7 @@
   function fitValueLabel(svg, x, y, text, maxWidth, fontSize) {
     var t = svgEl('text', { x: x, y: y, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': fontSize, 'font-weight': 700 });
     t.setAttribute('font-variant-numeric', 'tabular-nums');
-    t.textContent = text;
+    t.textContent = stripUnit(text);
     svg.appendChild(t);
     if (maxWidth > 0 && t.getComputedTextLength) {
       var natural = t.getComputedTextLength();
