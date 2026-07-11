@@ -712,5 +712,39 @@ h('■ Fixture W: 店舗全体の予約ベース内訳(composition)');
   check('composition の実績値(new/v2/v3/v4)は全月 newMix と一致', mismatch.length, 0);
 }
 
+// ============================================================================
+// Fixture X — 3回目次回予約取得率(nextRes3)・pooled avg.nextRes2/nextRes3
+// ============================================================================
+// スタッフT・E: 4月に3回来店 → 4回目の予約をキャンセルし別日の再予約なし
+//   → 3回目来店(4/20)の次回予約取得=false
+// スタッフT・F: 5月に3回来店 → 4回目の予約をキャンセルしたが6月に再予約・来店
+//   → 3回目来店(5/20)の次回予約取得=true
+// asOf=2026-07-10 で4月・5月とも成熟済み（MATURITY_DAYS=30以上経過）。
+h('■ Fixture X: 3回目次回予約取得率(nextRes3)・プール平均');
+{
+  const rows = [
+    rec({ staff: 'T', custKey: 'E', date: '2026-04-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'T', custKey: 'E', date: '2026-04-10', kaikeiTotal: 5000 }),
+    rec({ staff: 'T', custKey: 'E', date: '2026-04-20', kaikeiTotal: 5000 }),
+    rec({ staff: 'T', custKey: 'E', status: 'お客様キャンセル', date: '2026-04-30' }),
+    rec({ staff: 'T', custKey: 'F', date: '2026-05-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'T', custKey: 'F', date: '2026-05-10', kaikeiTotal: 5000 }),
+    rec({ staff: 'T', custKey: 'F', date: '2026-05-20', kaikeiTotal: 5000 }),
+    rec({ staff: 'T', custKey: 'F', status: 'お客様キャンセル', date: '2026-05-30' }),
+    rec({ staff: 'T', custKey: 'F', date: '2026-06-15', kaikeiTotal: 6000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-10' });
+  const t = R.staff.find(function (s) { return s.name === 'T'; });
+  const apr = t.monthly.find(function (m) { return m.m === '2026-04'; });
+  const may = t.monthly.find(function (m) { return m.m === '2026-05'; });
+  check('4月 nextRes3（Eはキャンセルのみ・再予約なし→0）', apr.nextRes3, 0);
+  check('5月 nextRes3（Fはキャンセル後に別月来店あり→1）', may.nextRes3, 1);
+  check('avg.nextRes3（全期間プール: 1/2）', t.avg.nextRes3, 0.5);
+  check('avg.nextRes3Num/Den', t.avg.nextRes3Num, 1);
+  check('avg.nextRes3Den', t.avg.nextRes3Den, 2);
+  check('avgRecent.nextRes2（直近3ヶ月プール: 2/2）', t.avgRecent.nextRes2, 1);
+  check('avgRecent.nextRes3（直近3ヶ月プール: 1/2）', t.avgRecent.nextRes3, 0.5);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);
