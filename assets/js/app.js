@@ -263,7 +263,7 @@
           { name: '実績（会計済み）', color: cvar('--series-1'), values: s.monthly.map(function (m) { return m.revActual; }) },
           { name: '見込み（受付待ち）', color: cvar('--funnel-2'), values: s.monthly.map(function (m) { return m.revExpected; }) }
         ],
-        valueFmt: function (v) { return yen(Math.round(v)); }, yFmt: F.compact, height: 260
+        valueFmt: function (v) { return yen(Math.round(v)); }, totalFmt: yenCompact, totalFontSize: 9.5, yFmt: F.compact, yFontSize: 9.5, height: 260
       });
     });
     draw('cTCohortR', function (el) {

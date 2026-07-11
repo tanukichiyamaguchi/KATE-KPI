@@ -259,7 +259,7 @@
       var yv = maxV * g / 4, y = yat(yv);
       svg.appendChild(svgEl('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: ink.grid(), 'stroke-width': 1 }));
       if (g === 0 || g === 4) continue;
-      var lab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': 11 });
+      var lab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': opts.yFontSize || 11 });
       lab.setAttribute('font-variant-numeric', 'tabular-nums'); lab.textContent = (opts.yFmt || fmtCompact)(yv); svg.appendChild(lab);
     }
 
@@ -282,7 +282,7 @@
           bindBarTip(rect, svg, w, glabel, s, si, v, opts);
         });
         if (acc > 0) {
-          fitValueLabel(svg, cx, yat(acc) - 7, (opts.totalFmt || opts.valueFmt || fmtCompact)(acc), barW + 6, 10.5);
+          fitValueLabel(svg, cx, yat(acc) - 7, (opts.totalFmt || opts.valueFmt || fmtCompact)(acc), barW + 6, opts.totalFontSize || 10.5);
         }
       } else {
         var innerW = band * 0.7, bw = Math.min(24, innerW / series.length - GAP);
