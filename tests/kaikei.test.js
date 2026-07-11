@@ -678,5 +678,39 @@ h('■ Fixture V: ファネル継続率は実来店で母数補正・到達は�
   check('2→3 継続率 = 2/3 ≒ 66.7%（旧バー比2/4=50%ではない）', n2.cont, 2 / 3, 1e-9);
 }
 
+// ============================================================================
+// Fixture W — 店舗全体の予約ベース内訳(store.composition): 実績(new/v2/v3/v4)は
+// newMix と一致し、見込み(expNew/expV2/expV3/expV4)は受付待ちの予約を加算する。
+// スタッフ別 composition と同じロジックの店舗全体版（概要タブ「新規・再来」用）。
+// ============================================================================
+// C1: 5月に初回来店(new) → 6月に2回目来店(v2、実績)
+// C2: 5月に初回来店(new) → 7月に2回目の予約が受付待ち(expV2、見込み)
+// C3: 6月に初回来店(new)
+h('■ Fixture W: 店舗全体の予約ベース内訳(composition)');
+{
+  const rows = [
+    rec({ custKey: 'C1', date: '2026-05-01', kaikeiTotal: 6000 }),
+    rec({ custKey: 'C1', date: '2026-06-01', kaikeiTotal: 6000 }),
+    rec({ custKey: 'C2', date: '2026-05-02', kaikeiTotal: 6000 }),
+    rec({ custKey: 'C2', status: '受付待ち', date: '2026-07-10', yoyakuTotal: 6000 }),
+    rec({ custKey: 'C3', date: '2026-06-03', kaikeiTotal: 6000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-03' });
+  const may = R.store.composition.find(function (c) { return c.m === '2026-05'; });
+  const jun = R.store.composition.find(function (c) { return c.m === '2026-06'; });
+  const jul = R.store.composition.find(function (c) { return c.m === '2026-07'; });
+  check('5月 new（実績: C1,C2）', may.new, 2);
+  check('5月 v2〜v4・見込みは全て0', may.v2 + may.v3 + may.v4 + may.expNew + may.expV2 + may.expV3 + may.expV4, 0);
+  check('6月 new（実績: C3）', jun.new, 1);
+  check('6月 v2（実績: C1の2回目来店）', jun.v2, 1);
+  check('7月 expV2（見込み: C2の2回目・受付待ち予約）', jul.expV2, 1);
+  check('7月 new〜v4（実績）は全て0', jul.new + jul.v2 + jul.v3 + jul.v4, 0);
+  var mismatch = R.store.composition.filter(function (c, i) {
+    var n = R.store.newMix[i];
+    return c.new !== n.new || c.v2 !== n.v2 || c.v3 !== n.v3 || c.v4 !== n.v4;
+  });
+  check('composition の実績値(new/v2/v3/v4)は全月 newMix と一致', mismatch.length, 0);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);

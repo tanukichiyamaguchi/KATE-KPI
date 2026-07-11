@@ -275,6 +275,7 @@
           var rectH = Math.max(0, y0 - y1);
           var isTop = (function () { for (var k = si + 1; k < series.length; k++) if (series[k].values[gi] > 0) return false; return true; })();
           var rect = svgEl('rect', { x: x, y: y1, width: barW, height: 0, fill: s.color || seriesColor(si), rx: isTop ? 4 : 0 });
+          if (s.opacity != null) rect.setAttribute('fill-opacity', s.opacity);
           rect.style.cursor = 'default'; svg.appendChild(rect);
           animateAttr(rect, 'height', 0, rectH, 700, gi * 40 + si * 30);
           animateAttr(rect, 'y', y0, y1, 700, gi * 40 + si * 30);
@@ -301,7 +302,11 @@
       }
     });
     enableDragReveal(svg);
-    if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si) }; }));
+    // 見込み(opacity付き)の重畳シリーズは、実績シリーズと同色で凡例上は見分けが
+    // つかず単なる重複行になるため、凡例には含めない（薄色である旨は help() 側で
+    // 説明する）。
+    var legendSeries = opts.hideLegend ? [] : series.filter(function (s) { return s.opacity == null; });
+    if (legendSeries.length >= 2) legend(container, legendSeries.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si) }; }));
   }
   // ==================== CLUSTERED STACKED COLUMNS ==========================
   // Like columns({stacked:true}) but bars are grouped into visual clusters

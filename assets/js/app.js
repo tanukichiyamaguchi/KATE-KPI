@@ -241,7 +241,10 @@
     });
     var lastMix = s.newMix.filter(function (m) { return m.new + m.repeat > 0; }).slice(-1)[0];
     var mixNote = lastMix && (lastMix.new + lastMix.repeat) ? '直近月（' + monthShort(lastMix.m) + '）の再来比率 ' + pct(lastMix.repeat / (lastMix.new + lastMix.repeat) * 100, 0) : '月次の新規・再来来店数';
-    html += card({ col: 'col-6', title: '新規・再来' + help('月ごとの来店を、その顧客にとって何回目の来店かで内訳表示（新規／2回目／3回目／4回目以上）。来店の実際の順番で判定し、予約段階の情報には依存しない。'), sub: mixNote + '　※再来はX回目の内訳つき', tag: '件', body: chartBox('cNewMix', 210) });
+    html += card({
+      col: 'col-6', title: '新規・再来' + help('月ごとの来店・予約を、その顧客にとって何回目にあたるかで内訳表示（新規／2回目／3回目／4回目以上）。濃色は会計済みの実績、薄色（同じ色）は受付待ちの見込み。スタッフタブの「月次 予約数の比較」と同じ考え方（実績＋見込みの予約ベース）。棒の上の数字は実績＋見込みの合計件数。'),
+      sub: mixNote + '　※薄色は受付待ちの見込み（予約ベース）', tag: '件', body: chartBox('cNewMix', 210)
+    });
     html += card({ col: 'col-6', title: '来店回数の構成' + help('全期間を通じて、来店回数（1回目・2回目・3回目・4回目以上）ごとの来店件数と、その回数における平均客単価。'), sub: '回数別', body: '<div id="cVisitComp"></div>' });
 
     mount('overview', head + '<div class="grid">' + html + '</div>');
@@ -281,13 +284,20 @@
       });
     });
     draw('cNewMix', function (el) {
+      // 予約ベースの内訳（スタッフタブの「月次 予約数の比較」と同じ考え方）:
+      // 濃色=会計済みの実績（newMix と同じ値）、薄色（同色・半透明）=受付待ちの見込み。
+      var comp = s.newMix.map(function (m) { return s.composition.filter(function (x) { return x.m === m.m; })[0] || { expNew: 0, expV2: 0, expV3: 0, expV4: 0 }; });
       C.columns(el, {
         groups: s.newMix.map(function (m) { return monthShort(m.m); }), stacked: true,
         series: [
           { name: '新規', color: cvar('--funnel-2'), values: s.newMix.map(function (m) { return m.new; }) },
           { name: '2回目', color: cvar('--funnel-3'), values: s.newMix.map(function (m) { return m.v2; }) },
           { name: '3回目', color: cvar('--funnel-4'), values: s.newMix.map(function (m) { return m.v3; }) },
-          { name: '4回目以上', color: cvar('--funnel-5'), values: s.newMix.map(function (m) { return m.v4; }) }
+          { name: '4回目以上', color: cvar('--funnel-5'), values: s.newMix.map(function (m) { return m.v4; }) },
+          { name: '新規（見込み）', color: cvar('--funnel-2'), opacity: 0.45, values: comp.map(function (c) { return c.expNew; }) },
+          { name: '2回目（見込み）', color: cvar('--funnel-3'), opacity: 0.45, values: comp.map(function (c) { return c.expV2; }) },
+          { name: '3回目（見込み）', color: cvar('--funnel-4'), opacity: 0.45, values: comp.map(function (c) { return c.expV3; }) },
+          { name: '4回目以上（見込み）', color: cvar('--funnel-5'), opacity: 0.45, values: comp.map(function (c) { return c.expV4; }) }
         ],
         valueFmt: function (v) { return v + '件'; }, height: 210
       });
