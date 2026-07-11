@@ -224,6 +224,17 @@
     if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si), dashed: s.dashed }; }));
   }
 
+  // A value label floating on/above a bar (stacked total, per-bar value, or
+  // cluster total) shows the bare number only — no ¥/万/億/k/%/件/人 unit
+  // suffix — since the axis and the card's tag chip already establish the
+  // unit; repeating it on every bar just adds clutter and, for money, forces
+  // long strings to compress illegibly. Strips a leading currency symbol and
+  // any trailing non-numeric suffix, keeping digits/commas/one decimal point.
+  function stripUnit(text) {
+    var s = String(text).replace(/^[¥$€]/, '');
+    var m = /^([+\-]?[\d,]*\.?\d+)/.exec(s);
+    return m ? m[1] : s;
+  }
   // Centered value label above a bar. If the natural text would be wider than
   // maxWidth, it's compressed via SVG textLength (not wrapped) so it never
   // overflows the bar it sits above — used for per-bar/per-cluster totals,
@@ -231,36 +242,7 @@
   function fitValueLabel(svg, x, y, text, maxWidth, fontSize) {
     var t = svgEl('text', { x: x, y: y, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': fontSize, 'font-weight': 700 });
     t.setAttribute('font-variant-numeric', 'tabular-nums');
-    t.textContent = text;
-    svg.appendChild(t);
-    if (maxWidth > 0 && t.getComputedTextLength) {
-      var natural = t.getComputedTextLength();
-      if (natural > maxWidth) { t.setAttribute('textLength', maxWidth); t.setAttribute('lengthAdjust', 'spacingAndGlyphs'); }
-    }
-    return t;
-  }
-
-  // Splits a formatted compact number ("116万", "3.4万", "1.2k", "500") into its
-  // leading digits and trailing unit suffix, so the unit can be rendered smaller
-  // than the number (opts.splitUnit on columns()).
-  function splitCompactUnit(text) {
-    var m = /^([+\-]?[\d,]*\.?\d+)(.*)$/.exec(text);
-    return m ? { value: m[1], unit: m[2] } : { value: text, unit: '' };
-  }
-  // Same as fitValueLabel, but renders "value" at fontSize and "unit" smaller
-  // (unitFontSize), as sibling tspans in one text chunk so text-anchor still
-  // centers/aligns the combined label as a whole.
-  function fitValueLabelSplit(svg, x, y, valueText, unitText, maxWidth, fontSize, unitFontSize) {
-    var t = svgEl('text', { x: x, y: y, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': fontSize, 'font-weight': 700 });
-    t.setAttribute('font-variant-numeric', 'tabular-nums');
-    var vSpan = svgEl('tspan', {});
-    vSpan.textContent = valueText;
-    t.appendChild(vSpan);
-    if (unitText) {
-      var uSpan = svgEl('tspan', { 'font-size': unitFontSize, 'font-weight': 500, fill: ink.muted() });
-      uSpan.textContent = unitText;
-      t.appendChild(uSpan);
-    }
+    t.textContent = stripUnit(text);
     svg.appendChild(t);
     if (maxWidth > 0 && t.getComputedTextLength) {
       var natural = t.getComputedTextLength();
@@ -288,18 +270,8 @@
       var yv = maxV * g / 4, y = yat(yv);
       svg.appendChild(svgEl('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: ink.grid(), 'stroke-width': 1 }));
       if (g === 0 || g === 4) continue;
-      var yText = (opts.yFmt || fmtCompact)(yv);
-      if (opts.splitUnit) {
-        var yParts = splitCompactUnit(yText);
-        var ylab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': opts.yFontSize || 11 });
-        ylab.setAttribute('font-variant-numeric', 'tabular-nums');
-        var yvSpan = svgEl('tspan', {}); yvSpan.textContent = yParts.value; ylab.appendChild(yvSpan);
-        if (yParts.unit) { var yuSpan = svgEl('tspan', { 'font-size': opts.unitFontSize || 8 }); yuSpan.textContent = yParts.unit; ylab.appendChild(yuSpan); }
-        svg.appendChild(ylab);
-      } else {
-        var lab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': opts.yFontSize || 11 });
-        lab.setAttribute('font-variant-numeric', 'tabular-nums'); lab.textContent = yText; svg.appendChild(lab);
-      }
+      var lab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': 11 });
+      lab.setAttribute('font-variant-numeric', 'tabular-nums'); lab.textContent = (opts.yFmt || fmtCompact)(yv); svg.appendChild(lab);
     }
 
     groups.forEach(function (glabel, gi) {
@@ -321,13 +293,7 @@
           bindBarTip(rect, svg, w, glabel, s, si, v, opts);
         });
         if (acc > 0) {
-          var totalText = (opts.totalFmt || opts.valueFmt || fmtCompact)(acc);
-          if (opts.splitUnit) {
-            var tParts = splitCompactUnit(totalText);
-            fitValueLabelSplit(svg, cx, yat(acc) - 7, tParts.value, tParts.unit, barW + 6, opts.totalFontSize || 10.5, opts.unitFontSize || 8);
-          } else {
-            fitValueLabel(svg, cx, yat(acc) - 7, totalText, barW + 6, opts.totalFontSize || 10.5);
-          }
+          fitValueLabel(svg, cx, yat(acc) - 7, (opts.totalFmt || opts.valueFmt || fmtCompact)(acc), barW + 6, 10.5);
         }
       } else {
         var innerW = band * 0.7, bw = Math.min(24, innerW / series.length - GAP);

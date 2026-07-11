@@ -263,7 +263,7 @@
           { name: '実績（会計済み）', color: cvar('--series-1'), values: s.monthly.map(function (m) { return m.revActual; }) },
           { name: '見込み（受付待ち）', color: cvar('--funnel-2'), values: s.monthly.map(function (m) { return m.revExpected; }) }
         ],
-        valueFmt: function (v) { return yen(Math.round(v)); }, totalFmt: F.compact, splitUnit: true, unitFontSize: 8, yFmt: F.compact, height: 260
+        valueFmt: function (v) { return yen(Math.round(v)); }, totalFmt: F.compact, yFmt: F.compact, height: 260
       });
     });
     draw('cTCohortR', function (el) {
@@ -638,7 +638,7 @@
             { name: '施術', color: cvar('--series-1'), values: srm.map(function (m) { return m.service; }) },
             { name: '店販', color: cvar('--series-5'), values: srm.map(function (m) { return m.retail; }) }
           ],
-          valueFmt: function (v) { return yen(Math.round(v)); }, yFmt: F.compact, height: 210
+          valueFmt: function (v) { return yen(Math.round(v)); }, totalFmt: F.compact, yFmt: F.compact, height: 210
         });
       });
     }
