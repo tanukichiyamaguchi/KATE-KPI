@@ -167,7 +167,7 @@
   // ============================ OVERVIEW ===================================
   function renderOverview() {
     var A = state.analytics, s = A.store, t = A.trend;
-    var head = '<div class="view-title">店舗ダッシュボード</div><div class="view-lead">' + esc(ymRangeJa(A.meta.periodStart, A.meta.periodEnd)) + ' ／ 来店顧客 ' + esc(s.customers) + '人・基準日 ' + esc(ymdJa(A.meta.asOf)) + '。</div>';
+    var head = '<div class="view-title">店舗ダッシュボード</div><div class="view-lead">' + esc(ymRangeJa(A.meta.periodStart, A.meta.periodEnd)) + ' ／ 来店顧客 ' + esc(s.customers) + '人・基準日 ' + esc(ymdJa(A.meta.asOf)) + '。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + '</div>';
     var html = '';
 
     // 新しい端末への案内: 共有設定（暗号化済みシートURL）が同梱されているのに
@@ -184,13 +184,14 @@
 
     // KPI tile row (revenue KGI & effective-reservation count intentionally omitted)
     var rt = s.retail;
-    html += statTile('yen', '予約ベース客単価' + help('予約ベースの売上（会計済みの実績＋受付待ちの見込み）÷ 予約件数（来店＋受付待ち）。下の「実績客単価」は見込みを含まない、会計済みのみの客単価。'), F.int(s.avgSpendReservation), '¥', '実績客単価 ' + yen(s.avgSpendActual), 'sparkSpend');
-    html += statTile('ltv', '顧客LTV（現状）' + help('来店顧客1人あたりの累計売上（実績のみ）。「予測」は現在の客単価が今後も続くと仮定し、1回〜5回到達率の合計（期待来店回数）を掛けて見積もった将来のLTV。'), F.int(s.ltv.current), '¥', '<span class="chip up">↑ 予測 ' + yen(s.ltv.predicted) + '</span> 期待来店 ' + s.ltv.expectedVisits + '回', null);
+    var taxTag = A.meta.taxExcluded ? '（税抜）' : '';
+    html += statTile('yen', '予約ベース客単価' + taxTag + help('予約ベースの売上（会計済みの実績＋受付待ちの見込み）÷ 予約件数（来店＋受付待ち）。下の「実績客単価」は見込みを含まない、会計済みのみの客単価。金額は税抜（消費税10%）。'), F.int(s.avgSpendReservation), '¥', '実績客単価 ' + yen(s.avgSpendActual), 'sparkSpend');
+    html += statTile('ltv', '顧客LTV（現状）' + taxTag + help('来店顧客1人あたりの累計売上（実績のみ）。「予測」は現在の客単価が今後も続くと仮定し、1回〜5回到達率の合計（期待来店回数）を掛けて見積もった将来のLTV。金額は税抜。'), F.int(s.ltv.current), '¥', '<span class="chip up">↑ 予測 ' + yen(s.ltv.predicted) + '</span> 期待来店 ' + s.ltv.expectedVisits + '回', null);
     html += statTile('retail', '店販顧客比率' + help('来店顧客のうち、店販（物販）を購入した人の割合。会計時の店販金額または商品名の記録から算出。'), pct(rt.customerRatio * 100, 1), '%', '店販購入 ' + rt.buyers + '人 ／ 来店顧客 ' + rt.visitCustomers + '人', null, 'retail-customer-ratio');
 
     // 売上サマリー（実績のみ・期間バケット）
     html += card({
-      col: 'col-12', title: '売上サマリー（実績）' + help('会計済みの売上のみを対象にした、直近3ヶ月（今月を含まない確定3ヶ月）・先月・今月（集計中）の平均。平均月間売上の分母は「来店のあった月数」、平均日間売上の分母は「営業日（会計が1件以上あった日数）」。'),
+      col: 'col-12', title: '売上サマリー（実績）' + taxTag + help('会計済みの売上のみを対象にした、直近3ヶ月（今月を含まない確定3ヶ月）・先月・今月（集計中）の平均。平均月間売上の分母は「来店のあった月数」、平均日間売上の分母は「営業日（会計が1件以上あった日数）」。金額は税抜。'),
       body: periodTable(s.revPeriods, 'rev-periods')
     });
 
@@ -202,7 +203,7 @@
         '<div class="note-inline" style="margin-top:10px">来店周期の中央値 <b>' + s.visitCycleMedianDays + '日</b>。</div>'
     });
     html += card({
-      col: 'col-7', title: '月次 予約ベース売上' + help('月ごとの売上を、会計済み（実績）と受付待ち（見込み）の内訳で積み上げ表示。見込みは受付待ちの予約金額（会計前）を反映したもの。'), sub: '会計済み（実績）＋ 受付待ち（見込み）', tag: '¥',
+      col: 'col-7', title: '月次 予約ベース売上' + taxTag + help('月ごとの売上を、会計済み（実績）と受付待ち（見込み）の内訳で積み上げ表示。見込みは受付待ちの予約金額（会計前）を反映したもの。金額は税抜。'), sub: '会計済み（実績）＋ 受付待ち（見込み）', tag: '¥',
       body: chartBox('cRevenue', 260)
     });
 
@@ -252,7 +253,7 @@
     // draw
     tileSpark('sparkSpend', s.monthly.map(function (m) { return m.spend; }));
 
-    draw('mRepeat', function (el) { C.meter(el, { label: 'リピート率（2回到達）', help: '来店顧客のうち、2回目の予約（来店・今後の予約含む）に到達した人の割合。キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。', value: s.repeatRate / 100, display: pct(s.repeatRate), target: 0.75, sub: frac(s.repeatNumer, s.repeatDenom, '人') + ' ・ 目安 75%' }); });
+    draw('mRepeat', function (el) { C.meter(el, { label: 'リピート率（2回到達）', help: '来店顧客のうち、2回目の予約（来店・今後の予約含む）に到達した人の割合。キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。', value: s.repeatRate / 100, display: pct(s.repeatRate), target: 0.7, sub: frac(s.repeatNumer, s.repeatDenom, '人') + ' ・ 目安 70%' }); });
     draw('mNext', function (el) { C.meter(el, { label: '次回予約取得率', help: '来店（会計済み）のうち、その後に何らかの予約・来店（キャンセルは除く）があった割合。1回目〜複数回目まで、来店ごとに1件として集計。', value: s.nextReserveRate / 100, display: pct(s.nextReserveRate), sub: frac(s.nextReserveNumer, s.nextReserveDenom, '件') }); });
     draw('mFix', function (el) { C.meter(el, { label: '固定化率（3回到達）', help: '分母は「実際に2回来店した顧客」、分子は「そのうち3回目の予約を確保した人（受付待ち含む・キャンセル後の再予約も計上）」。リピート率（2回到達）は将来予約も含めた予約ベースで数えるため母集団が異なる。', value: s.fixationRate / 100, display: pct(s.fixationRate), target: 0.6, sub: frac(s.fixNumer, s.fixDenom, '人') + ' ・ 目安 60%' }); });
 
@@ -366,7 +367,7 @@
     var A = state.analytics, months = A.store.monthly.map(function (m) { return monthShort(m.m); });
     var staff = A.staff;
     var asOfMonth = A.meta.asOf ? A.meta.asOf.slice(0, 7) : null;
-    var head = '<div class="view-title">スタッフ ダッシュボード</div><div class="view-lead">累計ではなく月次と平均で評価。</div>';
+    var head = '<div class="view-title">スタッフ ダッシュボード</div><div class="view-lead">累計ではなく月次と平均で評価。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + '</div>';
     var html = '';
 
     // スタッフ比較（中立の一覧表 — 競争をあおる表現はしない）。全項目、直近3ヶ月
@@ -433,7 +434,7 @@
     html += card({ col: 'col-6', title: '客単価の推移' + help('月ごとの客単価（予約ベース売上÷予約数）の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffSpend', 230) });
     var censNote = A.meta.completedOnly ? '　※直近の月は再来待ちのため集計対象外' : '';
     html += card({ col: 'col-6', title: '次回予約取得率の推移' + help('来店（会計済み）のうち、その後に何らかの予約・来店があった割合の月次推移。'), sub: '来店時に次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext', 230) });
-    html += card({ col: 'col-6', title: 'リピート育成力' + help('このスタッフが直近3ヶ月に初回担当した顧客のうち、2回目・3回目・4回目の予約に到達した人の割合（予約ベース。キャンセル後の再予約は到達扱い）。'), sub: '直近3ヶ月に初回担当した顧客の 2〜4回目への到達率', body: chartBox('cStaffRepeat', 230) });
+    html += card({ col: 'col-6', title: 'リピート育成力' + help('固定化率と同じ「条件付き継続率」の考え方で、各回への継続を表示。n回目到達＝実際に(n-1)回来店した顧客のうち、n回目の予約を確保した割合。したがって3回目到達は固定化率と同じ数値になる。分母がその都度「実際にそこまで来店した人」に変わる点が、リピート率（2回到達＝全獲得顧客が母数の予約ベース）と異なる。'), sub: '各回への継続率（3回目到達＝固定化率と同じ定義）', body: chartBox('cStaffRepeat', 230) });
     if (A.store.retail.hasAmount) {
       html += card({ col: 'col-6', title: '店販売上の推移' + help('月ごとの店販売上金額の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffRetail', 230) });
     }
@@ -445,7 +446,7 @@
 
     staff.forEach(function (st, i) {
       draw('stMeterRepeat' + i, function (el) {
-        C.meter(el, { label: 'リピート率（2回到達）', help: 'このスタッフが直近3ヶ月に初回担当した顧客のうち、2回目の予約（来店・今後の予約含む）に到達した人の割合。キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。', value: st.reach2 || 0, display: st.reach2 == null ? '—' : pct(st.reach2 * 100), color: cvar(STAFF_COLOR[st.name]), target: 0.75, sub: (st.reach2 == null ? '対象顧客なし' : frac(st.reach2Num, st.reachDen, '人')) + ' ・ 目安 75%' });
+        C.meter(el, { label: 'リピート率（2回到達）', help: 'このスタッフが直近3ヶ月に初回担当した顧客のうち、2回目の予約（来店・今後の予約含む）に到達した人の割合。キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。', value: st.reach2 || 0, display: st.reach2 == null ? '—' : pct(st.reach2 * 100), color: cvar(STAFF_COLOR[st.name]), target: 0.7, sub: (st.reach2 == null ? '対象顧客なし' : frac(st.reach2Num, st.reachDen, '人')) + ' ・ 目安 70%' });
       });
       draw('stMeterNext' + i, function (el) {
         C.meter(el, { label: '次回予約取得率', help: '来店（会計済み）のうち、その後に何らかの予約・来店（キャンセルは除く）があった割合。全期間のプール平均（次回を確保した来店の合計 ÷ 来店の合計）。', value: st.avg.nextRes || 0, display: st.avg.nextRes == null ? '—' : pct(st.avg.nextRes * 100), color: cvar(STAFF_COLOR[st.name]), sub: (st.avg.nextRes == null ? '来店なし' : frac(st.avg.nextResNum, st.avg.nextResDen, '件') + '（全期間）') });
@@ -502,7 +503,7 @@
     draw('cStaffRepeat', function (el) {
       C.columns(el, {
         groups: ['2回目到達', '3回目到達', '4回目到達'],
-        series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: [st.reach2, st.reach3, st.reach4].map(function (v) { return v == null ? 0 : v * 100; }) }; }),
+        series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: [st.growth2, st.growth3, st.growth4].map(function (v) { return v == null ? 0 : v * 100; }) }; }),
         valueFmt: function (v) { return v.toFixed(1) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, yMax: 100, height: 230
       });
     });
@@ -595,7 +596,7 @@
   // 小さい（20未満）候補は不安定なので提案対象から除外する。
   function nextHintText(st) {
     var candidates = [];
-    if (st.acqRecentN >= 20 && st.reach2 != null) candidates.push({ label: 'リピート（2回目のご来店）', value: st.reach2 * 100, target: 75 });
+    if (st.acqRecentN >= 20 && st.reach2 != null) candidates.push({ label: 'リピート（2回目のご来店）', value: st.reach2 * 100, target: 70 });
     if (st.acqRecentN >= 20 && st.fixationRate != null) candidates.push({ label: '常連化（3回目のご来店）', value: st.fixationRate * 100, target: 60 });
     if (!candidates.length) return 'データが揃うと、具体的な提案が表示されます。';
     candidates.forEach(function (c) { c.gap = c.target - c.value; });
@@ -609,7 +610,7 @@
   var trendMetric = 'visits';
   function renderTrend() {
     var A = state.analytics, t = A.trend;
-    var head = '<div class="view-title">傾向分析</div><div class="view-lead">曜日・初回獲得月別に、次回予約率とLTVの傾向を読み解きます。</div>';
+    var head = '<div class="view-title">傾向分析</div><div class="view-lead">曜日・初回獲得月別に、次回予約率とLTVの傾向を読み解きます。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + '</div>';
     var html = '';
 
     html += card({
@@ -673,7 +674,7 @@
   var rfmCallbackOnly = false;
   function renderRFM() {
     var A = state.analytics, r = A.rfm;
-    var html = '<div class="view-title">顧客 RFM 分析</div><div class="view-lead">最終来店(R)・来店回数(F)・累計売上(M)で顧客を9つのセグメントに分類。' + r.total + '人の来店顧客が対象。</div>';
+    var html = '<div class="view-title">顧客 RFM 分析</div><div class="view-lead">最終来店(R)・来店回数(F)・累計売上(M)で顧客を9つのセグメントに分類。' + r.total + '人の来店顧客が対象。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + '</div>';
 
     // segment cards
     html += '<div class="section-title">セグメント サマリー' + help('R（最終来店からの経過日数）・F（来店回数）・M（累計売上）の3指標をもとに、顧客を9つのセグメントに分類。各指標は5段階のスコア（5が最も良い）に変換し、その組み合わせでセグメントを決定。') + '</div>';
@@ -1050,7 +1051,10 @@
   // otherwise, bundled sample data when neither).
   function applySources() {
     var y = state.sources.yoyaku, k = state.sources.kaikei;
-    var recs, source, fileName, mergeReport = null, computeOpts = {};
+    // 金額はすべて税抜表示（元データ＝HOT PEPPER Beauty 等は税込／消費税10%）。
+    // 税抜換算はエンジンの金額ソース1か所で行うため、売上・客単価・LTV・店販など
+    // 全指標が一貫して税抜になる。
+    var recs, source, fileName, mergeReport = null, computeOpts = { taxRate: 0.1 };
     if (y && k) {
       var merged = global.KATE.ingest.mergeSources(y.records, k.records);
       mergeReport = merged.report;
@@ -1058,7 +1062,7 @@
       else { recs = y.records; source = y.via; fileName = y.fileName; }   // 0件結合 → 統合を中止し予約データ単独
     } else if (y) { recs = y.records; source = y.via; fileName = y.fileName; }
     else if (k) { recs = k.records; source = k.via; fileName = k.fileName; }
-    else { recs = global.KATE.SAMPLE_RESERVATIONS; source = 'サンプルデータ'; fileName = null; computeOpts = { asOf: '2026-07-03' }; }
+    else { recs = global.KATE.SAMPLE_RESERVATIONS; source = 'サンプルデータ'; fileName = null; computeOpts.asOf = '2026-07-03'; }
     var A = global.KATE.engine.compute(recs, computeOpts);
     state.data = recs; state.analytics = A; state.source = source; state.fileName = fileName; state.mergeReport = mergeReport;
     updateChrome(); renderAll(); route(state.view, true);

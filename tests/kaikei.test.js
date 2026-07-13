@@ -566,6 +566,40 @@ h('■ Fixture N: 固定化率は2回到達者に対する3回目到達の条件
   check('staff.reach2（3/4=0.75、全acqRecent基準のまま）', s.reach2, 0.75, 1e-6);
   check('staff.reach3（2/4=0.5、全acqRecent基準のまま）', s.reach3, 0.5, 1e-6);
   check('staff.fixationRate（2/3=0.667、2回到達者基準）', s.fixationRate, 2 / 3, 1e-6);
+  // リピート育成力（条件付き継続率）: 3回目到達は固定化率と完全一致。
+  // Sのコホート P(Fvis3)/Q(Fvis2,Fres2)/R(Fvis1)/S2(Fvis3) の4人:
+  // growth2 = (Fvis>=1 かつ Fres>=2) ÷ (Fvis>=1) = 3/4（全員来店済みなので reach2 と一致）
+  // growth3 = (Fvis>=2 かつ Fres>=3) ÷ (Fvis>=2) = 2/3（固定化率と同じ）
+  // growth4 = (Fvis>=3 かつ Fres>=4) ÷ (Fvis>=3) = 0/2 = 0
+  check('staff.growth3 === fixationRate（3回目到達＝固定化率）', s.growth3, s.fixationRate, 1e-9);
+  check('staff.growth3（2回来店者のうち3回目予約 2/3）', s.growth3, 2 / 3, 1e-6);
+  check('staff.growth3 分母（実来店2回=P,Q,S2の3人）', s.growth3Den, 3);
+  check('staff.growth2（1回来店者のうち2回目予約 3/4）', s.growth2, 0.75, 1e-6);
+  check('staff.growth2 === reach2（全獲得顧客は来店1回以上なので一致）', s.growth2, s.reach2, 1e-9);
+  check('staff.growth4（実来店3回=P,S2の2人、4回目予約0人 → 0）', s.growth4, 0, 1e-9);
+  check('staff.growth4 分母（実来店3回=2人）', s.growth4Den, 2);
+}
+
+// ============================================================================
+// Fixture Z — 税抜換算（options.taxRate）。金額ソース1か所で割るので、売上・客単価
+// など全金額が税抜になり、taxRate 未指定なら税込のまま（validate.js が引き続き合格）。
+// ============================================================================
+h('■ Fixture Z: 税抜換算（options.taxRate=0.1）');
+{
+  const rows = [
+    rec({ custKey: 'A', date: '2026-05-01', kaikeiTotal: 11000 }),
+    rec({ custKey: 'A', date: '2026-05-20', kaikeiTotal: 5500 }),
+    rec({ custKey: 'B', status: '受付待ち', date: '2026-08-01', yoyakuTotal: 3300 })
+  ];
+  const incl = engine.compute(rows, { asOf: '2026-07-03' });
+  const excl = engine.compute(rows, { asOf: '2026-07-03', taxRate: 0.1 });
+  check('税込 revenueActual（11000+5500）', incl.store.revenueActual, 16500);
+  check('税抜 revenueActual（÷1.1）', excl.store.revenueActual, 15000, 1e-6);
+  check('税抜 revenueExpected（3300÷1.1）', excl.store.revenueExpected, 3000, 1e-6);
+  check('税込/税抜 比 = 1.1', incl.store.revenueActual / excl.store.revenueActual, 1.1, 1e-9);
+  check('meta.taxExcluded（税抜時 true）', excl.meta.taxExcluded ? 1 : 0, 1);
+  check('meta.taxExcluded（未指定時 false）', incl.meta.taxExcluded ? 1 : 0, 0);
+  check('meta.taxRate（税抜時 0.1）', excl.meta.taxRate, 0.1, 1e-9);
 }
 
 // ============================================================================
