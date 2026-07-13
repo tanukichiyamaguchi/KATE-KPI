@@ -436,7 +436,7 @@
     html += card({ col: 'col-6', title: '客単価の推移' + help('月ごとの客単価（予約ベース売上÷予約数）の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffSpend', 230) });
     var censNote = A.meta.completedOnly ? '　※直近の月は再来待ちのため集計対象外' : '';
     html += card({ col: 'col-6', title: '次回予約取得率の推移' + help('来店（会計済み）のうち、その後に何らかの予約・来店があった割合の月次推移。'), sub: '来店時に次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext', 230) });
-    html += card({ col: 'col-6', title: 'リピート育成力' + help('このスタッフが直近3ヶ月に初回担当した新規顧客を100%として、2回目・3回目・4回目の予約に到達した割合を累積で表示するファネル。前段からの継続率を掛け合わせた累積なので必ず右肩下がりになる（例：新規100%→2回目60%→そのうち半分が3回目なら3回目は30%）。到達は予約ベース（Fres、キャンセル後の再予約は到達扱い）。'), sub: '新規を100%とした累積到達率（ファネル）', body: chartBox('cStaffRepeat', 230) });
+    html += card({ col: 'col-6', title: 'リピート育成力' + help('このスタッフが直近3ヶ月に初回担当した新規顧客を母数（100%）として、2回目・3回目・4回目の予約に到達した割合を累積で表示するファネル。前段からの継続率を掛け合わせた累積なので必ず右肩下がりになる（例：2回目60%→そのうち半分が3回目なら3回目は30%）。到達は予約ベース（Fres、キャンセル後の再予約は到達扱い）。'), sub: '2回目・3回目・4回目への累積到達率（ファネル）', body: chartBox('cStaffRepeat', 230) });
     if (A.store.retail.hasAmount) {
       html += card({ col: 'col-6', title: '店販売上の推移' + help('月ごとの店販売上金額の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffRetail', 230) });
     }
@@ -503,12 +503,13 @@
       });
     });
     draw('cStaffRepeat', function (el) {
-      // 累積ファネル: 新規（獲得顧客）を100%とし、2回目・3回目・4回目に到達した
+      // 累積ファネル: 新規（獲得顧客）を母数100%とし、2回目・3回目・4回目に到達した
       // 割合（reach(n)＝全獲得顧客のうち Fres>=n の割合）。前段からの継続率を掛け
-      // 合わせた累積なので、必ず 100 ≥ 2回目 ≥ 3回目 ≥ 4回目 と右肩下がりになる。
+      // 合わせた累積なので、必ず 2回目 ≥ 3回目 ≥ 4回目 と右肩下がりになる。
+      // 常に100%になる「新規」列はグラフには出さない（表記不要のため省略）。
       C.columns(el, {
-        groups: ['新規', '2回目到達', '3回目到達', '4回目到達'],
-        series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: [st.reachDen ? 100 : null, st.reach2, st.reach3, st.reach4].map(function (v) { return v == null ? 0 : (v <= 1 ? v * 100 : v); }) }; }),
+        groups: ['2回目到達', '3回目到達', '4回目到達'],
+        series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: [st.reach2, st.reach3, st.reach4].map(function (v) { return v == null ? 0 : (v <= 1 ? v * 100 : v); }) }; }),
         valueFmt: function (v) { return v.toFixed(1) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, yMax: 100, height: 230
       });
     });
@@ -1158,16 +1159,19 @@
 
   function updateChrome() {
     $('#asof').textContent = state.analytics.meta.asOf ? '基準日 ' + ymdJa(state.analytics.meta.asOf) : '';
-    $('#dataBadgeText').textContent = state.fileName || state.source;
-    var tt = $('#taxToggleText');
-    if (tt) { tt.textContent = state.taxExcluded ? '税抜' : '税込'; $('#taxToggle').classList.toggle('active', !state.taxExcluded); }
+    // サンプルデータ表示中はバッジ自体を非表示（実データ連携時のみ出所を表示）
+    var badge = $('#dataBadge');
+    if (badge) {
+      var isSample = state.source === 'サンプルデータ' && !state.fileName;
+      badge.style.display = isSample ? 'none' : '';
+      if (!isSample) $('#dataBadgeText').textContent = state.fileName || state.source;
+    }
+    var tx = $('#taxToggle');
+    if (tx) tx.checked = !state.taxExcluded;   // 税抜（既定）ならスイッチOFF、税込ならON
   }
+  // テーマはOSの設定（prefers-color-scheme）に追従する（手動トグルは廃止）
   function setTheme(t) {
     document.documentElement.setAttribute('data-theme', t);
-    try { localStorage.setItem('kate-theme', t); } catch (e) {}
-    var ic = $('#themeIcon');
-    if (t === 'dark') ic.innerHTML = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>';
-    else ic.innerHTML = '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>';
   }
 
   var toastTimer;
@@ -1183,8 +1187,10 @@
     // code further down would otherwise get to read it.
     var initialHash = (location.hash || '#overview').slice(1);
 
-    var saved; try { saved = localStorage.getItem('kate-theme'); } catch (e) {}
-    setTheme(saved || (global.matchMedia && global.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+    var mq = global.matchMedia && global.matchMedia('(prefers-color-scheme: dark)');
+    setTheme(mq && mq.matches ? 'dark' : 'light');
+    // OSのライト/ダーク切り替えにリアルタイム追従（チャート色も再描画）
+    if (mq && mq.addEventListener) mq.addEventListener('change', function (e) { setTheme(e.matches ? 'dark' : 'light'); flush(true); });
 
     injectNavIcons();
     applySources();   // no sources loaded yet → falls back to the bundled sample data
@@ -1230,13 +1236,9 @@
       else if (e.key === 'End') { tabs[tabs.length - 1].focus(); e.preventDefault(); }
       else if (e.key === 'Enter' || e.key === ' ') { route(document.activeElement.dataset.view); }
     });
-    $('#themeToggle').addEventListener('click', function () {
-      setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
-      flush(true);  // redraw charts with new theme colors, no re-animation
-    });
     var taxBtn = $('#taxToggle');
-    if (taxBtn) taxBtn.addEventListener('click', function () {
-      state.taxExcluded = !state.taxExcluded;
+    if (taxBtn) taxBtn.addEventListener('change', function () {
+      state.taxExcluded = !taxBtn.checked;   // スイッチON＝税込、OFF＝税抜（既定）
       try { localStorage.setItem('kate-tax', state.taxExcluded ? 'excl' : 'incl'); } catch (e) {}
       applySources();  // 税抜/税込を切り替えて全指標を再計算・再描画
     });

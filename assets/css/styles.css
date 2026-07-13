@@ -173,6 +173,16 @@ svg { display: block; }
 .badge-soft { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 11px; font-weight: 600; white-space: nowrap; flex: none; }
 .badge-soft .dot { width: 7px; height: 7px; border-radius: 980px; background: var(--good); }
 
+/* iOS-style switch — 税抜（OFF）／税込（ON）切り替え */
+.switch-field { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--ink-secondary); cursor: pointer; user-select: none; white-space: nowrap; flex: none; }
+.switch { position: relative; display: inline-block; width: 40px; height: 24px; flex: none; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.switch .switch-track { position: absolute; inset: 0; background: var(--surface-3); border-radius: 980px; transition: background .25s var(--ease); pointer-events: none; }
+.switch .switch-thumb { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.2), 0 0 1px rgba(0,0,0,.06); transition: transform .25s var(--ease); }
+.switch input:checked ~ .switch-track { background: var(--good); }
+.switch input:checked ~ .switch-track .switch-thumb { transform: translateX(16px); }
+.switch input:focus-visible ~ .switch-track { box-shadow: 0 0 0 3px var(--accent-soft); }
+
 /* ---- Tabs (desktop): iOS-style — active tab is a subtle tint pill ---------*/
 .tabs-wrap { margin: 16px 0 20px; }
 .tabs { position: relative; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px 0; }
