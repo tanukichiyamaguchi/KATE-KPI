@@ -660,24 +660,10 @@
       var reach2Num = acqRecent.filter(function (c) { return c.Fres >= 2; }).length;
       var reach3Num = acqRecent.filter(function (c) { return c.Fres >= 3; }).length;
       var reach4Num = acqRecent.filter(function (c) { return c.Fres >= 4; }).length;
-      // リピート育成力（cStaffRepeat）: 固定化率と同じ「条件付き継続率」の定義に統一。
-      // n回目到達 = 実際に(n-1)回来店した顧客(Fvis>=n-1)のうち、n回目の予約を確保
-      // した割合(Fvis>=n-1 かつ Fres>=n)。3回目到達は固定化率と完全一致する。
-      // 全acqRecentを母数にする reach(n) とは分母が異なる（リピート率〈2回到達〉は
-      // 引き続き reach(2)=予約ベースのまま）。
-      function growth(n) {
-        var den = acqRecent.filter(function (c) { return c.Fvis >= n - 1; }).length;
-        var numr = acqRecent.filter(function (c) { return c.Fvis >= n - 1 && c.Fres >= n; }).length;
-        return { rate: den ? numr / den : null, num: numr, den: den };
-      }
-      var growth2 = growth(2), growth3 = growth(3), growth4 = growth(4);
       return {
         name: name, avg: avg, avgRecent: avgRecent, acquired: acqAll.length, matureAcquired: acqMature.length, acqRecentN: acqRecent.length,
         reach2: reach(2), reach3: reach(3), reach4: reach(4), fixationRate: fixationRate, retail: retail, monthly: mrows, composition: comp,
-        // リピート育成力（条件付き継続率・固定化率と同じ考え方）: growth3.rate === fixationRate
-        growth2: growth2.rate, growth3: growth3.rate, growth4: growth4.rate,
-        growth2Num: growth2.num, growth2Den: growth2.den, growth3Num: growth3.num, growth3Den: growth3.den, growth4Num: growth4.num, growth4Den: growth4.den,
-        // 分母分子（人）: リピート率 = reachNum/reachDen、固定化率 = fixNumer/fixDenom
+        // 分母分子（人）: リピート率/育成力ファネル = reachNum/reachDen、固定化率 = fixNumer/fixDenom
         reachDen: reachDen, reach2Num: reach2Num, reach3Num: reach3Num, reach4Num: reach4Num,
         fixDenom: fix2Visit, fixNumer: fix3Reserve,
         personalBest: personalBest, regulars3: regulars3,

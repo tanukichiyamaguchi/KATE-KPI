@@ -18,8 +18,10 @@
     sheetUrl: null, sheetUrlKaikei: null, sources: { yoyaku: null, kaikei: null }, mergeReport: null,
     sharedBlob: null,   // data/shared-link.json（合言葉で暗号化されたシートURL）があれば入る
     ownerLock: null,    // data/owner-lock.json（管理用の合言葉で暗号化されたロック）があれば入る
-    ownerUnlocked: false // ロック解除はメモリ上のみ（リロードで再ロック・端末に保存しない）
+    ownerUnlocked: false, // ロック解除はメモリ上のみ（リロードで再ロック・端末に保存しない）
+    taxExcluded: true   // 税抜表示をメインに（トグルで税込へ）。端末設定として localStorage に保存
   };
+  (function () { try { if (localStorage.getItem('kate-tax') === 'incl') state.taxExcluded = false; } catch (e) {} })();
   var activeCharts = [];   // redraw closures for the mounted view (resize/theme)
 
   // ---- formatting ----------------------------------------------------------
@@ -434,7 +436,7 @@
     html += card({ col: 'col-6', title: '客単価の推移' + help('月ごとの客単価（予約ベース売上÷予約数）の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffSpend', 230) });
     var censNote = A.meta.completedOnly ? '　※直近の月は再来待ちのため集計対象外' : '';
     html += card({ col: 'col-6', title: '次回予約取得率の推移' + help('来店（会計済み）のうち、その後に何らかの予約・来店があった割合の月次推移。'), sub: '来店時に次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext', 230) });
-    html += card({ col: 'col-6', title: 'リピート育成力' + help('固定化率と同じ「条件付き継続率」の考え方で、各回への継続を表示。n回目到達＝実際に(n-1)回来店した顧客のうち、n回目の予約を確保した割合。したがって3回目到達は固定化率と同じ数値になる。分母がその都度「実際にそこまで来店した人」に変わる点が、リピート率（2回到達＝全獲得顧客が母数の予約ベース）と異なる。'), sub: '各回への継続率（3回目到達＝固定化率と同じ定義）', body: chartBox('cStaffRepeat', 230) });
+    html += card({ col: 'col-6', title: 'リピート育成力' + help('このスタッフが直近3ヶ月に初回担当した新規顧客を100%として、2回目・3回目・4回目の予約に到達した割合を累積で表示するファネル。前段からの継続率を掛け合わせた累積なので必ず右肩下がりになる（例：新規100%→2回目60%→そのうち半分が3回目なら3回目は30%）。到達は予約ベース（Fres、キャンセル後の再予約は到達扱い）。'), sub: '新規を100%とした累積到達率（ファネル）', body: chartBox('cStaffRepeat', 230) });
     if (A.store.retail.hasAmount) {
       html += card({ col: 'col-6', title: '店販売上の推移' + help('月ごとの店販売上金額の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffRetail', 230) });
     }
@@ -501,9 +503,12 @@
       });
     });
     draw('cStaffRepeat', function (el) {
+      // 累積ファネル: 新規（獲得顧客）を100%とし、2回目・3回目・4回目に到達した
+      // 割合（reach(n)＝全獲得顧客のうち Fres>=n の割合）。前段からの継続率を掛け
+      // 合わせた累積なので、必ず 100 ≥ 2回目 ≥ 3回目 ≥ 4回目 と右肩下がりになる。
       C.columns(el, {
-        groups: ['2回目到達', '3回目到達', '4回目到達'],
-        series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: [st.growth2, st.growth3, st.growth4].map(function (v) { return v == null ? 0 : v * 100; }) }; }),
+        groups: ['新規', '2回目到達', '3回目到達', '4回目到達'],
+        series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: [st.reachDen ? 100 : null, st.reach2, st.reach3, st.reach4].map(function (v) { return v == null ? 0 : (v <= 1 ? v * 100 : v); }) }; }),
         valueFmt: function (v) { return v.toFixed(1) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, yMax: 100, height: 230
       });
     });
@@ -1051,10 +1056,10 @@
   // otherwise, bundled sample data when neither).
   function applySources() {
     var y = state.sources.yoyaku, k = state.sources.kaikei;
-    // 金額はすべて税抜表示（元データ＝HOT PEPPER Beauty 等は税込／消費税10%）。
-    // 税抜換算はエンジンの金額ソース1か所で行うため、売上・客単価・LTV・店販など
-    // 全指標が一貫して税抜になる。
-    var recs, source, fileName, mergeReport = null, computeOpts = { taxRate: 0.1 };
+    // 金額は税抜表示がメイン（元データ＝HOT PEPPER Beauty 等は税込／消費税10%）。
+    // ヘッダーの「税抜／税込」トグル（state.taxExcluded）で切り替え可能。税抜換算は
+    // エンジンの金額ソース1か所で行うため、売上・客単価・LTV・店販など全指標が一貫。
+    var recs, source, fileName, mergeReport = null, computeOpts = { taxRate: state.taxExcluded ? 0.1 : 0 };
     if (y && k) {
       var merged = global.KATE.ingest.mergeSources(y.records, k.records);
       mergeReport = merged.report;
@@ -1154,6 +1159,8 @@
   function updateChrome() {
     $('#asof').textContent = state.analytics.meta.asOf ? '基準日 ' + ymdJa(state.analytics.meta.asOf) : '';
     $('#dataBadgeText').textContent = state.fileName || state.source;
+    var tt = $('#taxToggleText');
+    if (tt) { tt.textContent = state.taxExcluded ? '税抜' : '税込'; $('#taxToggle').classList.toggle('active', !state.taxExcluded); }
   }
   function setTheme(t) {
     document.documentElement.setAttribute('data-theme', t);
@@ -1226,6 +1233,12 @@
     $('#themeToggle').addEventListener('click', function () {
       setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
       flush(true);  // redraw charts with new theme colors, no re-animation
+    });
+    var taxBtn = $('#taxToggle');
+    if (taxBtn) taxBtn.addEventListener('click', function () {
+      state.taxExcluded = !state.taxExcluded;
+      try { localStorage.setItem('kate-tax', state.taxExcluded ? 'excl' : 'incl'); } catch (e) {}
+      applySources();  // 税抜/税込を切り替えて全指標を再計算・再描画
     });
 
     // routing

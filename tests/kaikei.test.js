@@ -566,18 +566,9 @@ h('■ Fixture N: 固定化率は2回到達者に対する3回目到達の条件
   check('staff.reach2（3/4=0.75、全acqRecent基準のまま）', s.reach2, 0.75, 1e-6);
   check('staff.reach3（2/4=0.5、全acqRecent基準のまま）', s.reach3, 0.5, 1e-6);
   check('staff.fixationRate（2/3=0.667、2回到達者基準）', s.fixationRate, 2 / 3, 1e-6);
-  // リピート育成力（条件付き継続率）: 3回目到達は固定化率と完全一致。
-  // Sのコホート P(Fvis3)/Q(Fvis2,Fres2)/R(Fvis1)/S2(Fvis3) の4人:
-  // growth2 = (Fvis>=1 かつ Fres>=2) ÷ (Fvis>=1) = 3/4（全員来店済みなので reach2 と一致）
-  // growth3 = (Fvis>=2 かつ Fres>=3) ÷ (Fvis>=2) = 2/3（固定化率と同じ）
-  // growth4 = (Fvis>=3 かつ Fres>=4) ÷ (Fvis>=3) = 0/2 = 0
-  check('staff.growth3 === fixationRate（3回目到達＝固定化率）', s.growth3, s.fixationRate, 1e-9);
-  check('staff.growth3（2回来店者のうち3回目予約 2/3）', s.growth3, 2 / 3, 1e-6);
-  check('staff.growth3 分母（実来店2回=P,Q,S2の3人）', s.growth3Den, 3);
-  check('staff.growth2（1回来店者のうち2回目予約 3/4）', s.growth2, 0.75, 1e-6);
-  check('staff.growth2 === reach2（全獲得顧客は来店1回以上なので一致）', s.growth2, s.reach2, 1e-9);
-  check('staff.growth4（実来店3回=P,S2の2人、4回目予約0人 → 0）', s.growth4, 0, 1e-9);
-  check('staff.growth4 分母（実来店3回=2人）', s.growth4Den, 2);
+  // リピート育成力ファネル: 新規(全acqRecent)を100%とした累積到達率＝reach(n)。
+  // 必ず reach2 >= reach3 >= reach4 と右肩下がりになる（前段の継続を掛け合わせた累積）。
+  check('staff.reach2 >= reach3 >= reach4（累積で単調減少）', (s.reach2 >= s.reach3 && s.reach3 >= s.reach4) ? 1 : 0, 1);
 }
 
 // ============================================================================
