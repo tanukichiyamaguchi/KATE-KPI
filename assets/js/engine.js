@@ -128,6 +128,18 @@
       r.isConfirmed = r.isVisited || r.isCancel;             // for cancel-rate denominators
     });
 
+    // ---- 取り込み診断: ステータス値ごとの件数（認識可否つき） -------------------
+    // ステータスは既知5種（会計済み/受付待ち/キャンセル3種）の完全一致で判定する
+    // ため、エクスポート元の表記が1文字でも違う行は全指標から黙って無視される。
+    // どの値が何件あり、そのうちどれが認識されなかったかを meta で可視化し、
+    // データ側の形式変更にオーナー自身が画面上で気づけるようにする。
+    var statusCounts = {};
+    rows.forEach(function (r) { statusCounts[r.status] = (statusCounts[r.status] || 0) + 1; });
+    var statusBreakdown = Object.keys(statusCounts).map(function (s) {
+      return { status: s, count: statusCounts[s], recognized: s === VISITED || s === WAITING || (s in CANCELS) };
+    }).sort(function (a, b) { return b.count - a.count; });
+    var unknownStatusRows = statusBreakdown.reduce(function (sum, b) { return sum + (b.recognized ? 0 : b.count); }, 0);
+
     // Analysis period from data (guard degenerate datasets with no parseable dates)
     var allDates = rows.filter(function (r) { return r.date; }).map(function (r) { return r.date; });
     if (!allDates.length) allDates = [asOf];
@@ -770,6 +782,10 @@
         months: months, staffNames: staffNames,
         totalRows: rows.length,
         undatedRows: rows.filter(function (r) { return !r.date; }).length,   // rows whose 来店日 couldn't be parsed
+        // 取り込み診断（データタブに表示）: ステータス値の内訳と、認識されず全指標
+        // から除外された行数。シート側の形式変更を画面で検知するための情報。
+        statusBreakdown: statusBreakdown,
+        unknownStatusRows: unknownStatusRows,
         completedOnly: !hasFuture,   // 会計明細など、これからの予約が無い（＝直近月は打ち切り）
         generatedAt: options.now || null
       },

@@ -712,5 +712,37 @@ h('■ Fixture W: 店舗全体の予約ベース内訳(composition)');
   check('composition の実績値(new/v2/v3/v4)は全月 newMix と一致', mismatch.length, 0);
 }
 
+// ============================================================================
+// Fixture Y — 取り込み診断(meta.statusBreakdown / unknownStatusRows)
+// ============================================================================
+// ステータスは既知5種の完全一致で判定され、それ以外は全指標から除外される。
+// どの値が何件・認識可否つきで meta に出ることを固定（「シートは正しいのに
+// 数値がおかしい」事故をデータタブで自己診断できるようにするための情報）。
+// D/E は実際のエクスポート形式変更で起こり得る未知ラベルの例。
+h('■ Fixture Y: 取り込み診断（ステータス内訳と未認識件数）');
+{
+  const rows = [
+    rec({ custKey: 'A', date: '2026-05-01', kaikeiTotal: 6000 }),
+    rec({ custKey: 'A', date: '2026-05-20', kaikeiTotal: 6000 }),
+    rec({ custKey: 'B', status: '受付待ち', date: '2026-08-01', yoyakuTotal: 6000 }),  // 未来 → 見込み
+    rec({ custKey: 'C', status: '受付待ち', date: '2026-04-01', yoyakuTotal: 6000 }),  // 基準日以前 → 滞留除外
+    rec({ custKey: 'D', status: '受付済み', date: '2026-08-02', yoyakuTotal: 6000 }),  // 未知ラベル
+    rec({ custKey: 'E', status: '来店待ち', date: '2026-08-03', yoyakuTotal: 6000 }),  // 未知ラベル
+    rec({ custKey: 'E', status: '来店待ち', date: '2026-08-04', yoyakuTotal: 6000 }),
+    rec({ custKey: 'F', status: 'お客様キャンセル', date: '2026-05-05' })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-03' });
+  const sb = R.meta.statusBreakdown;
+  const by = {}; sb.forEach(function (b) { by[b.status] = b; });
+  check('会計済み 2件・認識済み', by['会計済み'].count * (by['会計済み'].recognized ? 1 : 0), 2);
+  check('受付待ち 2件・認識済み', by['受付待ち'].count * (by['受付待ち'].recognized ? 1 : 0), 2);
+  check('来店待ち 2件・未認識', by['来店待ち'].count * (by['来店待ち'].recognized ? 0 : 1), 2);
+  check('受付済み 1件・未認識', by['受付済み'].count * (by['受付済み'].recognized ? 0 : 1), 1);
+  check('unknownStatusRows = 3（受付済み1+来店待ち2）', R.meta.unknownStatusRows, 3);
+  check('未知ステータスは有効予約に入らない（見込みはBの1件のみ）', R.store.expectedFuture, 1);
+  check('基準日以前の受付待ちは滞留として除外', R.store.staleExcluded, 1);
+  check('件数降順ソート（先頭は2件の区分）', sb[0].count, 2);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);

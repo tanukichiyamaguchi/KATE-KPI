@@ -783,6 +783,40 @@
     // 管理ロック中は、このページの管理操作（連携URLの表示・変更・取り込み等）を
     // すべて隠す。スタッフの初回セットアップ（店の合言葉カード）だけは残す。
     var ownerLocked = !!(state.ownerLock && !state.ownerUnlocked);
+    // 取り込み診断 — 読み込んだ行がどう扱われたかの内訳。ステータス表記が
+    // 想定と1文字でも違うと全指標から黙って除外されるため、「シートは正しい
+    // のに数値がおかしい」ときに原因を特定できるようにする。URL等の秘匿情報を
+    // 含まない読み取り専用の情報なので、管理ロック中でも表示する。
+    function ingestDiagCard() {
+      if (!m.statusBreakdown || !m.statusBreakdown.length) return '';
+      var sbRows = m.statusBreakdown.map(function (b) {
+        var treat = b.status === '会計済み' ? '実績として集計'
+          : b.status === '受付待ち' ? '見込みとして集計'
+          : b.recognized ? 'キャンセルとして集計'
+          : '⚠ 認識できず除外';
+        return '<tr' + (b.recognized ? '' : ' style="color:var(--status-critical)"') + '><td>' + esc(b.status) + '</td><td class="tnum">' + F.int(b.count) + '件</td><td class="cell-wrap">' + treat + '</td></tr>';
+      }).join('');
+      var sbWarns = '';
+      if (m.unknownStatusRows) {
+        var unkSamples = m.statusBreakdown.filter(function (b) { return !b.recognized; }).slice(0, 3).map(function (b) { return '「' + esc(b.status) + '」'; }).join('・');
+        sbWarns += '<div class="status-line" style="margin-top:12px;color:var(--status-critical)"><i style="background:var(--status-critical)"></i>' + F.int(m.unknownStatusRows) + '件のステータス（' + unkSamples + '）を認識できず、すべての集計から除外しています。シート側の表記が「会計済み・受付待ち・サロンキャンセル・お客様キャンセル・無断キャンセル」のいずれかになっているかご確認ください。</div>';
+      }
+      if (state.sources.yoyaku && A.store.expectedFuture === 0) {
+        sbWarns += '<div class="status-line" style="margin-top:12px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>基準日（' + esc(ymdJa(m.asOf)) + '）より後の受付待ち予約が1件もありません。今後の予約がシートに含まれているか、日付とステータスをご確認ください（見込み売上・リピート率などの予約ベース指標が実際より低く表示されます）。</div>';
+      }
+      return card({
+        col: 'col-12', title: '取り込み診断' + help('読み込んだ全行を「ステータス」列の値ごとに分類した内訳。ステータスは完全一致で判定するため、表記が違う値は集計に使われず、ここに赤字で表示されます。受付待ちのうち基準日以前の日付の行は「滞留」として有効予約から除外されます。'),
+        sub: '読み込んだ行がどう扱われたか（表記ゆれ・除外の検知）',
+        body: '<div class="mini-stats" style="margin-bottom:10px">' +
+          miniStat(F.int(A.store.actualVisits) + '件', '来店実績') +
+          miniStat(F.int(A.store.expectedFuture) + '件', '今後の予約（見込み）') +
+          miniStat(F.int(A.store.staleExcluded) + '件', '滞留（除外）') +
+          miniStat(F.int(m.unknownStatusRows) + '件', '認識できず（除外）') +
+          '</div>' +
+          '<div class="table-wrap"><table class="kate-table"><thead><tr><th>ステータス</th><th>件数</th><th>扱い</th></tr></thead><tbody>' + sbRows + '</tbody></table></div>' +
+          sbWarns
+      });
+    }
     var head = '<div class="view-title">データ入力</div><div class="view-lead">' + (ownerLocked
       ? 'ダッシュボードの閲覧（概要・スタッフなどの各タブ）に設定は不要です。このページの管理操作はロックされています。'
       : 'Googleスプレッドシート連携、またはファイル（CSV / Excel）を入れるだけで全指標を自動再計算します。<b>「予約データ」</b>（ステータス列つき）と、<b>「会計明細」</b>（会計日・金額・店販つき）の両形式に対応。<b>両方を読み込むと自動で結合</b>し、店販売上や次回予約取得率などの指標を同じ画面で確認できます（文字コードは Shift-JIS / UTF-8 を自動判別）。') + '</div>';
@@ -808,6 +842,7 @@
           '</div>' +
           '<button class="btn-ios" id="ownerPassBtn" type="button" style="margin-top:14px">ロック解除</button>'
       });
+      html += ingestDiagCard();
       mount('data', head + '<div class="grid">' + html + '</div>');
       wireUpload();
       return;
@@ -917,6 +952,7 @@
       col: 'col-6', title: '認識した列', sub: '予約データの主要列を自動でマッピング',
       body: '<div class="map-chips">' + ['ステータス', '来店日', 'スタッフ名', '予約経路', 'フリガナ', '予約時合計金額', '会計時合計金額', '予約時メニュー'].map(function (h) { return '<span class="map-chip"><i></i>' + h + '</span>'; }).join('') + '</div>'
     });
+    html += ingestDiagCard();
     html += card({
       col: 'col-12', title: '指標の計算ロジック', sub: '元のKPIワークブックの定義に準拠',
       body: '<ul class="how">' +
@@ -1077,6 +1113,7 @@
       var A = applySources();
       var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
+      if (A.meta.unknownStatusRows) warn += '（' + F.int(A.meta.unknownStatusRows) + '件は認識できないステータスのため除外 — データタブの取り込み診断を確認）';
       if (!opts.silent) toast('✓ スプレッドシートから ' + F.int(recs.length) + '件を読み込みました' + reroute + warn, warn ? 'err' : 'ok');
     }).catch(function (err) {
       console.warn('sheet load failed', err);
@@ -1097,6 +1134,7 @@
       var A = applySources();
       var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
+      if (A.meta.unknownStatusRows) warn += '（' + F.int(A.meta.unknownStatusRows) + '件は認識できないステータスのため除外 — データタブの取り込み診断を確認）';
       toast('✓ ' + F.int(recs.length) + '件を再計算しました' + reroute + warn, warn ? 'err' : 'ok');
     }).catch(function (err) { console.error(err); toast('⚠ ' + (err.message || '読み込みに失敗しました'), 'err'); });
   }

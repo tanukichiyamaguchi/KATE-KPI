@@ -453,6 +453,8 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
   table.kate-table { font-size: 11px; table-layout: fixed; }
   .kate-table th, .kate-table td { padding: 7px 5px; overflow: hidden; }
   .kate-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }
+  /* 説明系のセル（取り込み診断の「扱い」列など）は切り詰めず折り返す */
+  .kate-table td.cell-wrap { white-space: normal; overflow: visible; overflow-wrap: break-word; word-break: break-word; }
   /* Headers may wrap, but only at natural boundaries (spaces / <wbr>), never
      mid-word: word-break:break-word here once let a header fragment into one
      character per line inside a narrow column. Header labels are kept short
