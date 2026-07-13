@@ -566,6 +566,31 @@ h('■ Fixture N: 固定化率は2回到達者に対する3回目到達の条件
   check('staff.reach2（3/4=0.75、全acqRecent基準のまま）', s.reach2, 0.75, 1e-6);
   check('staff.reach3（2/4=0.5、全acqRecent基準のまま）', s.reach3, 0.5, 1e-6);
   check('staff.fixationRate（2/3=0.667、2回到達者基準）', s.fixationRate, 2 / 3, 1e-6);
+  // リピート育成力ファネル: 新規(全acqRecent)を100%とした累積到達率＝reach(n)。
+  // 必ず reach2 >= reach3 >= reach4 と右肩下がりになる（前段の継続を掛け合わせた累積）。
+  check('staff.reach2 >= reach3 >= reach4（累積で単調減少）', (s.reach2 >= s.reach3 && s.reach3 >= s.reach4) ? 1 : 0, 1);
+}
+
+// ============================================================================
+// Fixture Z — 税抜換算（options.taxRate）。金額ソース1か所で割るので、売上・客単価
+// など全金額が税抜になり、taxRate 未指定なら税込のまま（validate.js が引き続き合格）。
+// ============================================================================
+h('■ Fixture Z: 税抜換算（options.taxRate=0.1）');
+{
+  const rows = [
+    rec({ custKey: 'A', date: '2026-05-01', kaikeiTotal: 11000 }),
+    rec({ custKey: 'A', date: '2026-05-20', kaikeiTotal: 5500 }),
+    rec({ custKey: 'B', status: '受付待ち', date: '2026-08-01', yoyakuTotal: 3300 })
+  ];
+  const incl = engine.compute(rows, { asOf: '2026-07-03' });
+  const excl = engine.compute(rows, { asOf: '2026-07-03', taxRate: 0.1 });
+  check('税込 revenueActual（11000+5500）', incl.store.revenueActual, 16500);
+  check('税抜 revenueActual（÷1.1）', excl.store.revenueActual, 15000, 1e-6);
+  check('税抜 revenueExpected（3300÷1.1）', excl.store.revenueExpected, 3000, 1e-6);
+  check('税込/税抜 比 = 1.1', incl.store.revenueActual / excl.store.revenueActual, 1.1, 1e-9);
+  check('meta.taxExcluded（税抜時 true）', excl.meta.taxExcluded ? 1 : 0, 1);
+  check('meta.taxExcluded（未指定時 false）', incl.meta.taxExcluded ? 1 : 0, 0);
+  check('meta.taxRate（税抜時 0.1）', excl.meta.taxRate, 0.1, 1e-9);
 }
 
 // ============================================================================
