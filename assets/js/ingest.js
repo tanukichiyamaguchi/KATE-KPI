@@ -137,7 +137,7 @@
       if (f && !(f in colOf)) colOf[f] = idx;      // first occurrence wins
     });
     var missing = REQUIRED.filter(function (f) { return !(f in colOf); });
-    if (missing.length) throw new Error('必須列が不足しています: ' + missing.join(', '));
+    if (missing.length) throw new Error('必須列が不足しています: ' + missing.join(', ') + '。URLが「ステータス」列のあるタブ（予約データ）を指しているかご確認ください（別のタブや古い公開設定のURLでもこのエラーになります）');
 
     var records = [], MAX_ROWS = 100000;
     for (var i = headerIdx + 1; i < aoa.length; i++) {

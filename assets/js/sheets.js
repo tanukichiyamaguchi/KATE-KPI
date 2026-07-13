@@ -15,11 +15,15 @@
     if (!url) return null;
     // Already a CSV endpoint (published CSV, export?format=csv, or gviz csv)
     if (/output=csv/i.test(url) || /[?&]format=csv/i.test(url) || /tqx=out:csv/i.test(url)) return url;
-    // "Publish to web" HTML link → CSV
-    var pub = url.match(/\/spreadsheets\/d\/e\/([^/]+)\/pubhtml/i);
-    if (pub) return 'https://docs.google.com/spreadsheets/d/e/' + pub[1] + '/pub?output=csv';
-    var pubBare = url.match(/\/spreadsheets\/d\/e\/([^/?#]+)/i);
-    if (pubBare) return 'https://docs.google.com/spreadsheets/d/e/' + pubBare[1] + '/pub?output=csv';
+    // "Publish to web" HTML link → CSV。元URLにタブ指定（gid）があれば必ず維持する:
+    // gid を落とすと Google は「公開時に選ばれた既定タブ」を返すため、ステータス列の
+    // 無い別タブのCSVが届いて「必須列が不足」エラーになる（実事故）。
+    var pub = url.match(/\/spreadsheets\/d\/e\/([^/]+)\/pubhtml/i) || url.match(/\/spreadsheets\/d\/e\/([^/?#]+)/i);
+    if (pub) {
+      var pgid = (url.match(/[#&?]gid=([0-9]+)/) || [])[1];
+      return 'https://docs.google.com/spreadsheets/d/e/' + pub[1] + '/pub?output=csv' +
+        (pgid != null ? '&single=true&gid=' + pgid : '');
+    }
     // Standard edit / share URL → gviz CSV (respects a #gid= if present)
     var m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9\-_]+)/);
     if (m) {
