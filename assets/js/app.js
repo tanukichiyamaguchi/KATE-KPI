@@ -19,7 +19,8 @@
     sharedBlob: null,   // data/shared-link.json（合言葉で暗号化されたシートURL）があれば入る
     ownerLock: null,    // data/owner-lock.json（管理用の合言葉で暗号化されたロック）があれば入る
     ownerUnlocked: false, // ロック解除はメモリ上のみ（リロードで再ロック・端末に保存しない）
-    taxExcluded: true   // 税抜表示をメインに（トグルで税込へ）。端末設定として localStorage に保存
+    taxExcluded: true,  // 税抜表示をメインに（トグルで税込へ）。端末設定として localStorage に保存
+    dataLoadedAt: null  // 実データを取得・読み込んだ日時（連携/アップロード時に記録）
   };
   (function () { try { if (localStorage.getItem('kate-tax') === 'incl') state.taxExcluded = false; } catch (e) {} })();
   var activeCharts = [];   // redraw closures for the mounted view (resize/theme)
@@ -41,6 +42,11 @@
   // to the salon staff this dashboard is for — render 年/月/日 instead.
   function ymJa(ym) { var p = String(ym).split('-'); return (+p[0]) + '年' + (+p[1]) + '月'; }
   function ymdJa(d) { var p = String(d).split('-'); return p.length >= 3 ? (+p[0]) + '年' + (+p[1]) + '月' + (+p[2]) + '日' : ymJa(d); }
+  // Dateオブジェクト → 「M月D日 HH:MM」（データ取得日時の表示用）
+  function ymdhmJa(dt) { function z(n) { return (n < 10 ? '0' : '') + n; } return (dt.getMonth() + 1) + '月' + dt.getDate() + '日 ' + z(dt.getHours()) + ':' + z(dt.getMinutes()); }
+  // 各ビューのリード文末尾に付ける「データ取得日時」。連携/アップロードした実データの
+  // 取得時刻（＝この画面が見ているデータの鮮度）。サンプルや未取得なら何も出さない。
+  function dataStamp() { return state.dataLoadedAt ? ' <span class="lead-upd">データ取得 ' + ymdhmJa(state.dataLoadedAt) + ' 時点</span>' : ''; }
   function ymRangeJa(a, b) {
     if (!a || !b) return '';
     var pa = String(a).split('-'), pb = String(b).split('-');
@@ -169,7 +175,7 @@
   // ============================ OVERVIEW ===================================
   function renderOverview() {
     var A = state.analytics, s = A.store, t = A.trend;
-    var head = '<div class="view-title">店舗ダッシュボード</div><div class="view-lead">' + esc(ymRangeJa(A.meta.periodStart, A.meta.periodEnd)) + ' ／ 来店顧客 ' + esc(s.customers) + '人・基準日 ' + esc(ymdJa(A.meta.asOf)) + '。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + '</div>';
+    var head = '<div class="view-title">店舗ダッシュボード</div><div class="view-lead">' + esc(ymRangeJa(A.meta.periodStart, A.meta.periodEnd)) + ' ／ 来店顧客 ' + esc(s.customers) + '人・基準日 ' + esc(ymdJa(A.meta.asOf)) + '。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + dataStamp() + '</div>';
     var html = '';
 
     // 新しい端末への案内: 共有設定（暗号化済みシートURL）が同梱されているのに
@@ -369,7 +375,7 @@
     var A = state.analytics, months = A.store.monthly.map(function (m) { return monthShort(m.m); });
     var staff = A.staff;
     var asOfMonth = A.meta.asOf ? A.meta.asOf.slice(0, 7) : null;
-    var head = '<div class="view-title">スタッフ ダッシュボード</div><div class="view-lead">累計ではなく月次と平均で評価。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + '</div>';
+    var head = '<div class="view-title">スタッフ ダッシュボード</div><div class="view-lead">累計ではなく月次と平均で評価。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + dataStamp() + '</div>';
     var html = '';
 
     // スタッフ比較（中立の一覧表 — 競争をあおる表現はしない）。全項目、直近3ヶ月
@@ -436,7 +442,6 @@
     html += card({ col: 'col-6', title: '客単価の推移' + help('月ごとの客単価（予約ベース売上÷予約数）の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffSpend', 230) });
     var censNote = A.meta.completedOnly ? '　※直近の月は再来待ちのため集計対象外' : '';
     html += card({ col: 'col-6', title: '次回予約取得率の推移' + help('来店（会計済み）のうち、その後に何らかの予約・来店があった割合の月次推移。'), sub: '来店時に次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext', 230) });
-    html += card({ col: 'col-6', title: 'リピート育成力' + help('このスタッフが直近3ヶ月に初回担当した新規顧客を母数（100%）として、2回目・3回目・4回目の予約に到達した割合を累積で表示するファネル。前段からの継続率を掛け合わせた累積なので必ず右肩下がりになる（例：2回目60%→そのうち半分が3回目なら3回目は30%）。到達は予約ベース（Fres、キャンセル後の再予約は到達扱い）。'), sub: '2回目・3回目・4回目への累積到達率（ファネル）', body: chartBox('cStaffRepeat', 230) });
     if (A.store.retail.hasAmount) {
       html += card({ col: 'col-6', title: '店販売上の推移' + help('月ごとの店販売上金額の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffRetail', 230) });
     }
@@ -500,17 +505,6 @@
         xLabels: months, area: false, yMax: 100,
         series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.monthly.map(function (m) { return m.nextRes == null ? null : m.nextRes * 100; }) }; }),
         valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230
-      });
-    });
-    draw('cStaffRepeat', function (el) {
-      // 累積ファネル: 新規（獲得顧客）を母数100%とし、2回目・3回目・4回目に到達した
-      // 割合（reach(n)＝全獲得顧客のうち Fres>=n の割合）。前段からの継続率を掛け
-      // 合わせた累積なので、必ず 2回目 ≥ 3回目 ≥ 4回目 と右肩下がりになる。
-      // 常に100%になる「新規」列はグラフには出さない（表記不要のため省略）。
-      C.columns(el, {
-        groups: ['2回目到達', '3回目到達', '4回目到達'],
-        series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: [st.reach2, st.reach3, st.reach4].map(function (v) { return v == null ? 0 : (v <= 1 ? v * 100 : v); }) }; }),
-        valueFmt: function (v) { return v.toFixed(1) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, yMax: 100, height: 230
       });
     });
     if (A.store.retail.hasAmount) {
@@ -616,7 +610,7 @@
   var trendMetric = 'visits';
   function renderTrend() {
     var A = state.analytics, t = A.trend;
-    var head = '<div class="view-title">傾向分析</div><div class="view-lead">曜日・初回獲得月別に、次回予約率とLTVの傾向を読み解きます。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + '</div>';
+    var head = '<div class="view-title">傾向分析</div><div class="view-lead">曜日・初回獲得月別に、次回予約率とLTVの傾向を読み解きます。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + dataStamp() + '</div>';
     var html = '';
 
     html += card({
@@ -680,7 +674,7 @@
   var rfmCallbackOnly = false;
   function renderRFM() {
     var A = state.analytics, r = A.rfm;
-    var html = '<div class="view-title">顧客 RFM 分析</div><div class="view-lead">最終来店(R)・来店回数(F)・累計売上(M)で顧客を9つのセグメントに分類。' + r.total + '人の来店顧客が対象。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + '</div>';
+    var html = '<div class="view-title">顧客 RFM 分析</div><div class="view-lead">最終来店(R)・来店回数(F)・累計売上(M)で顧客を9つのセグメントに分類。' + r.total + '人の来店顧客が対象。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + dataStamp() + '</div>';
 
     // segment cards
     html += '<div class="section-title">セグメント サマリー' + help('R（最終来店からの経過日数）・F（来店回数）・M（累計売上）の3指標をもとに、顧客を9つのセグメントに分類。各指標は5段階のスコア（5が最も良い）に変換し、その組み合わせでセグメントを決定。') + '</div>';
@@ -1084,6 +1078,7 @@
       state.sources[format] = { records: recs, fileName: null, via: 'スプレッドシート連携' };
       if (format === 'kaikei') state.sheetUrlKaikei = url; else state.sheetUrl = url;
       try { localStorage.setItem(format === 'kaikei' ? 'kate-sheet-url-kaikei' : 'kate-sheet-url', url); } catch (e) {}
+      state.dataLoadedAt = new Date();   // データを取得した日時を記録
       var A = applySources();
       var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
@@ -1104,6 +1099,7 @@
     global.KATE.ingest.parseFile(file).then(function (parsed) {
       var format = parsed.format, recs = parsed.records;
       state.sources[format] = { records: recs, fileName: file.name, via: 'アップロード' };
+      state.dataLoadedAt = new Date();   // データを読み込んだ日時を記録
       var A = applySources();
       var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
@@ -1159,15 +1155,22 @@
 
   function updateChrome() {
     $('#asof').textContent = state.analytics.meta.asOf ? '基準日 ' + ymdJa(state.analytics.meta.asOf) : '';
-    // サンプルデータ表示中はバッジ自体を非表示（実データ連携時のみ出所を表示）
+    // サンプルデータ表示中はバッジ自体を非表示（実データ連携時のみ出所を表示）。
+    // 出所ラベルは短く（「統合データ（予約＋会計）」→「統合データ」）、右に取得日時を併記。
     var badge = $('#dataBadge');
     if (badge) {
       var isSample = state.source === 'サンプルデータ' && !state.fileName;
       badge.style.display = isSample ? 'none' : '';
-      if (!isSample) $('#dataBadgeText').textContent = state.fileName || state.source;
+      // 出所ラベルは短く（「統合データ（予約＋会計）」→「統合データ」）
+      if (!isSample) $('#dataBadgeText').textContent = state.fileName || String(state.source).replace(/（.*）$/, '');
     }
     var tx = $('#taxToggle');
-    if (tx) tx.checked = !state.taxExcluded;   // 税抜（既定）ならスイッチOFF、税込ならON
+    if (tx) {   // 税抜（既定）ならスイッチOFF、税込ならON。両側ラベルで選択中を強調
+      tx.checked = !state.taxExcluded;
+      var le = $('#taxLabelExcl'), li = $('#taxLabelIncl');
+      if (le) le.classList.toggle('on', state.taxExcluded);
+      if (li) li.classList.toggle('on', !state.taxExcluded);
+    }
   }
   // テーマはOSの設定（prefers-color-scheme）に追従する（手動トグルは廃止）
   function setTheme(t) {
@@ -1237,11 +1240,17 @@
       else if (e.key === 'Enter' || e.key === ' ') { route(document.activeElement.dataset.view); }
     });
     var taxBtn = $('#taxToggle');
-    if (taxBtn) taxBtn.addEventListener('change', function () {
-      state.taxExcluded = !taxBtn.checked;   // スイッチON＝税込、OFF＝税抜（既定）
-      try { localStorage.setItem('kate-tax', state.taxExcluded ? 'excl' : 'incl'); } catch (e) {}
+    function setTax(excluded) {
+      if (state.taxExcluded === excluded) return;
+      state.taxExcluded = excluded;   // true=税抜（既定）／false=税込
+      try { localStorage.setItem('kate-tax', excluded ? 'excl' : 'incl'); } catch (e) {}
       applySources();  // 税抜/税込を切り替えて全指標を再計算・再描画
-    });
+    }
+    if (taxBtn) taxBtn.addEventListener('change', function () { setTax(!taxBtn.checked); });
+    // 両側ラベルをクリックしてもその表示に切り替えられる
+    var le = $('#taxLabelExcl'), li = $('#taxLabelIncl');
+    if (le) le.addEventListener('click', function () { setTax(true); });
+    if (li) li.addEventListener('click', function () { setTax(false); });
 
     // routing
     global.addEventListener('hashchange', function () { route((location.hash || '#overview').slice(1)); });

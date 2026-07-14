@@ -539,7 +539,7 @@
       // 次の一手 sample-size gate below (unrelated to reach()).
       var acqAll = customers.filter(function (c) { return c.firstVisitStaff === name && c.hasVisit; });
       var acqMature = acqAll.filter(custMature);
-      // リピート率（2回到達）・固定化率（3回目到達）・リピート育成力チャートの母数：
+      // リピート率（2回到達）・固定化率（3回目到達）の母数：
       // 直近3ヶ月（今月を含まない確定3ヶ月）にこのスタッフが初回担当した顧客の
       // コホート。「到達」は予約ベース（Fres、キャンセル後の再予約を考慮・
       // キャンセルのみは含まない）で判定し、45日成熟待ちは行わない —
