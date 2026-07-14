@@ -297,7 +297,9 @@
         }
       } else {
         var innerW = band * 0.7, bw = Math.min(24, innerW / series.length - GAP);
-        var showBarLabels = bw >= 12;
+        // すべての棒に数値ラベルを表示する（狭い棒でも fitValueLabel が棒幅に
+        // 収まるよう自動圧縮するため、はみ出さない）。
+        var showBarLabels = bw >= 5;
         series.forEach(function (s, si) {
           var v = Math.max(0, s.values[gi]);
           var x = cx - innerW / 2 + si * (bw + GAP), y1 = yat(v), rectH = padT + plotH - y1;
@@ -358,9 +360,9 @@
     // tooltip. Prevents adjacent labels merging into unreadable text on narrow
     // (mobile) screens.
     var showSubLabels = !!opts.subLabels && (clusterBand / clusterSize) >= 24;
-    // Per-bar totals need a bit less room than the sub-labels (short numbers,
-    // not names), but still skip them below a hard floor to avoid overlap.
-    var showTotals = (clusterBand / clusterSize) >= 18;
+    // Per-bar totals: 全ての棒に数値を表示する（fitValueLabel が棒幅に収まるよう
+    // 圧縮するため、狭い棒でもはみ出さない）。ごく僅かな幅のみ描画を省く。
+    var showTotals = (clusterBand / clusterSize) >= 10;
     function colorFor(s, si, bi) { return (typeof s.color === 'function' ? s.color(bi) : s.color) || seriesColor(si); }
     groups.forEach(function (glabel, ci) {
       var clusterCx = padL + clusterBand * ci + clusterBand / 2;
