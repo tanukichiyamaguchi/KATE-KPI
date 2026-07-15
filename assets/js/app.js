@@ -46,7 +46,12 @@
   function ymdhmJa(dt) { function z(n) { return (n < 10 ? '0' : '') + n; } return (dt.getMonth() + 1) + '月' + dt.getDate() + '日 ' + z(dt.getHours()) + ':' + z(dt.getMinutes()); }
   // 各ビューのリード文末尾に付ける「データ取得日時」。連携/アップロードした実データの
   // 取得時刻（＝この画面が見ているデータの鮮度）。サンプルや未取得なら何も出さない。
-  function dataStamp() { return state.dataLoadedAt ? ' <span class="lead-upd">データ取得 ' + ymdhmJa(state.dataLoadedAt) + ' 時点</span>' : ''; }
+  function dataStamp() {
+    if (state.dataLoadedAt) return ' <span class="lead-upd">データ取得 ' + ymdhmJa(state.dataLoadedAt) + ' 時点</span>';
+    // 実データ未取得（サンプル表示）のときは集計基準日を代わりに出す
+    var a = state.analytics && state.analytics.meta && state.analytics.meta.asOf;
+    return a ? ' <span class="lead-upd">基準日 ' + ymdJa(a) + '</span>' : '';
+  }
   function ymRangeJa(a, b) {
     if (!a || !b) return '';
     var pa = String(a).split('-'), pb = String(b).split('-');
@@ -175,7 +180,7 @@
   // ============================ OVERVIEW ===================================
   function renderOverview() {
     var A = state.analytics, s = A.store, t = A.trend;
-    var head = '<div class="view-title">店舗ダッシュボード</div><div class="view-lead">' + esc(ymRangeJa(A.meta.periodStart, A.meta.periodEnd)) + ' ／ 来店顧客 ' + esc(s.customers) + '人・基準日 ' + esc(ymdJa(A.meta.asOf)) + '。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + dataStamp() + '</div>';
+    var head = '<div class="view-title">店舗ダッシュボード</div><div class="view-lead">' + esc(ymRangeJa(A.meta.periodStart, A.meta.periodEnd)) + ' ／ 来店顧客 ' + esc(s.customers) + '人。' + (A.meta.taxExcluded ? '<b>金額はすべて税抜表示です。</b>' : '') + dataStamp() + '</div>';
     var html = '';
 
     // 新しい端末への案内: 共有設定（暗号化済みシートURL）が同梱されているのに
@@ -911,7 +916,8 @@
         '<div><span>有効予約</span><b class="tnum">' + F.int(A.store.effectiveReservations) + '件</b></div>' +
         '<div><span>来店顧客</span><b class="tnum">' + F.int(A.store.customers) + '人</b></div>' +
         '<div><span>対象期間</span><b>' + esc(ymRangeJa(m.periodStart, m.periodEnd)) + '</b></div>' +
-        '<div><span>集計基準日</span><b>' + esc(ymdJa(m.asOf)) + '</b></div></div>' +
+        '<div><span>集計基準日</span><b>' + esc(ymdJa(m.asOf)) + '</b></div>' +
+        (state.dataLoadedAt ? '<div><span>データ取得</span><b>' + esc(ymdhmJa(state.dataLoadedAt)) + '</b></div>' : '') + '</div>' +
         (m.undatedRows ? '<div class="status-line" style="margin-top:12px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' + F.int(m.undatedRows) + '件は来店日を読み取れず、日付ベースの集計から除外しました。</div>' : '')
     });
     html += card({
@@ -1154,7 +1160,10 @@
   }
 
   function updateChrome() {
-    $('#asof').textContent = state.analytics.meta.asOf ? '基準日 ' + ymdJa(state.analytics.meta.asOf) : '';
+    // 実データ取得時は「データ取得日時（CSV読み込み完了＝データ更新の日時）」を表示。
+    // サンプル表示など未取得時のみ集計基準日にフォールバック。
+    $('#asof').textContent = state.dataLoadedAt ? 'データ取得 ' + ymdhmJa(state.dataLoadedAt)
+      : (state.analytics.meta.asOf ? '基準日 ' + ymdJa(state.analytics.meta.asOf) : '');
     // サンプルデータ表示中はバッジ自体を非表示（実データ連携時のみ出所を表示）。
     // 出所ラベルは短く（「統合データ（予約＋会計）」→「統合データ」）、右に取得日時を併記。
     var badge = $('#dataBadge');
