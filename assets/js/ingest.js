@@ -118,6 +118,23 @@
   function isYoyakuHeader(h) { return h.indexOf('ステータス') !== -1 || h.indexOf('予約番号') !== -1; }
   function isKaikeiHeader(h) { return h.indexOf('会計ID') !== -1 || (h.indexOf('会計日') !== -1 && h.indexOf('金額') !== -1); }
 
+  // 「データ更新日時」列（tools/sheet-update-stamp.gs がシート側で書き込む
+  // 同期完了時刻）の値 → Date。CSVの文字列（"2026/07/16 0:02:13"）、Excelの
+  // シリアル値、Date そのものに対応。読めなければ null（列自体が無いのが通常）。
+  var STAMP_HEADER = 'データ更新日時';
+  function parseStamp(v) {
+    if (v == null || v === '') return null;
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+    if (typeof v === 'number' && isFinite(v) && v > 25569) {   // Excelシリアル日時（1970年以降）
+      var u = new Date(Math.round((v - 25569) * 86400000));    // 25569 = 1970-01-01のシリアル値
+      return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate(), u.getUTCHours(), u.getUTCMinutes(), u.getUTCSeconds());
+    }
+    var m = /(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})日?(?:[ T]*(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(String(v));
+    if (!m) return null;
+    var d = new Date(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0, m[6] ? +m[6] : 0);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
   function fromAOA(aoa) {
     if (!aoa || !aoa.length) throw new Error('データが空です。');
     // Locate the header row within the first 8 rows (予約データ or 会計明細)
@@ -130,7 +147,15 @@
     if (headerIdx === -1) throw new Error('見出し行が見つかりません。「予約データ」（ステータス列）または「会計明細」（会計日・金額列）を含むCSV/Excelをご利用ください。');
 
     var headers = aoa[headerIdx].map(clean);
-    if (kaikei) return { records: fromKaikei(aoa, headerIdx, headers), format: 'kaikei' };
+    // シート側スタンプ（「データ更新日時」セル・値はその直下）を拾う。データの
+    // 見出し行に限らず先頭8行を走査するので、見出しの上にタイトル行がある
+    // レイアウトでも読める。
+    var sheetUpdatedAt = null;
+    for (var sr = 0; sr < Math.min(8, aoa.length - 1) && !sheetUpdatedAt; sr++) {
+      var sc = aoa[sr].map(clean).indexOf(STAMP_HEADER);
+      if (sc !== -1) sheetUpdatedAt = parseStamp(aoa[sr + 1][sc]);
+    }
+    if (kaikei) return { records: fromKaikei(aoa, headerIdx, headers), format: 'kaikei', sheetUpdatedAt: sheetUpdatedAt };
     var colOf = {};
     headers.forEach(function (h, idx) {
       var f = HEADER_MAP[h];
@@ -158,7 +183,7 @@
       records.push(rec);
     }
     if (!records.length) throw new Error('有効な予約行が見つかりませんでした。');
-    return { records: records, format: 'yoyaku' };
+    return { records: records, format: 'yoyaku', sheetUpdatedAt: sheetUpdatedAt };
   }
 
   // ---- 会計明細 (POS line-items) → visit records --------------------------
