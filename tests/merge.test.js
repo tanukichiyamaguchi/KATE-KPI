@@ -163,5 +163,72 @@ h('■ Fixture 7: 入力配列は変更されない（非破壊）');
   check('元の kaikei レコードの custKey は未設定のまま', kaikei[0].custKey, null);
 }
 
+// ============================================================================
+// Fixture 8 — fromAOA の「データ更新日時」スタンプ抽出（tools/sheet-update-stamp.gs）
+// ============================================================================
+h('■ Fixture 8: 「データ更新日時」列（シート側の同期完了時刻）の抽出');
+{
+  // 予約データ形式・CSV文字列のスタンプ（Sheetsの表示形式そのまま。時は1桁もある）
+  const p1 = ingest.fromAOA([
+    ['ステータス', '来店日', 'スタッフ名', 'お名前', '', 'データ更新日時'],
+    ['会計済み', '2026/07/01', 'momo', '山田花子', '', '2026/07/16 0:02:13'],
+    ['会計済み', '2026/07/02', 'aoi', '佐藤良子', '', '']
+  ]);
+  check('yoyaku: レコード数は不変（余分列は無視）', p1.records.length, 2);
+  check('yoyaku: スタンプが Date として取れる', p1.sheetUpdatedAt instanceof Date, true);
+  check('yoyaku: スタンプの値（2026-07-16 00:02:13）',
+    p1.sheetUpdatedAt && [p1.sheetUpdatedAt.getFullYear(), p1.sheetUpdatedAt.getMonth() + 1, p1.sheetUpdatedAt.getDate(), p1.sheetUpdatedAt.getHours(), p1.sheetUpdatedAt.getMinutes()],
+    [2026, 7, 16, 0, 2]);
+
+  // スタンプ列なし → null（従来どおり）
+  const p2 = ingest.fromAOA([
+    ['ステータス', '来店日', 'お名前'],
+    ['会計済み', '2026/07/01', '山田花子']
+  ]);
+  check('yoyaku: スタンプ列なし → null', p2.sheetUpdatedAt, null);
+
+  // Excelシリアル値（xlsx raw:true 経由）: 2026-07-16 00:02:13 ≒ 46219.001539...
+  const serial = 46219 + (2 * 60 + 13) / 86400;
+  const p3 = ingest.fromAOA([
+    ['ステータス', '来店日', 'お名前', 'データ更新日時'],
+    ['会計済み', '2026/07/01', '山田花子', serial]
+  ]);
+  check('yoyaku: Excelシリアル値も Date に変換', p3.sheetUpdatedAt instanceof Date, true);
+  check('yoyaku: シリアル値の日付部分', p3.sheetUpdatedAt && [p3.sheetUpdatedAt.getFullYear(), p3.sheetUpdatedAt.getMonth() + 1, p3.sheetUpdatedAt.getDate()], [2026, 7, 16]);
+
+  // 会計明細形式でも同様に抽出される
+  const p4 = ingest.fromAOA([
+    ['会計ID', '会計日', 'メニュー・店販・割引・サービス・オプション', '金額', 'データ更新日時'],
+    ['A1', '2026/07/01', 'まつげエクステ', '8000', '2026/07/16 0:03:00'],
+    ['A2', '2026/07/02', 'まつげエクステ', '9000', '']
+  ]);
+  check('kaikei: format 判定は不変', p4.format, 'kaikei');
+  check('kaikei: スタンプが取れる', p4.sheetUpdatedAt instanceof Date, true);
+  check('kaikei: スタンプの分まで一致', p4.sheetUpdatedAt && [p4.sheetUpdatedAt.getHours(), p4.sheetUpdatedAt.getMinutes()], [0, 3]);
+
+  // 壊れた値 → null（エラーにしない）
+  const p5 = ingest.fromAOA([
+    ['ステータス', '来店日', 'お名前', 'データ更新日時'],
+    ['会計済み', '2026/07/01', '山田花子', '更新失敗']
+  ]);
+  check('yoyaku: 解釈できない値 → null（エラーにしない）', p5.sheetUpdatedAt, null);
+
+  // 見出しの上にタイトル行があるレイアウト（スタンプはタイトル行の右端）でも読める
+  const p6 = ingest.fromAOA([
+    ['予約一覧（2026年）', '', '', '', 'データ更新日時'],
+    ['ステータス', '来店日', 'お名前', '', '2026/07/16 0:02:13'],
+    ['会計済み', '2026/07/01', '山田花子', '', '']
+  ]);
+  check('タイトル行レイアウト: レコードは正しく読める', p6.records.length, 1);
+  check('タイトル行レイアウト: スタンプも読める', p6.sheetUpdatedAt && [p6.sheetUpdatedAt.getDate(), p6.sheetUpdatedAt.getHours(), p6.sheetUpdatedAt.getMinutes()], [16, 0, 2]);
+
+  // 見出し行の前後空白（手作業の列）も clean() 比較で拾える
+  const p7 = ingest.fromAOA([
+    ['ステータス', '来店日', 'お名前', ' データ更新日時 '],
+    ['会計済み', '2026/07/01', '山田花子', '2026/07/16 5:00:00']
+  ]);
+  check('見出しの前後空白があってもスタンプを読める', p7.sheetUpdatedAt && p7.sheetUpdatedAt.getHours(), 5);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);

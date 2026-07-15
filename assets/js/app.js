@@ -20,7 +20,8 @@
     ownerLock: null,    // data/owner-lock.json（管理用の合言葉で暗号化されたロック）があれば入る
     ownerUnlocked: false, // ロック解除はメモリ上のみ（リロードで再ロック・端末に保存しない）
     taxExcluded: true,  // 税抜表示をメインに（トグルで税込へ）。端末設定として localStorage に保存
-    dataLoadedAt: null  // 実データを取得・読み込んだ日時（連携/アップロード時に記録）
+    dataLoadedAt: null,   // この画面が実データを読み込んだ日時（連携/アップロード時に記録）
+    sheetUpdatedAt: null  // シート側が記録した同期完了日時（「データ更新日時」列。applySources で導出）
   };
   (function () { try { if (localStorage.getItem('kate-tax') === 'incl') state.taxExcluded = false; } catch (e) {} })();
   var activeCharts = [];   // redraw closures for the mounted view (resize/theme)
@@ -42,13 +43,20 @@
   // to the salon staff this dashboard is for — render 年/月/日 instead.
   function ymJa(ym) { var p = String(ym).split('-'); return (+p[0]) + '年' + (+p[1]) + '月'; }
   function ymdJa(d) { var p = String(d).split('-'); return p.length >= 3 ? (+p[0]) + '年' + (+p[1]) + '月' + (+p[2]) + '日' : ymJa(d); }
-  // Dateオブジェクト → 「M月D日 HH:MM」（データ取得日時の表示用）
-  function ymdhmJa(dt) { function z(n) { return (n < 10 ? '0' : '') + n; } return (dt.getMonth() + 1) + '月' + dt.getDate() + '日 ' + z(dt.getHours()) + ':' + z(dt.getMinutes()); }
-  // 各ビューのリード文末尾に付ける「データ取得日時」。連携/アップロードした実データの
-  // 取得時刻（＝この画面が見ているデータの鮮度）。サンプルや未取得なら何も出さない。
+  // Dateオブジェクト → 「M月D日 HH:MM」（年が違うときだけ「YYYY年」を前置）
+  function ymdhmJa(dt) {
+    function z(n) { return (n < 10 ? '0' : '') + n; }
+    var yr = dt.getFullYear() !== new Date().getFullYear() ? dt.getFullYear() + '年' : '';
+    return yr + (dt.getMonth() + 1) + '月' + dt.getDate() + '日 ' + z(dt.getHours()) + ':' + z(dt.getMinutes());
+  }
+  // 各ビューのリード文末尾に付ける、データの鮮度表示。優先順:
+  //  1. シート側の「データ更新日時」＝同期（DailyCSVSync等）が完了した正確な時刻
+  //     （tools/sheet-update-stamp.gs をシートに設定すると書き込まれる）
+  //  2. 無ければ、この画面がデータを読み込んだ時刻（最終読込）
+  //  3. サンプル表示中は集計基準日
   function dataStamp() {
-    if (state.dataLoadedAt) return ' <span class="lead-upd">データ取得 ' + ymdhmJa(state.dataLoadedAt) + ' 時点</span>';
-    // 実データ未取得（サンプル表示）のときは集計基準日を代わりに出す
+    if (state.sheetUpdatedAt) return ' <span class="lead-upd" title="スプレッドシート側で記録された、データの同期（更新）が完了した日時">データ更新 ' + ymdhmJa(state.sheetUpdatedAt) + ' 時点</span>';
+    if (state.dataLoadedAt) return ' <span class="lead-upd" title="この画面がスプレッドシート／ファイルを読み込んだ日時（シート側の更新日時は未設定）">最終読込 ' + ymdhmJa(state.dataLoadedAt) + ' 時点</span>';
     var a = state.analytics && state.analytics.meta && state.analytics.meta.asOf;
     return a ? ' <span class="lead-upd">基準日 ' + ymdJa(a) + '</span>' : '';
   }
@@ -840,6 +848,7 @@
         '<li>または、共有を<code>「リンクを知っている全員（閲覧者）」</code>にして、通常の編集URLを貼り付け。</li>' +
         '<li><b>⚠ プライバシー：</b>ウェブに公開・共有したスプレッドシートは、URLを知る人が閲覧できる状態になります。氏名・電話番号などを含む場合はご注意ください。非公開で扱いたい場合は下のファイルアップロードをお使いください。</li>' +
         '<li>テンプレート：<code>data/template.csv</code>（このリポジトリ）をスプレッドシートに<code>ファイル → インポート</code>すると、見出し付きで始められます。</li>' +
+        '<li><b>同期完了時刻の表示：</b>毎日の自動同期が「いつ完了したか」を正確に表示したい場合は、スプレッドシートに <code>tools/sheet-update-stamp.gs</code>（このリポジトリ）を一度だけ設定してください。シートが更新されるたびに「データ更新日時」列が自動で書き込まれ、ダッシュボードに「データ更新 ◯月◯日 ◯◯:◯◯ 時点」と表示されます（未設定の間は、この画面が読み込んだ時刻を「最終読込」として表示します）。</li>' +
         '</ul></div></details>' +
         ((state.sheetUrl || state.sheetUrlKaikei) ?
           '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12.5px;color:var(--ink-secondary);font-weight:600">全端末に共有（合言葉の設定）</summary>' +
@@ -917,7 +926,8 @@
         '<div><span>来店顧客</span><b class="tnum">' + F.int(A.store.customers) + '人</b></div>' +
         '<div><span>対象期間</span><b>' + esc(ymRangeJa(m.periodStart, m.periodEnd)) + '</b></div>' +
         '<div><span>集計基準日</span><b>' + esc(ymdJa(m.asOf)) + '</b></div>' +
-        (state.dataLoadedAt ? '<div><span>データ取得</span><b>' + esc(ymdhmJa(state.dataLoadedAt)) + '</b></div>' : '') + '</div>' +
+        (state.sheetUpdatedAt ? '<div><span>データ更新</span><b>' + esc(ymdhmJa(state.sheetUpdatedAt)) + '</b></div>' : '') +
+        (state.dataLoadedAt ? '<div><span>最終読込</span><b>' + esc(ymdhmJa(state.dataLoadedAt)) + '</b></div>' : '') + '</div>' +
         (m.undatedRows ? '<div class="status-line" style="margin-top:12px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' + F.int(m.undatedRows) + '件は来店日を読み取れず、日付ベースの集計から除外しました。</div>' : '')
     });
     html += card({
@@ -1060,16 +1070,23 @@
     // 金額は税抜表示がメイン（元データ＝HOT PEPPER Beauty 等は税込／消費税10%）。
     // ヘッダーの「税抜／税込」トグル（state.taxExcluded）で切り替え可能。税抜換算は
     // エンジンの金額ソース1か所で行うため、売上・客単価・LTV・店販など全指標が一貫。
-    var recs, source, fileName, mergeReport = null, computeOpts = { taxRate: state.taxExcluded ? 0.1 : 0 };
+    var recs, source, fileName, used = [], mergeReport = null, computeOpts = { taxRate: state.taxExcluded ? 0.1 : 0 };
     if (y && k) {
       var merged = global.KATE.ingest.mergeSources(y.records, k.records);
       mergeReport = merged.report;
-      if (merged.report.matched > 0) { recs = merged.records; source = '統合データ（予約＋会計）'; fileName = null; }
-      else { recs = y.records; source = y.via; fileName = y.fileName; }   // 0件結合 → 統合を中止し予約データ単独
-    } else if (y) { recs = y.records; source = y.via; fileName = y.fileName; }
-    else if (k) { recs = k.records; source = k.via; fileName = k.fileName; }
-    else { recs = global.KATE.SAMPLE_RESERVATIONS; source = 'サンプルデータ'; fileName = null; computeOpts.asOf = '2026-07-03'; }
+      if (merged.report.matched > 0) { recs = merged.records; source = '統合データ（予約＋会計）'; fileName = null; used = [y, k]; }
+      else { recs = y.records; source = y.via; fileName = y.fileName; used = [y]; }   // 0件結合 → 統合を中止し予約データ単独
+    } else if (y) { recs = y.records; source = y.via; fileName = y.fileName; used = [y]; }
+    else if (k) { recs = k.records; source = k.via; fileName = k.fileName; used = [k]; }
+    else { recs = global.KATE.SAMPLE_RESERVATIONS; source = 'サンプルデータ'; fileName = null; computeOpts.asOf = '2026-07-03'; state.dataLoadedAt = null; }   // 実データ解除後に古い読込時刻を残さない
     var A = global.KATE.engine.compute(recs, computeOpts);
+    // シート側が書き込んだ「データ更新日時」（同期完了時刻）。使用中の全ソースに
+    // スタンプがある場合のみ採用し、古い方を表示（＝すべてのデータが揃っている時点）。
+    // 片方でもスタンプが無ければ鮮度を保証できないため「最終読込」へフォールバック。
+    var allStamped = used.length > 0 && used.every(function (s) { return s.updatedAt; });
+    state.sheetUpdatedAt = allStamped
+      ? new Date(Math.min.apply(null, used.map(function (s) { return Number(s.updatedAt); })))
+      : null;
     state.data = recs; state.analytics = A; state.source = source; state.fileName = fileName; state.mergeReport = mergeReport;
     updateChrome(); renderAll(); route(state.view, true);
     return A;
@@ -1081,7 +1098,7 @@
     global.KATE.sheets.fetchCsv(url).then(function (text) {
       var parsed = global.KATE.ingest.fromAOA(global.KATE.ingest.parseCSV(text));
       var format = parsed.format, recs = parsed.records;
-      state.sources[format] = { records: recs, fileName: null, via: 'スプレッドシート連携' };
+      state.sources[format] = { records: recs, fileName: null, via: 'スプレッドシート連携', updatedAt: parsed.sheetUpdatedAt || null };
       if (format === 'kaikei') state.sheetUrlKaikei = url; else state.sheetUrl = url;
       try { localStorage.setItem(format === 'kaikei' ? 'kate-sheet-url-kaikei' : 'kate-sheet-url', url); } catch (e) {}
       state.dataLoadedAt = new Date();   // データを取得した日時を記録
@@ -1104,7 +1121,7 @@
     toast('読み込み中…');
     global.KATE.ingest.parseFile(file).then(function (parsed) {
       var format = parsed.format, recs = parsed.records;
-      state.sources[format] = { records: recs, fileName: file.name, via: 'アップロード' };
+      state.sources[format] = { records: recs, fileName: file.name, via: 'アップロード', updatedAt: parsed.sheetUpdatedAt || null };
       state.dataLoadedAt = new Date();   // データを読み込んだ日時を記録
       var A = applySources();
       var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
@@ -1160,9 +1177,10 @@
   }
 
   function updateChrome() {
-    // 実データ取得時は「データ取得日時（CSV読み込み完了＝データ更新の日時）」を表示。
-    // サンプル表示など未取得時のみ集計基準日にフォールバック。
-    $('#asof').textContent = state.dataLoadedAt ? 'データ取得 ' + ymdhmJa(state.dataLoadedAt)
+    // ヘッダーの日付表示（dataStamp と同じ優先順）:
+    // シートの同期完了時刻 → この画面の読込時刻 → 基準日（サンプル時のみ）
+    $('#asof').textContent = state.sheetUpdatedAt ? 'データ更新 ' + ymdhmJa(state.sheetUpdatedAt)
+      : state.dataLoadedAt ? '最終読込 ' + ymdhmJa(state.dataLoadedAt)
       : (state.analytics.meta.asOf ? '基準日 ' + ymdJa(state.analytics.meta.asOf) : '');
     // サンプルデータ表示中はバッジ自体を非表示（実データ連携時のみ出所を表示）。
     // 出所ラベルは短く（「統合データ（予約＋会計）」→「統合データ」）、右に取得日時を併記。
