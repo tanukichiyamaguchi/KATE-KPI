@@ -455,7 +455,7 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
    月〜日曜の7列カレンダーに連続配置（月で段は分けない）。曜日見出し行つき、日付は
    M/D 表記で曜日により色分け（平日=スレート/土=青/日=赤）、最新日はアクセント枠。
    金額は広幅=フル, 狭幅=圧縮表記に切替。 */
-.dr-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: start; }
+.dr-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: stretch; }
 .dr-wh { text-align: center; font-size: 11px; font-weight: 600; color: var(--ink-muted); padding-bottom: 1px; }
 .dr-wh.dr-sat { color: #4f7cc0; }
 .dr-wh.dr-sun { color: #c07784; }

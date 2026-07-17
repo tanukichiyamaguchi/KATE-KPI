@@ -192,12 +192,15 @@
   function drMondayIdx(dow) { return (dow + 6) % 7; }   // 日曜=0 → 月曜始まりの列index（月=0…日=6）
   function dailyDayCell(d) {
     var cls = 'dr-cell' + (d.dow === 0 ? ' dr-sun' : d.dow === 6 ? ' dr-sat' : '') + (d.isAsOf ? ' dr-today' : '');
-    // 店販売上がある日だけ、()で店販売上金額を併記
-    var retail = d.retail > 0 ? '<div class="dr-retail" title="うち店販売上">（<span class="full-num">' + yen(d.retail) + '</span><span class="compact-num">' + yenCompact(d.retail) + '</span>）</div>' : '';
+    // 店販売上がある日だけ、()で店販売上金額を併記。無い日も同じ行を空で確保して
+    // 全セルの高さを揃える（縦に伸びてバラつくのを防ぐ）。
+    var retail = d.retail > 0
+      ? '<span class="full-num">（' + yen(d.retail) + '）</span><span class="compact-num">（' + yenCompact(d.retail) + '）</span>'
+      : '&nbsp;';
     return '<div class="' + cls + '">' +
       '<div class="dr-date">' + d.month + '/' + d.day + '</div>' +
       '<div class="dr-rev"><span class="full-num">' + yen(d.rev) + '</span><span class="compact-num">' + yenCompact(d.rev) + '</span></div>' +
-      retail +
+      '<div class="dr-retail" title="うち店販売上">' + retail + '</div>' +
       '<div class="dr-cnt">' + d.count + '人</div>' +
       '</div>';
   }
