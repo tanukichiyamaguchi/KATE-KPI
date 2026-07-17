@@ -192,9 +192,12 @@
   function drMondayIdx(dow) { return (dow + 6) % 7; }   // 日曜=0 → 月曜始まりの列index（月=0…日=6）
   function dailyDayCell(d) {
     var cls = 'dr-cell' + (d.dow === 0 ? ' dr-sun' : d.dow === 6 ? ' dr-sat' : '') + (d.isAsOf ? ' dr-today' : '');
+    // 店販売上がある日だけ、()で店販売上金額を併記
+    var retail = d.retail > 0 ? '<div class="dr-retail" title="うち店販売上">（<span class="full-num">' + yen(d.retail) + '</span><span class="compact-num">' + yenCompact(d.retail) + '</span>）</div>' : '';
     return '<div class="' + cls + '">' +
       '<div class="dr-date">' + d.month + '/' + d.day + '</div>' +
       '<div class="dr-rev"><span class="full-num">' + yen(d.rev) + '</span><span class="compact-num">' + yenCompact(d.rev) + '</span></div>' +
+      retail +
       '<div class="dr-cnt">' + d.count + '人</div>' +
       '</div>';
   }
@@ -252,8 +255,8 @@
       body: chartBox('cRevenue', 260)
     });
     html += card({
-      col: 'col-12', title: '日次売上（直近30日）' + taxTag + help('集計基準日から過去30日ぶんの、会計済みの売上（実績）と客数（会計件数）を日別に表示。受付待ちの見込みは含みません。土曜は青、日曜は赤、最新日（基準日）はアクセント枠。金額は税抜。'),
-      sub: '会計済みの実績・客数（受付待ちの見込みは含まない）',
+      col: 'col-12', title: '日次売上（直近30日）' + taxTag + help('集計基準日から過去30日ぶんの、会計済みの売上（実績）と客数（会計件数）を日別に表示。受付待ちの見込みは含みません。店販売上がある日は、売上の下に（ ）で店販売上金額を併記します。土曜は青、日曜は赤、最新日（基準日）はアクセント枠。金額は税抜。'),
+      sub: '会計済みの実績・客数（（ ）内は店販売上）',
       body: dailyRevGrid(s.dailyRevenue)
     });
 

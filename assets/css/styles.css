@@ -466,6 +466,7 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
 .dr-cell.dr-sun .dr-date { background: #c07784; }
 .dr-cell.dr-today { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .dr-rev { font-size: 14px; font-weight: 600; color: var(--ink-primary); font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.4px; }
+.dr-retail { font-size: 10.5px; font-weight: 500; color: var(--ink-secondary); margin-top: 1px; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.3px; }
 .dr-cnt { font-size: 11px; font-weight: 500; color: var(--ink-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
 /* 狭幅では金額を圧縮表記（¥3.7万）に切替え、7列を維持したまま桁あふれを防ぐ */
 @media (max-width: 560px) {
@@ -476,6 +477,7 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
   .dr-wh { font-size: 10px; }
   .dr-date { font-size: 10px; margin-bottom: 5px; }
   .dr-rev { font-size: 12px; }
+  .dr-retail { font-size: 9.5px; }
   .dr-cnt { font-size: 10px; }
 }
 @media (max-width: 380px) {

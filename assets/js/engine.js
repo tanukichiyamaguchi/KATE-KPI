@@ -390,8 +390,8 @@
     visitedRows.forEach(function (r) {
       if (!r.date) return;
       var dk = r.date.getFullYear() + '|' + r.date.getMonth() + '|' + r.date.getDate();
-      var e = dailyMap[dk] || (dailyMap[dk] = { rev: 0, count: 0 });
-      e.rev += r.kaikei; e.count += 1;
+      var e = dailyMap[dk] || (dailyMap[dk] = { rev: 0, count: 0, retail: 0 });
+      e.rev += r.kaikei; e.count += 1; e.retail += r.shohanAmt;   // shohanAmt は税抜/税込設定済み
     });
     var dailyRevenue = [];
     for (var dOff = 29; dOff >= 0; dOff--) {
@@ -399,7 +399,7 @@
       var e2 = dailyMap[dd.getFullYear() + '|' + dd.getMonth() + '|' + dd.getDate()];
       dailyRevenue.push({
         month: dd.getMonth() + 1, day: dd.getDate(), dow: dd.getDay(),
-        rev: e2 ? e2.rev : 0, count: e2 ? e2.count : 0, isAsOf: dOff === 0
+        rev: e2 ? e2.rev : 0, count: e2 ? e2.count : 0, retail: e2 ? e2.retail : 0, isAsOf: dOff === 0
       });
     }
 

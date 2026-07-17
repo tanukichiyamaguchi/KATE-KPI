@@ -743,9 +743,9 @@ h('■ Fixture W: 店舗全体の予約ベース内訳(composition)');
 h('■ Fixture AA: 直近30日の日次売上（会計済み実績・客数）');
 {
   const rows = [
-    rec({ custKey: 'A', date: '2026-07-17', kaikeiTotal: 10000 }),   // asOf 当日・2件
+    rec({ custKey: 'A', date: '2026-07-17', kaikeiTotal: 10000, shohanAmount: 3000 }),   // asOf 当日・2件・店販3000
     rec({ custKey: 'B', date: '2026-07-17', kaikeiTotal: 5000 }),
-    rec({ custKey: 'C', date: '2026-07-10', kaikeiTotal: 8000 }),    // 7日前
+    rec({ custKey: 'C', date: '2026-07-10', kaikeiTotal: 8000 }),    // 7日前・店販なし
     rec({ custKey: 'D', date: '2026-06-18', kaikeiTotal: 9000 }),    // 29日前（範囲内の端）
     rec({ custKey: 'E', date: '2026-06-17', kaikeiTotal: 7000 }),    // 30日前（範囲外）
     rec({ custKey: 'F', date: '2026-07-20', status: '受付待ち', yoyakuTotal: 12000 })  // 未来の見込み（除外）
@@ -759,6 +759,9 @@ h('■ Fixture AA: 直近30日の日次売上（会計済み実績・客数）')
   check('末尾は基準日（isAsOf）', last.isAsOf ? 1 : 0, 1);
   check('基準日の売上（10000+5000）', last.rev, 15000);
   check('基準日の客数（2件）', last.count, 2);
+  check('基準日の店販売上（3000）', last.retail, 3000);
+  const jul10 = d.filter(function (x) { return x.month === 7 && x.day === 10; })[0];
+  check('店販の無い日は retail=0', jul10.retail, 0);
   const first = d[0];
   check('先頭は29日前（月=6）', first.month, 6);
   check('先頭は29日前（日=18）', first.day, 18);
