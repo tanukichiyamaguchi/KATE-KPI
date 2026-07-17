@@ -185,6 +185,20 @@
     });
   }
 
+  // 直近30日の日次売上グリッド（会計済み実績・客数）。土=青/日=赤で色分け、
+  // 最新日（基準日）はアクセント枠。金額はデスクトップ=フル, 狭幅=圧縮表記。
+  var DR_DOW = ['日', '月', '火', '水', '木', '金', '土'];
+  function dailyRevGrid(days) {
+    return '<div class="dr-grid">' + days.map(function (d) {
+      var cls = 'dr-cell' + (d.dow === 0 ? ' dr-sun' : d.dow === 6 ? ' dr-sat' : '') + (d.isAsOf ? ' dr-today' : '');
+      return '<div class="' + cls + '">' +
+        '<div class="dr-date">' + d.month + '/' + d.day + '<span class="dr-dow">(' + DR_DOW[d.dow] + ')</span></div>' +
+        '<div class="dr-rev"><span class="full-num">' + yen(d.rev) + '</span><span class="compact-num">' + yenCompact(d.rev) + '</span></div>' +
+        '<div class="dr-cnt">' + d.count + '人</div>' +
+        '</div>';
+    }).join('') + '</div>';
+  }
+
   // ============================ OVERVIEW ===================================
   function renderOverview() {
     var A = state.analytics, s = A.store, t = A.trend;
@@ -226,6 +240,11 @@
     html += card({
       col: 'col-7', title: '月次 予約ベース売上' + taxTag + help('月ごとの売上を、会計済み（実績）と受付待ち（見込み）の内訳で積み上げ表示。見込みは受付待ちの予約金額（会計前）を反映したもの。金額は税抜。'), sub: '会計済み（実績）＋ 受付待ち（見込み）', tag: '¥',
       body: chartBox('cRevenue', 260)
+    });
+    html += card({
+      col: 'col-12', title: '日次売上（直近30日）' + taxTag + help('集計基準日から過去30日ぶんの、会計済みの売上（実績）と客数（会計件数）を日別に表示。受付待ちの見込みは含みません。土曜は青、日曜は赤、最新日（基準日）はアクセント枠。金額は税抜。'),
+      sub: '会計済みの実績・客数（受付待ちの見込みは含まない）',
+      body: dailyRevGrid(s.dailyRevenue)
     });
 
     // Funnel + cohort
@@ -455,6 +474,8 @@
     html += card({ col: 'col-6', title: '客単価の推移' + help('月ごとの客単価（予約ベース売上÷予約数）の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffSpend', 230) });
     var censNote = A.meta.completedOnly ? '　※直近の月は再来待ちのため集計対象外' : '';
     html += card({ col: 'col-6', title: '次回予約取得率の推移' + help('来店（会計済み）のうち、その後に何らかの予約・来店があった割合の月次推移。'), sub: '来店時に次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext', 230) });
+    html += card({ col: 'col-6', title: '月別リピート率の推移' + help('初回来店した月ごとに、このスタッフが担当した新規顧客を母数として、2回目の予約（来店・今後の予約含む）に到達した割合の推移。店舗全体のリピート率と同じ予約ベースの定義。'), sub: '獲得月コホートの2回到達率　※直近の月は集計途中のため低めに出ます', tag: '%', body: chartBox('cStaffRepeatRate', 230) });
+    html += card({ col: 'col-6', title: '月別固定化率の推移' + help('初回来店した月ごとに、実際に2回来店した顧客を母数として、3回目の予約を確保した割合の推移。店舗全体の固定化率と同じ定義。'), sub: '獲得月コホートの3回到達率（2回来店が母数）　※直近の月は集計途中のため低めに出ます', tag: '%', body: chartBox('cStaffFixRate', 230) });
     if (A.store.retail.hasAmount) {
       html += card({ col: 'col-6', title: '店販売上の推移' + help('月ごとの店販売上金額の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffRetail', 230) });
     }
@@ -517,6 +538,20 @@
       C.lineArea(el, {
         xLabels: months, area: false, yMax: 100,
         series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.monthly.map(function (m) { return m.nextRes == null ? null : m.nextRes * 100; }) }; }),
+        valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230
+      });
+    });
+    draw('cStaffRepeatRate', function (el) {
+      C.lineArea(el, {
+        xLabels: months, area: false, yMax: 100,
+        series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.repeatFixMonthly.map(function (m) { return m.repeat == null ? null : m.repeat * 100; }) }; }),
+        valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230
+      });
+    });
+    draw('cStaffFixRate', function (el) {
+      C.lineArea(el, {
+        xLabels: months, area: false, yMax: 100,
+        series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.repeatFixMonthly.map(function (m) { return m.fix == null ? null : m.fix * 100; }) }; }),
         valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230
       });
     });

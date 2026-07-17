@@ -450,6 +450,35 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
    dropped entirely on phones (media query below), where they don't fit the
    narrow numeric columns. */
 .th-unit { color: var(--ink-muted); font-weight: 500; }
+
+/* ---- Daily revenue grid (直近30日の日次売上・概要) --------------------------
+   7列のカレンダー風グリッド。日付ヘッダーは曜日で色分け（平日=スレート/土=青/
+   日=赤）、最新日はアクセント枠。金額は広幅=フル, 狭幅=圧縮表記に切替。 */
+.dr-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.dr-cell { background: var(--surface-2); border-radius: 9px; padding: 7px 5px 8px; text-align: center; min-width: 0; overflow: hidden; }
+.dr-date { font-size: 11.5px; font-weight: 600; color: #fff; background: #64748b; border-radius: 6px; padding: 3px 2px; margin-bottom: 7px; white-space: nowrap; letter-spacing: -0.2px; }
+.dr-dow { margin-left: 1px; font-weight: 500; }
+.dr-cell.dr-sat .dr-date { background: #4f7cc0; }
+.dr-cell.dr-sun .dr-date { background: #c07784; }
+.dr-cell.dr-today { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.dr-rev { font-size: 14px; font-weight: 600; color: var(--ink-primary); font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.4px; }
+.dr-cnt { font-size: 11px; font-weight: 500; color: var(--ink-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+/* 狭幅では金額を圧縮表記（¥3.7万）に切替え、7列を維持したまま桁あふれを防ぐ */
+@media (max-width: 560px) {
+  .dr-grid { gap: 4px; }
+  .dr-grid .full-num { display: none; }
+  .dr-grid .compact-num { display: inline; }
+  .dr-cell { padding: 6px 3px; border-radius: 7px; }
+  .dr-date { font-size: 10px; margin-bottom: 5px; }
+  .dr-rev { font-size: 12px; }
+  .dr-cnt { font-size: 10px; }
+}
+@media (max-width: 380px) {
+  .dr-grid { gap: 3px; }
+  .dr-dow { display: none; }   /* 曜日は色で判別できるため極狭幅では省略 */
+  .dr-date { font-size: 9.5px; padding: 2px 1px; }
+  .dr-rev { font-size: 11px; letter-spacing: -0.5px; }
+}
 /* Mobile: the fixed min-width above forces horizontal scroll on phone widths
    even though the actual content (short ¥/%/count values) doesn't need it —
    drop the floor and tighten padding/font so tables fit the viewport instead.
