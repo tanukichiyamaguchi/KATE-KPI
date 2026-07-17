@@ -185,18 +185,37 @@
     });
   }
 
-  // 直近30日の日次売上グリッド（会計済み実績・客数）。土=青/日=赤で色分け、
-  // 最新日（基準日）はアクセント枠。金額はデスクトップ=フル, 狭幅=圧縮表記。
-  var DR_DOW = ['日', '月', '火', '水', '木', '金', '土'];
+  // 直近30日の日次売上を「月別・月〜日曜のカレンダー配置」で表示。
+  // 曜日で列を揃え（月始まり）、土=青/日=赤で色分け、最新日（基準日）はアクセント枠。
+  // 金額はデスクトップ=フル, 狭幅=圧縮表記。days は日付昇順の連続日。
+  var DR_WEEK = ['月', '火', '水', '木', '金', '土', '日'];
+  function drMondayIdx(dow) { return (dow + 6) % 7; }   // 日曜=0 → 月曜始まりの列index（月=0…日=6）
+  function dailyDayCell(d) {
+    var cls = 'dr-cell' + (d.dow === 0 ? ' dr-sun' : d.dow === 6 ? ' dr-sat' : '') + (d.isAsOf ? ' dr-today' : '');
+    return '<div class="' + cls + '">' +
+      '<div class="dr-date">' + d.day + '</div>' +
+      '<div class="dr-rev"><span class="full-num">' + yen(d.rev) + '</span><span class="compact-num">' + yenCompact(d.rev) + '</span></div>' +
+      '<div class="dr-cnt">' + d.count + '人</div>' +
+      '</div>';
+  }
   function dailyRevGrid(days) {
-    return '<div class="dr-grid">' + days.map(function (d) {
-      var cls = 'dr-cell' + (d.dow === 0 ? ' dr-sun' : d.dow === 6 ? ' dr-sat' : '') + (d.isAsOf ? ' dr-today' : '');
-      return '<div class="' + cls + '">' +
-        '<div class="dr-date">' + d.month + '/' + d.day + '<span class="dr-dow">(' + DR_DOW[d.dow] + ')</span></div>' +
-        '<div class="dr-rev"><span class="full-num">' + yen(d.rev) + '</span><span class="compact-num">' + yenCompact(d.rev) + '</span></div>' +
-        '<div class="dr-cnt">' + d.count + '人</div>' +
-        '</div>';
-    }).join('') + '</div>';
+    // 月ごとにまとめる（出現順を保持）
+    var groups = [], byMonth = {};
+    days.forEach(function (d) {
+      if (!byMonth[d.month]) { byMonth[d.month] = { month: d.month, days: [] }; groups.push(byMonth[d.month]); }
+      byMonth[d.month].days.push(d);
+    });
+    return groups.map(function (g) {
+      var cells = DR_WEEK.map(function (w, i) {
+        return '<div class="dr-wh' + (i === 5 ? ' dr-sat' : i === 6 ? ' dr-sun' : '') + '">' + w + '</div>';
+      });
+      var lead = drMondayIdx(g.days[0].dow);   // 月初日の曜日ぶん先頭を空ける
+      for (var b = 0; b < lead; b++) cells.push('<div class="dr-cell dr-empty"></div>');
+      g.days.forEach(function (d) { cells.push(dailyDayCell(d)); });
+      while (cells.length % 7 !== 0) cells.push('<div class="dr-cell dr-empty"></div>');   // 末尾を週単位に揃える
+      return '<div class="dr-month"><div class="dr-mlabel">' + g.month + '月</div>' +
+        '<div class="dr-grid">' + cells.join('') + '</div></div>';
+    }).join('');
   }
 
   // ============================ OVERVIEW ===================================
