@@ -450,6 +450,41 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
    dropped entirely on phones (media query below), where they don't fit the
    narrow numeric columns. */
 .th-unit { color: var(--ink-muted); font-weight: 500; }
+
+/* ---- Daily revenue calendar (直近30日の日次売上・概要) -----------------------
+   月〜日曜の7列カレンダーに連続配置（月で段は分けない）。曜日見出し行つき、日付は
+   M/D 表記で曜日により色分け（平日=スレート/土=青/日=赤）、最新日はアクセント枠。
+   金額は広幅=フル, 狭幅=圧縮表記に切替。 */
+.dr-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: stretch; }
+.dr-wh { text-align: center; font-size: 11px; font-weight: 600; color: var(--ink-muted); padding-bottom: 1px; }
+.dr-wh.dr-sat { color: #4f7cc0; }
+.dr-wh.dr-sun { color: #c07784; }
+.dr-cell { background: var(--surface-2); border-radius: 9px; padding: 7px 5px 8px; text-align: center; min-width: 0; overflow: hidden; }
+.dr-cell.dr-empty { background: transparent; }
+.dr-date { font-size: 11.5px; font-weight: 600; color: #fff; background: #64748b; border-radius: 6px; padding: 3px 2px; margin-bottom: 7px; white-space: nowrap; letter-spacing: -0.2px; }
+.dr-cell.dr-sat .dr-date { background: #4f7cc0; }
+.dr-cell.dr-sun .dr-date { background: #c07784; }
+.dr-cell.dr-today { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.dr-rev { font-size: 14px; font-weight: 600; color: var(--ink-primary); font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.4px; }
+.dr-retail { font-size: 10.5px; font-weight: 500; color: var(--ink-secondary); margin-top: 1px; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.3px; }
+.dr-cnt { font-size: 11px; font-weight: 500; color: var(--ink-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
+/* 狭幅では金額を圧縮表記（¥3.7万）に切替え、7列を維持したまま桁あふれを防ぐ */
+@media (max-width: 560px) {
+  .dr-grid { gap: 4px; }
+  .dr-grid .full-num { display: none; }
+  .dr-grid .compact-num { display: inline; }
+  .dr-cell { padding: 6px 3px; border-radius: 7px; }
+  .dr-wh { font-size: 10px; }
+  .dr-date { font-size: 10px; margin-bottom: 5px; }
+  .dr-rev { font-size: 12px; }
+  .dr-retail { font-size: 9.5px; }
+  .dr-cnt { font-size: 10px; }
+}
+@media (max-width: 380px) {
+  .dr-grid { gap: 3px; }
+  .dr-date { font-size: 9.5px; padding: 2px 1px; }
+  .dr-rev { font-size: 11px; letter-spacing: -0.5px; }
+}
 /* Mobile: the fixed min-width above forces horizontal scroll on phone widths
    even though the actual content (short ¥/%/count values) doesn't need it —
    drop the floor and tighten padding/font so tables fit the viewport instead.

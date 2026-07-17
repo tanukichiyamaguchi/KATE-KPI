@@ -737,5 +737,73 @@ h('■ Fixture W: 店舗全体の予約ベース内訳(composition)');
   check('composition の実績値(new/v2/v3/v4)は全月 newMix と一致', mismatch.length, 0);
 }
 
+// ============================================================================
+// Fixture AA — 直近30日の日次売上（store.dailyRevenue）
+// ============================================================================
+h('■ Fixture AA: 直近30日の日次売上（会計済み実績・客数）');
+{
+  const rows = [
+    rec({ custKey: 'A', date: '2026-07-17', kaikeiTotal: 10000, shohanAmount: 3000 }),   // asOf 当日・2件・店販3000
+    rec({ custKey: 'B', date: '2026-07-17', kaikeiTotal: 5000 }),
+    rec({ custKey: 'C', date: '2026-07-10', kaikeiTotal: 8000 }),    // 7日前・店販なし
+    rec({ custKey: 'D', date: '2026-06-18', kaikeiTotal: 9000 }),    // 29日前（範囲内の端）
+    rec({ custKey: 'E', date: '2026-06-17', kaikeiTotal: 7000 }),    // 30日前（範囲外）
+    rec({ custKey: 'F', date: '2026-07-20', status: '受付待ち', yoyakuTotal: 12000 })  // 未来の見込み（除外）
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-17' });
+  const d = R.store.dailyRevenue;
+  check('dailyRevenue は30日ぶん', d.length, 30);
+  const last = d[d.length - 1];
+  check('末尾は基準日（月=7）', last.month, 7);
+  check('末尾は基準日（日=17）', last.day, 17);
+  check('末尾は基準日（isAsOf）', last.isAsOf ? 1 : 0, 1);
+  check('基準日の売上（10000+5000）', last.rev, 15000);
+  check('基準日の客数（2件）', last.count, 2);
+  check('基準日の店販売上（3000）', last.retail, 3000);
+  const jul10 = d.filter(function (x) { return x.month === 7 && x.day === 10; })[0];
+  check('店販の無い日は retail=0', jul10.retail, 0);
+  const first = d[0];
+  check('先頭は29日前（月=6）', first.month, 6);
+  check('先頭は29日前（日=18）', first.day, 18);
+  check('先頭（6/18）の売上', first.rev, 9000);
+  check('30日前（6/17）は範囲外＝合計に含まれない', d.some(function (x) { return x.month === 6 && x.day === 17; }) ? 1 : 0, 0);
+  check('受付待ち（見込み）は日次売上に含めない', d.reduce(function (s, x) { return s + x.rev; }, 0), 15000 + 8000 + 9000);
+  check('来店の無い日は rev=0/count=0', d.filter(function (x) { return x.rev === 0 && x.count === 0; }).length, 27);
+}
+
+// ============================================================================
+// Fixture BB — スタッフ月別リピート率・固定化率（staff[].repeatFixMonthly）
+// ============================================================================
+h('■ Fixture BB: スタッフ月別リピート率・固定化率の推移（獲得月コホート）');
+{
+  const rows = [
+    // momo が5月に獲得した3人: X→2回到達(Fres2)かつ3回到達(Fvis2&Fres3), Y→2回到達のみ, Z→未到達
+    rec({ custKey: 'X', staff: 'momo', date: '2026-05-02', kaikeiTotal: 5000 }),
+    rec({ custKey: 'X', staff: 'momo', date: '2026-05-20', kaikeiTotal: 5000 }),   // X: Fvis2
+    rec({ custKey: 'X', staff: 'momo', date: '2026-06-10', kaikeiTotal: 5000 }),   // X: Fvis3, Fres3 → 固定化分子
+    rec({ custKey: 'Y', staff: 'momo', date: '2026-05-05', kaikeiTotal: 5000 }),
+    rec({ custKey: 'Y', staff: 'momo', date: '2026-06-05', kaikeiTotal: 5000 }),   // Y: Fvis2, Fres2（3回目なし）
+    rec({ custKey: 'Z', staff: 'momo', date: '2026-05-09', kaikeiTotal: 5000 }),   // Z: Fvis1 → 未到達
+    // aoi が6月に獲得した1人（別スタッフ・別月であることの確認用）
+    rec({ custKey: 'W', staff: 'aoi', date: '2026-06-03', kaikeiTotal: 5000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-08-01' });
+  const momo = R.staff.filter(function (s) { return s.name === 'momo'; })[0];
+  const may = momo.repeatFixMonthly.filter(function (m) { return m.m === '2026-05'; })[0];
+  check('momo 5月コホート人数（X,Y,Z=3人）', may.cohortN, 3);
+  check('momo 5月リピート率（2回到達 X,Y=2/3）', Math.round(may.repeat * 1000) / 1000, 0.667);
+  check('momo 5月 固定化率の母数（Fvis>=2 は X,Y=2人）', may.fix2N, 2);
+  check('momo 5月 固定化率の分子（Fvis>=2 かつ Fres>=3 は X=1人）', may.fix3N, 1);
+  check('momo 5月固定化率（1/2=0.5）', may.fix, 0.5);
+  const momoJun = momo.repeatFixMonthly.filter(function (m) { return m.m === '2026-06'; })[0];
+  check('momo 6月コホートは0人 → repeat=null', momoJun.repeat, null);
+  check('momo 6月コホートは0人 → fix=null', momoJun.fix, null);
+  const aoi = R.staff.filter(function (s) { return s.name === 'aoi'; })[0];
+  const aoiJun = aoi.repeatFixMonthly.filter(function (m) { return m.m === '2026-06'; })[0];
+  check('aoi 6月コホート人数（W=1人）', aoiJun.cohortN, 1);
+  check('aoi 6月リピート率（Wは未到達 0/1）', aoiJun.repeat, 0);
+  check('aoi 6月固定化率（Fvis>=2 が0人 → null）', aoiJun.fix, null);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);

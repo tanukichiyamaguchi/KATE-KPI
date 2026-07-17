@@ -382,6 +382,27 @@
       };
     });
 
+    // ---- 直近30日の日次売上（概要タブ・会計済み実績）---------------------------
+    // asOf を最終日として過去30日ぶんの「会計済み売上（実績）」と客数（会計件数）を
+    // 日別に。受付待ちの見込みは含めない＝確定した実績カレンダー。金額は r.kaikei が
+    // 税抜/税込設定を織り込み済みなので、上位の税設定にそのまま追従する。
+    var dailyMap = {};
+    visitedRows.forEach(function (r) {
+      if (!r.date) return;
+      var dk = r.date.getFullYear() + '|' + r.date.getMonth() + '|' + r.date.getDate();
+      var e = dailyMap[dk] || (dailyMap[dk] = { rev: 0, count: 0, retail: 0 });
+      e.rev += r.kaikei; e.count += 1; e.retail += r.shohanAmt;   // shohanAmt は税抜/税込設定済み
+    });
+    var dailyRevenue = [];
+    for (var dOff = 29; dOff >= 0; dOff--) {
+      var dd = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate() - dOff);
+      var e2 = dailyMap[dd.getFullYear() + '|' + dd.getMonth() + '|' + dd.getDate()];
+      dailyRevenue.push({
+        month: dd.getMonth() + 1, day: dd.getDate(), dow: dd.getDay(),
+        rev: e2 ? e2.rev : 0, count: e2 ? e2.count : 0, retail: e2 ? e2.retail : 0, isAsOf: dOff === 0
+      });
+    }
+
     // ---- 新規/再来ミックス月次 (M19) ------------------------------------------
     // Per-VISIT ordinal (not the customer's first-*effective*-month binning used
     // by `monthly.new` above), so a customer whose very first interaction was a
@@ -654,6 +675,23 @@
       // so it deliberately spans all-time, not just the last 3 months.
       var regulars3 = visitedCusts.filter(function (c) { return c.firstVisitStaff === name && c.Fres >= 3; }).length;
 
+      // 月別リピート率・固定化率の推移（獲得月コホート）。その月にこのスタッフが
+      // 初回担当した顧客を母数に、リピート率＝2回目予約到達(Fres>=2)の割合、
+      // 固定化率＝実来店2回目(Fvis>=2)のうち3回目予約確保(Fres>=3)の割合。店舗全体の
+      // リピート率/固定化率と同一定義。直近の獲得月は右打ち切りで低めに出る。
+      var repeatFixMonthly = months.map(function (mo) {
+        var cohort = customers.filter(function (c) { return c.firstVisitStaff === name && c.firstVisitMonth === mo; });
+        var n = cohort.length;
+        var reach2N = cohort.filter(function (c) { return c.Fres >= 2; }).length;
+        var fix2N = cohort.filter(function (c) { return c.Fvis >= 2; }).length;
+        var fix3N = cohort.filter(function (c) { return c.Fvis >= 2 && c.Fres >= 3; }).length;
+        return {
+          m: mo, cohortN: n, reach2N: reach2N, fix2N: fix2N, fix3N: fix3N,
+          repeat: n ? reach2N / n : null,
+          fix: fix2N ? fix3N / fix2N : null
+        };
+      });
+
       // 分母・分子（人数）を UI で明示するための実数。reach2/3/4 は acqRecent が母数、
       // fixation は「実来店2回目」が母数。
       var reachDen = acqRecent.length;
@@ -668,7 +706,8 @@
         fixDenom: fix2Visit, fixNumer: fix3Reserve,
         personalBest: personalBest, regulars3: regulars3,
         revPeriods: periodStats(staffVis),
-        utilization: utilizationMonthly(mrows)
+        utilization: utilizationMonthly(mrows),
+        repeatFixMonthly: repeatFixMonthly
       };
     });
 
@@ -800,7 +839,7 @@
         funnel: funnel, churn: churn, cancel: cancel, route: route, retail: retail,
         ltv: { current: Math.round(ltv.current), predicted: Math.round(ltv.predicted), expectedVisits: round(ltv.expectedVisits, 2), observedVisits: round(ltv.observedVisits, 2) },
         monthly: monthly, cohort: cohort, visitCountBreakdown: visitCountBreakdown, newMix: newMix, composition: composition, serviceRetailMonthly: serviceRetailMonthly,
-        revPeriods: revPeriods, retailPeriods: retailPeriods
+        revPeriods: revPeriods, retailPeriods: retailPeriods, dailyRevenue: dailyRevenue
       },
       staff: staff,
       trend: {
