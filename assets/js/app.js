@@ -190,16 +190,24 @@
   // （基準日）はアクセント枠。金額はデスクトップ=フル, 狭幅=圧縮表記。
   var DR_WEEK = ['月', '火', '水', '木', '金', '土', '日'];
   function drMondayIdx(dow) { return (dow + 6) % 7; }   // 日曜=0 → 月曜始まりの列index（月=0…日=6）
+  // 日次カレンダー狭幅用の圧縮表記：万・億で統一（k表記は使わない）。
+  // 例 1000→0.1万, 7000→0.7万, 34055→3.4万, 100000→10万, 1000未満は数値のまま。
+  function drCompact(n) {
+    var a = Math.abs(n);
+    if (a >= 1e8) return (n / 1e8).toFixed(a >= 1e9 ? 0 : 1) + '億';
+    if (a >= 1e3) return (n / 1e4).toFixed(a >= 1e5 ? 0 : 1) + '万';
+    return F.int(n);
+  }
   function dailyDayCell(d) {
     var cls = 'dr-cell' + (d.dow === 0 ? ' dr-sun' : d.dow === 6 ? ' dr-sat' : '') + (d.isAsOf ? ' dr-today' : '');
     // 店販売上がある日だけ、()で店販売上金額を併記。無い日も同じ行を空で確保して
     // 全セルの高さを揃える（縦に伸びてバラつくのを防ぐ）。
     var retail = d.retail > 0
-      ? '<span class="full-num">（' + F.int(d.retail) + '）</span><span class="compact-num">（' + F.compact(d.retail) + '）</span>'
+      ? '<span class="full-num">（' + F.int(d.retail) + '）</span><span class="compact-num">（' + drCompact(d.retail) + '）</span>'
       : '&nbsp;';
     return '<div class="' + cls + '">' +
       '<div class="dr-date">' + d.month + '/' + d.day + '</div>' +
-      '<div class="dr-rev"><span class="full-num">' + F.int(d.rev) + '</span><span class="compact-num">' + F.compact(d.rev) + '</span></div>' +
+      '<div class="dr-rev"><span class="full-num">' + F.int(d.rev) + '</span><span class="compact-num">' + drCompact(d.rev) + '</span></div>' +
       '<div class="dr-retail" title="うち店販売上">' + retail + '</div>' +
       '<div class="dr-cnt">' + d.count + '人</div>' +
       '</div>';
