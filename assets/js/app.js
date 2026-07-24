@@ -262,7 +262,7 @@
         '<div class="note-inline" style="margin-top:10px">来店周期の中央値 <b>' + s.visitCycleMedianDays + '日</b>。</div>'
     });
     html += card({
-      col: 'col-7', title: '月次 予約ベース売上' + taxTag + help('月ごとの予約ベース売上を1色の棒で表示。会計済みの実績と受付待ちの見込み（受付待ちの予約金額・会計前）を合算した金額です。金額は税抜。'), sub: '会計済み＋受付待ちの合算（予約ベース）', tag: '¥',
+      col: 'col-7', title: '月次 予約ベース売上' + taxTag + help('月ごとの売上を、会計済み（実績・濃色）と受付待ち（見込み・薄色）の内訳で積み上げ表示。見込みは受付待ちの予約金額（会計前）を反映したもの。金額は税抜。'), sub: '会計済み（実績）＋ 受付待ち（見込み）', tag: '¥',
       body: chartBox('cRevenue', 260)
     });
     html += card({
@@ -322,11 +322,12 @@
     draw('mFix', function (el) { C.meter(el, { label: '固定化率（3回到達）', help: '分母は「実際に2回来店した顧客」、分子は「そのうち3回目の予約を確保した人（受付待ち含む・キャンセル後の再予約も計上）」。リピート率（2回到達）は将来予約も含めた予約ベースで数えるため母集団が異なる。', value: s.fixationRate / 100, display: pct(s.fixationRate), target: 0.6, sub: frac(s.fixNumer, s.fixDenom, '人') + ' ・ 目安 60%' }); });
 
     draw('cRevenue', function (el) {
-      // 会計済み（実績）＋受付待ち（見込み）を合算した予約ベース売上を、1色の棒で表示。
+      // 会計済み（実績・濃色）＋受付待ち（見込み・薄色）を積み上げ表示。
       C.columns(el, {
-        groups: s.monthly.map(function (m) { return monthShort(m.m); }),
+        groups: s.monthly.map(function (m) { return monthShort(m.m); }), stacked: true,
         series: [
-          { name: '予約ベース売上', color: cvar('--series-1'), values: s.monthly.map(function (m) { return m.revActual + m.revExpected; }) }
+          { name: '実績（会計済み）', color: cvar('--series-1'), values: s.monthly.map(function (m) { return m.revActual; }) },
+          { name: '見込み（受付待ち）', color: cvar('--funnel-2'), values: s.monthly.map(function (m) { return m.revExpected; }) }
         ],
         valueFmt: function (v) { return yen(Math.round(v)); }, totalFmt: F.compact, yFmt: F.compact, height: 260
       });
