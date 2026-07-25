@@ -262,7 +262,7 @@
         '<div class="note-inline" style="margin-top:10px">来店周期の中央値 <b>' + s.visitCycleMedianDays + '日</b>。</div>'
     });
     html += card({
-      col: 'col-7', title: '月次 予約ベース売上' + taxTag + help('月ごとの売上を、会計済み（実績）と受付待ち（見込み）の内訳で積み上げ表示。見込みは受付待ちの予約金額（会計前）を反映したもの。金額は税抜。'), sub: '会計済み（実績）＋ 受付待ち（見込み）', tag: '¥',
+      col: 'col-7', title: '月次 予約ベース売上' + taxTag + help('月ごとの売上を、会計済み（実績・濃色）と受付待ち（見込み・薄色）の内訳で積み上げ表示。見込みは受付待ちの予約金額（会計前）を反映したもの。金額は税抜。'), sub: '会計済み（実績）＋ 受付待ち（見込み）', tag: '¥',
       body: chartBox('cRevenue', 260)
     });
     html += card({
@@ -307,8 +307,8 @@
     var lastMix = s.newMix.filter(function (m) { return m.new + m.repeat > 0; }).slice(-1)[0];
     var mixNote = lastMix && (lastMix.new + lastMix.repeat) ? '直近月（' + monthShort(lastMix.m) + '）の再来比率 ' + pct(lastMix.repeat / (lastMix.new + lastMix.repeat) * 100, 0) : '月次の新規・再来来店数';
     html += card({
-      col: 'col-6', title: '新規・再来' + help('月ごとの来店・予約を、その顧客にとって何回目にあたるかで内訳表示（新規／2回目／3回目／4回目以上）。濃色は会計済みの実績、薄色（同じ色）は受付待ちの見込み。スタッフタブの「月次 予約数の比較」と同じ考え方（実績＋見込みの予約ベース）。棒の上の数字は実績＋見込みの合計件数。'),
-      sub: mixNote + '　※薄色は受付待ちの見込み（予約ベース）', tag: '件', body: chartBox('cNewMix', 210)
+      col: 'col-6', title: '新規・再来' + help('月ごとの来店・予約を、その顧客にとって何回目にあたるかで内訳表示（新規／2回目／3回目／4回目以上）。会計済みの実績と受付待ちの見込みを合算した予約ベースで、回数別に1色で積み上げ。スタッフタブの「月次 予約数の比較」と同じ考え方。棒の上の数字は合計件数。'),
+      sub: mixNote + '　※予約ベース（会計済み＋受付待ちの合算）', tag: '件', body: chartBox('cNewMix', 210)
     });
     html += card({ col: 'col-6', title: '来店回数の構成' + help('全期間を通じて、来店回数（1回目・2回目・3回目・4回目以上）ごとの来店件数と、その回数における平均客単価。'), sub: '回数別', body: '<div id="cVisitComp"></div>' });
 
@@ -322,6 +322,7 @@
     draw('mFix', function (el) { C.meter(el, { label: '固定化率（3回到達）', help: '分母は「実際に2回来店した顧客」、分子は「そのうち3回目の予約を確保した人（受付待ち含む・キャンセル後の再予約も計上）」。リピート率（2回到達）は将来予約も含めた予約ベースで数えるため母集団が異なる。', value: s.fixationRate / 100, display: pct(s.fixationRate), target: 0.6, sub: frac(s.fixNumer, s.fixDenom, '人') + ' ・ 目安 60%' }); });
 
     draw('cRevenue', function (el) {
+      // 会計済み（実績・濃色）＋受付待ち（見込み・薄色）を積み上げ表示。
       C.columns(el, {
         groups: s.monthly.map(function (m) { return monthShort(m.m); }), stacked: true,
         series: [
@@ -349,20 +350,16 @@
       });
     });
     draw('cNewMix', function (el) {
-      // 予約ベースの内訳（スタッフタブの「月次 予約数の比較」と同じ考え方）:
-      // 濃色=会計済みの実績（newMix と同じ値）、薄色（同色・半透明）=受付待ちの見込み。
+      // 予約ベースの内訳（会計済みの実績＋受付待ちの見込みを合算）。回数別に1色で
+      // 積み上げ（見込みを薄色で分けず、確定分と合算して表示）。
       var comp = s.newMix.map(function (m) { return s.composition.filter(function (x) { return x.m === m.m; })[0] || { expNew: 0, expV2: 0, expV3: 0, expV4: 0 }; });
       C.columns(el, {
         groups: s.newMix.map(function (m) { return monthShort(m.m); }), stacked: true,
         series: [
-          { name: '新規', color: cvar('--funnel-2'), values: s.newMix.map(function (m) { return m.new; }) },
-          { name: '2回目', color: cvar('--funnel-3'), values: s.newMix.map(function (m) { return m.v2; }) },
-          { name: '3回目', color: cvar('--funnel-4'), values: s.newMix.map(function (m) { return m.v3; }) },
-          { name: '4回目以上', color: cvar('--funnel-5'), values: s.newMix.map(function (m) { return m.v4; }) },
-          { name: '新規（見込み）', color: cvar('--funnel-2'), opacity: 0.45, values: comp.map(function (c) { return c.expNew; }) },
-          { name: '2回目（見込み）', color: cvar('--funnel-3'), opacity: 0.45, values: comp.map(function (c) { return c.expV2; }) },
-          { name: '3回目（見込み）', color: cvar('--funnel-4'), opacity: 0.45, values: comp.map(function (c) { return c.expV3; }) },
-          { name: '4回目以上（見込み）', color: cvar('--funnel-5'), opacity: 0.45, values: comp.map(function (c) { return c.expV4; }) }
+          { name: '新規', color: cvar('--funnel-2'), values: s.newMix.map(function (m, i) { return m.new + comp[i].expNew; }) },
+          { name: '2回目', color: cvar('--funnel-3'), values: s.newMix.map(function (m, i) { return m.v2 + comp[i].expV2; }) },
+          { name: '3回目', color: cvar('--funnel-4'), values: s.newMix.map(function (m, i) { return m.v3 + comp[i].expV3; }) },
+          { name: '4回目以上', color: cvar('--funnel-5'), values: s.newMix.map(function (m, i) { return m.v4 + comp[i].expV4; }) }
         ],
         valueFmt: function (v) { return v + '件'; }, height: 210
       });
@@ -493,7 +490,7 @@
       });
     });
 
-    html += card({ col: 'col-12', title: '月次 予約数の比較' + help('月ごとにスタッフの棒を並べた積み上げ棒グラフ。色相でスタッフ、濃淡で来店回数（新規／2回目／3回目／4回目以上）を表現。薄い色は受付待ちの見込み分。バーの下の色帯がスタッフ名の目印、上の数字は月ごとの合計件数。'), tag: '件', body: chartBox('cStaffRes', 250) });
+    html += card({ col: 'col-12', title: '月次 予約数の比較' + help('月ごとにスタッフの棒を並べた積み上げ棒グラフ。色相でスタッフ、濃淡で来店回数（新規／2回目／3回目／4回目以上）を表現。会計済みの実績と受付待ちの見込みを合算した予約ベース。バーの下の色帯がスタッフ名の目印、上の数字は月ごとの合計件数。'), tag: '件', body: chartBox('cStaffRes', 250) });
     html += card({ col: 'col-6', title: '月次 予約ベース売上の比較' + help('月ごとの売上（会計済みの実績＋受付待ちの見込み）をスタッフ別に比較。'), tag: '¥', body: chartBox('cStaffRev', 240) });
     html += card({ col: 'col-6', title: '客単価の推移' + help('月ごとの客単価（予約ベース売上÷予約数）の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffSpend', 230) });
     var censNote = A.meta.completedOnly ? '　※直近の月は再来待ちのため集計対象外' : '';
@@ -541,17 +538,15 @@
     });
     draw('cStaffRes', function (el) {
       function tierColor(tier) { return function (bi) { return staffTierColor(resSubLabels[bi], tier); }; }
+      // 受付待ちの見込みを薄色で分けず、確定分（会計済み）と合算して回数別に1色で積み上げ。
+      function sum(a, b) { return a.map(function (v, i) { return v + b[i]; }); }
       C.columnClusters(el, {
         groups: resGroups, clusterSize: staff.length, subLabels: resSubLabels, subColors: resSubColors,
         series: [
-          { name: '新規', color: tierColor(0), values: resData.new },
-          { name: '2回目', color: tierColor(1), values: resData.v2 },
-          { name: '3回目', color: tierColor(2), values: resData.v3 },
-          { name: '4回目以上', color: tierColor(3), values: resData.v4 },
-          { name: '新規（見込み）', color: tierColor(0), opacity: 0.45, values: resData.expNew },
-          { name: '2回目（見込み）', color: tierColor(1), opacity: 0.45, values: resData.expV2 },
-          { name: '3回目（見込み）', color: tierColor(2), opacity: 0.45, values: resData.expV3 },
-          { name: '4回目以上（見込み）', color: tierColor(3), opacity: 0.45, values: resData.expV4 }
+          { name: '新規', color: tierColor(0), values: sum(resData.new, resData.expNew) },
+          { name: '2回目', color: tierColor(1), values: sum(resData.v2, resData.expV2) },
+          { name: '3回目', color: tierColor(2), values: sum(resData.v3, resData.expV3) },
+          { name: '4回目以上', color: tierColor(3), values: sum(resData.v4, resData.expV4) }
         ],
         valueFmt: function (v) { return v + '件'; }, hideLegend: true, height: 250
       });
