@@ -791,6 +791,23 @@ h('■ Fixture AA: 直近30日の日次売上（会計済み実績・客数）')
   check('7/20 の受付待ち予約金額（12000）', jul20.resAmount, 12000);
   check('予約の無い日は resCount=0 / resAmount=0', up.filter(function (x) { return x.resCount === 0 && x.resAmount === 0; }).length, 29);
   check('未来日に会計済み実績は混ざらない（rev合計0）', up.reduce(function (s, x) { return s + x.rev; }, 0), 0);
+
+  // 年商カード用の全期間日次（dailyAll）
+  const all = R.store.dailyAll;
+  check('dailyAll は ymd 昇順', all.every(function (x, i) { return i === 0 || all[i - 1].ymd < x.ymd; }) ? 1 : 0, 1);
+  // dailyAll は30日窓ではなく全期間。E(6/17) も含むので実績5件・39000 が全量。
+  const sumRev = function (from, to) {
+    return all.reduce(function (s, x) { return x.ymd >= from && x.ymd <= to ? s + x.rev : s; }, 0);
+  };
+  check('dailyAll の会計済み売上合計＝全期間の実績売上', all.reduce(function (s, x) { return s + x.rev; }, 0), 39000);
+  check('dailyAll の会計件数合計＝全来店数', all.reduce(function (s, x) { return s + x.count; }, 0), 5);
+  check('dailyAll の受付待ち金額合計＝見込み売上', all.reduce(function (s, x) { return s + x.resAmount; }, 0), 12000);
+  check('dailyAll の受付待ち件数合計', all.reduce(function (s, x) { return s + x.resCount; }, 0), 1);
+  check('年商（2026/1/1〜12/31）＝全期間と一致（データが2026年のみ）', sumRev(20260101, 20261231), 39000);
+  check('前年（2025）に絞ると0', sumRev(20250101, 20251231), 0);
+  check('期間を6/18〜7/17に絞ると32000（30日窓と一致）', sumRev(20260618, 20260717), 32000);
+  check('期間を7月のみに絞ると23000（A,B,C）', sumRev(20260701, 20260731), 23000);
+  check('dailyAll の ymd は y/m/d と一致', all.every(function (x) { return x.ymd === x.y * 10000 + x.m * 100 + x.d; }) ? 1 : 0, 1);
 }
 
 // ============================================================================

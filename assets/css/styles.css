@@ -169,6 +169,14 @@ svg { display: block; }
 .pill.accent { background: var(--accent); color: #fff; }
 .pill.accent:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
 .pill.icon-only { width: 34px; padding: 0; }
+/* 年商カードの期間コントロール（年ボタン／開始・終了日） */
+.ann-range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.ann-range label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-secondary); }
+.ann-range input[type="date"] {
+  font-family: inherit; font-size: 14px; color: var(--ink-primary); color-scheme: light dark;
+  background: var(--surface-2); border: none; border-radius: 8px; padding: 7px 10px; outline: none;
+}
+.ann-range input[type="date"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pill svg { width: 17px; height: 17px; stroke-width: 1.7; }
 .badge-soft { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 11px; font-weight: 600; white-space: nowrap; flex: none; }
 .badge-soft .dot { width: 7px; height: 7px; border-radius: 980px; background: var(--good); }
