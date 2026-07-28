@@ -418,6 +418,31 @@
       var e = futureMap[fk] || (futureMap[fk] = { resCount: 0, resAmount: 0 });
       e.resCount += 1; e.resAmount += r.yoyaku;   // yoyaku は税抜/税込設定済み
     });
+    // ---- 全期間の日次集計（年商カード用）--------------------------------------
+    // 年商は「1/1〜12/31 の会計済み売上」が基本だが、任意の期間で絞り込めるように
+    // 全期間ぶんを日別の粒度で持たせておく（合計は UI 側で範囲を指定して出す）。
+    // ymd は 20260703 形式の数値なので、範囲比較も並べ替えもそのまま出来る。
+    var allMap = {};
+    var allBucket = function (dt) {
+      var k = dt.getFullYear() * 10000 + (dt.getMonth() + 1) * 100 + dt.getDate();
+      return allMap[k] || (allMap[k] = {
+        ymd: k, y: dt.getFullYear(), m: dt.getMonth() + 1, d: dt.getDate(),
+        rev: 0, count: 0, retail: 0, resAmount: 0, resCount: 0
+      });
+    };
+    visitedRows.forEach(function (r) {
+      if (!r.date) return;
+      var b = allBucket(r.date);
+      b.rev += r.kaikei; b.count += 1; b.retail += r.shohanAmt;   // 会計済み＝確定した売上
+    });
+    rows.forEach(function (r) {
+      if (!r.isFuture || !r.date) return;
+      var b = allBucket(r.date);
+      b.resAmount += r.yoyaku; b.resCount += 1;                   // 受付待ち＝これからの見込み
+    });
+    var dailyAll = Object.keys(allMap).map(function (k) { return allMap[k]; })
+      .sort(function (a, b) { return a.ymd - b.ymd; });
+
     var upcomingReservations = [];
     for (var fOff = 1; fOff <= 30; fOff++) {
       var fd = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate() + fOff);
@@ -867,7 +892,7 @@
         ltv: { current: Math.round(ltv.current), predicted: Math.round(ltv.predicted), expectedVisits: round(ltv.expectedVisits, 2), observedVisits: round(ltv.observedVisits, 2) },
         monthly: monthly, cohort: cohort, visitCountBreakdown: visitCountBreakdown, newMix: newMix, composition: composition, serviceRetailMonthly: serviceRetailMonthly,
         revPeriods: revPeriods, retailPeriods: retailPeriods,
-        dailyRevenue: dailyRevenue, upcomingReservations: upcomingReservations
+        dailyRevenue: dailyRevenue, upcomingReservations: upcomingReservations, dailyAll: dailyAll
       },
       staff: staff,
       trend: {

@@ -408,6 +408,27 @@
   function tileSpark(id, values) { draw(id, function (el) { C.sparkline(el, values, cvar('--series-1')); }); }
   function miniStat(v, label, dataKpi) { return '<div class="mini-stat"' + (dataKpi ? ' data-kpi="' + dataKpi + '"' : '') + '><b>' + v + '</b><span>' + label + '</span></div>'; }
 
+  // ---- 年商カードの期間ヘルパー ---------------------------------------------
+  // 期間は 20260703 形式の数値（ymd）で扱う。数値なので範囲比較がそのまま出来て、
+  // <input type="date"> の 'YYYY-MM-DD' とは下の2関数で相互変換する。
+  function ymdToInput(n) { var s = String(n); return s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8); }
+  function inputToYmd(v) { var p = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || ''); return p ? +p[1] * 10000 + +p[2] * 100 + +p[3] : null; }
+  function ymdLabel(n) { var s = String(n); return +s.slice(0, 4) + '年' + (+s.slice(4, 6)) + '月' + (+s.slice(6, 8)) + '日'; }
+  // 指定期間の日次を合計する。営業日数＝会計が1件でもあった日、月数＝会計のあった
+  // 月の種類数（平均月商の分母。データの無い月で薄まらないようにするため）。
+  function sumDays(days, from, to) {
+    var t = { rev: 0, count: 0, retail: 0, resAmount: 0, resCount: 0, bizDays: 0, months: 0 };
+    var mset = {};
+    days.forEach(function (x) {
+      if (x.ymd < from || x.ymd > to) return;
+      t.rev += x.rev; t.count += x.count; t.retail += x.retail;
+      t.resAmount += x.resAmount; t.resCount += x.resCount;
+      if (x.count > 0) { t.bizDays += 1; mset[x.y * 100 + x.m] = 1; }
+    });
+    t.months = Object.keys(mset).length;
+    return t;
+  }
+
   // 期間バケット売上テーブル（直近3ヶ月/先月/今月 × 平均月間売上/平均日間売上）。
   // engine の revPeriods（実績のみ・営業日割り）をそのまま表示する。月の範囲や
   // 「集計中」「営業日」といった補足は、カード見出しのヘルプで説明済みなので
@@ -870,6 +891,9 @@
     if (!s) return '<div class="status-line"><i style="background:var(--ink-muted)"></i>未読み込み</div>';
     return '<div class="status-line" style="color:var(--status-good)"><i style="background:var(--status-good)"></i>読み込み済み・' + F.int(s.records.length) + '件' + (s.fileName ? '・' + esc(s.fileName) : '（' + esc(s.via) + '）') + '</div>';
   }
+  // 年商カードの表示期間（ymd）。null のあいだは基準日の年の 1/1〜12/31 を使う。
+  var annualFrom = null, annualTo = null;
+
   function renderData() {
     var A = state.analytics, m = A.meta;
     // 管理ロック中は、このページの管理操作（連携URLの表示・変更・取り込み等）を
@@ -904,9 +928,56 @@
       wireUpload();
       return;
     }
-    // 予約状況（日別）— ここから下は管理ロック解除済みのみ表示される領域なので、
+    // 年商・予約状況 — ここから下は管理ロック解除済みのみ表示される領域なので、
     // 売上の日別内訳と今後の予約はオーナー（管理用の合言葉を入力した人）限定になる。
     var taxTagD = m.taxExcluded ? '（税抜）' : '';
+
+    // ---- 年商（既定は 1/1〜12/31・任意の期間に絞り込み可）---------------------
+    var annDays = A.store.dailyAll || [];
+    var annAllFrom = annDays.length ? annDays[0].ymd : 0;
+    var annAllTo = annDays.length ? annDays[annDays.length - 1].ymd : 0;
+    var annYears = [];
+    annDays.forEach(function (x) { if (annYears.indexOf(x.y) < 0) annYears.push(x.y); });
+    annYears.sort(function (a, b) { return a - b; });
+    // 初期表示は「基準日の年の 1/1〜12/31」。一度動かしたらタブを行き来しても保つ。
+    if (annualFrom == null || annualTo == null) {
+      var asOfYear = m.asOf ? +m.asOf.slice(0, 4) : new Date().getFullYear();
+      annualFrom = asOfYear * 10000 + 101; annualTo = asOfYear * 10000 + 1231;
+    }
+    function annualStats() {
+      var t = sumDays(annDays, annualFrom, annualTo);
+      return heroMetric(F.int(t.rev), null, '会計済み売上（実績）', true, 'annual-revenue') +
+        (t.resAmount > 0
+          ? '<div class="note-inline" style="margin-top:8px">＋ 受付待ちの見込み ' + yen(t.resAmount) + '（' + t.resCount + '件）　→　合計見込み <b>' + yen(t.rev + t.resAmount) + '</b></div>'
+          : '') +
+        '<div class="mini-stats" style="margin-top:14px">' +
+        miniStat(yen(t.rev - t.retail), '施術売上') +
+        miniStat(yen(t.retail), '店販売上') +
+        miniStat(F.int(t.count) + '件', '会計件数') +
+        miniStat(t.count ? yen(Math.round(t.rev / t.count)) : '—', '客単価') +
+        miniStat(t.bizDays + '日', '営業日数') +
+        // 分母は概要の「売上サマリー」と同じ（月＝会計のあった月数／日＝会計のあった日数）。
+        miniStat(t.months ? yen(Math.round(t.rev / t.months)) : '—', '平均月間売上') +
+        miniStat(t.bizDays ? yen(Math.round(t.rev / t.bizDays)) : '—', '平均日間売上') +
+        '</div>';
+    }
+    html += card({
+      col: 'col-12', title: '年商' + taxTagD + help('選んだ期間の「会計済み売上（実績）」の合計。既定は基準日の年の1月1日〜12月31日で、年のボタンや開始・終了日で任意の期間に絞り込めます。受付待ちの予約がある期間では、その見込み額と合計見込みも下に併記します。施術売上＝売上－店販売上。営業日数＝会計が1件以上あった日数。平均月間売上＝売上÷会計のあった月数、平均日間売上＝売上÷営業日数（どちらも概要の「売上サマリー」と同じ分母なので、休業日や未来の月で薄まりません）。金額は税抜。'),
+      sub: '既定は1月1日〜12月31日。期間は下のボタン・日付で絞り込めます',
+      body: '<div id="annualCard">' +
+        '<div class="note-inline" id="annualPeriod" style="margin-bottom:10px"></div>' +
+        '<div id="annualOut"></div>' +
+        '<div class="ann-range">' +
+        annYears.map(function (y) { return '<button type="button" class="pill" data-y="' + y + '">' + y + '年</button>'; }).join('') +
+        '<button type="button" class="pill" data-y="all">全期間</button>' +
+        '</div>' +
+        '<div class="ann-range">' +
+        '<label>開始 <input type="date" id="annFrom"></label>' +
+        '<span aria-hidden="true">〜</span>' +
+        '<label>終了 <input type="date" id="annTo"></label>' +
+        '</div>' +
+        '</div>'
+    });
     html += card({
       col: 'col-12', title: '予約状況（日別）' + taxTagD + help('集計基準日までの過去30日は「会計済みの売上（実績）と客数」、基準日の翌日からの30日は「受付待ちの予約金額（見込み）と予約件数」を、地続きの1つのカレンダーで表示。店販売上がある日は売上の下に（ ）で店販売上金額を併記。未来の日は枠線で区別しています。土曜は青、日曜は赤、最新日（基準日）はアクセント枠。金額は税抜。'),
       sub: '過去30日の実績（人）＋ 今後1ヶ月の予約（件）　※（ ）内は店販売上',
@@ -1037,6 +1108,38 @@
     });
     mount('data', head + '<div class="grid">' + html + '</div>');
     wireUpload();
+
+    // 年商カード: 期間ボタン／日付を変えたら数字だけ差し替える（全体は再描画しない）。
+    var annBox = $('#annualCard');
+    if (annBox) {
+      var annOut = $('#annualOut'), annFromI = $('#annFrom'), annToI = $('#annTo'), annLabel = $('#annualPeriod');
+      var annRefresh = function () {
+        annOut.innerHTML = annualStats();
+        annFromI.value = ymdToInput(annualFrom); annToI.value = ymdToInput(annualTo);
+        annLabel.textContent = ymdLabel(annualFrom) + ' 〜 ' + ymdLabel(annualTo) + ' の売上';
+        Array.prototype.forEach.call(annBox.querySelectorAll('.pill[data-y]'), function (b) {
+          var on = b.dataset.y === 'all'
+            ? (annualFrom === annAllFrom && annualTo === annAllTo)
+            : (annualFrom === +b.dataset.y * 10000 + 101 && annualTo === +b.dataset.y * 10000 + 1231);
+          b.classList.toggle('accent', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+      };
+      annBox.addEventListener('click', function (e) {
+        var b = e.target.closest('.pill[data-y]'); if (!b) return;
+        if (b.dataset.y === 'all') { annualFrom = annAllFrom; annualTo = annAllTo; }
+        else { annualFrom = +b.dataset.y * 10000 + 101; annualTo = +b.dataset.y * 10000 + 1231; }
+        annRefresh();
+      });
+      var annOnDate = function () {
+        var f = inputToYmd(annFromI.value), t = inputToYmd(annToI.value);
+        if (f == null || t == null) return;
+        if (f > t) { var sw = f; f = t; t = sw; }   // 開始・終了を逆に入れても壊れないよう入れ替える
+        annualFrom = f; annualTo = t; annRefresh();
+      };
+      annFromI.addEventListener('change', annOnDate);
+      annToI.addEventListener('change', annOnDate);
+      annRefresh();
+    }
   }
 
   function wireUpload() {
