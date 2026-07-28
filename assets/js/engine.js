@@ -376,6 +376,9 @@
         m: mo, res: res, actual: vis.length, exp: fut.length, rev: revActual + revExpected,
         revActual: revActual, revExpected: revExpected,
         spend: res ? Math.round((revActual + revExpected) / res) : 0,   // 予約ベース客単価（元ワークブック準拠・0予約月は0＝スパークライン安全）
+        // 実績客単価＝会計済み売上 ÷ 来店件数（見込みを含まない）。来店0件の月は
+        // 「測定不能」＝null にして、推移グラフで¥0に落とさずギャップにする。
+        spendActual: vis.length ? Math.round(revActual / vis.length) : null,
         new: newByMonth[mo] || 0,
         cancel: conf.length ? canc.length / conf.length : null,
         nextRes: vis.length ? nextCnt / vis.length : null

@@ -147,6 +147,7 @@
     });
 
     function defined(v) { return v != null && isFinite(v); }
+    var endLabelBoxes = [];   // 描画済みの終端ラベル矩形（重なり検出用・下記参照）
     series.forEach(function (s, si) {
       var color = s.color || seriesColor(si);
       if (!s.values || !s.values.length) return;   // skip empty series
@@ -187,8 +188,16 @@
         // y is the text BASELINE: clamp so the glyphs never poke above the SVG
         // when the series ends at/near the axis maximum (e.g. a 100% month on
         // a yMax:100 chart put the label's top edge at a negative y).
-        var lbl = svgEl('text', { x: last[0], y: Math.max(last[1] - 10, 12), 'text-anchor': 'end', fill: ink.secondary(), 'font-size': 11, 'font-weight': 600, opacity: 0 });
-        lbl.textContent = s.name; svg.appendChild(lbl); animateAttr(lbl, 'opacity', 0, 1, 400, 900);
+        var ly = Math.max(last[1] - 10, 12);
+        var lbl = svgEl('text', { x: last[0], y: ly, 'text-anchor': 'end', fill: ink.secondary(), 'font-size': 11, 'font-weight': 600, opacity: 0 });
+        lbl.textContent = s.name; svg.appendChild(lbl);
+        // 系列の終端が近い（別の月で終わる／値が接近する）と、終端ラベル同士が
+        // 重なって判読不能になる。重なる場合はラベルを出さない（凡例で名前は追える）。
+        var lw = lbl.getComputedTextLength ? lbl.getComputedTextLength() : String(s.name).length * 11;
+        var box = { x1: last[0] - lw, x2: last[0], y1: ly - 11, y2: ly + 3 };
+        var hits = endLabelBoxes.some(function (b) { return box.x1 < b.x2 && box.x2 > b.x1 && box.y1 < b.y2 && box.y2 > b.y1; });
+        if (hits) svg.removeChild(lbl);
+        else { endLabelBoxes.push(box); animateAttr(lbl, 'opacity', 0, 1, 400, 900); }
       }
     });
 

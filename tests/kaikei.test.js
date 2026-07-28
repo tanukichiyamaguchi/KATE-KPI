@@ -116,6 +116,15 @@ h('■ Fixture C: revActual/revExpected の分解');
   check('monthly.exp', m.exp, 2);
   // spend is 予約ベース (元ワークブック準拠): 予約ベース売上 45000 ÷ 予約数 4 = 11250
   check('monthly.spend (予約ベース客単価)', m.spend, 11250);
+  // spendActual は見込みを含まない: 会計済み 25000 ÷ 来店 2件 = 12500
+  check('monthly.spendActual (実績客単価)', m.spendActual, 12500);
+  // 来店ゼロの月は測定不能 → null（推移グラフで¥0に落とさずギャップにする）
+  const rowsNoVisit = [rec({ custKey: 'X1', status: '受付待ち', date: '2026-07-20', yoyakuTotal: 9000 }),
+    rec({ custKey: 'X2', date: '2026-06-01', kaikeiTotal: 5000 })];
+  const R2 = engine.compute(rowsNoVisit, { asOf: '2026-07-04' });
+  const jul = R2.store.monthly.find(x => x.m === '2026-07');
+  check('来店0件の月の spendActual は null', jul.spendActual === null ? 1 : 0, 1);
+  check('来店0件でも spend（予約ベース）は算出される', jul.spend, 9000);
 }
 
 // ============================================================================

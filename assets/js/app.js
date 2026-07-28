@@ -285,6 +285,11 @@
       col: 'col-6', title: '月次コホート LTV' + help('初回来店した月ごとに顧客をグループ化し、そのグループの現時点までの累計売上を平均したもの。'), sub: '初回獲得月ごとの累計売上', tag: '¥',
       body: chartBox('cTCohortL', 220)
     });
+    html += card({
+      col: 'col-6', title: '客単価の推移' + taxTag + help('月ごとの客単価の推移。「予約ベース客単価」＝予約ベース売上（会計済みの実績＋受付待ちの見込み）÷ 予約件数（来店＋受付待ち）。「実績客単価」＝会計済み売上 ÷ 来店件数で、見込みを含まない確定値。予約・来店の無い月は線を引きません。金額は税抜。'),
+      sub: '予約ベース客単価と実績客単価の月次推移', tag: '¥',
+      body: chartBox('cSpendTrend', 230)
+    });
 
     // 店販 + 新規/再来 + visit-count
     // 視認性改善: 従来は4つの数字が同サイズで並び主役が埋没していたため、
@@ -337,6 +342,20 @@
     });
     draw('cTCohortL', function (el) {
       C.columns(el, { groups: t.monthlyCohort.map(function (c) { return monthShort(c.m); }), series: [{ name: 'LTV', color: cvar('--series-4'), values: t.monthlyCohort.map(function (c) { return c.ltv; }) }], valueFmt: yen, yFmt: F.compact, height: 220 });
+    });
+    draw('cSpendTrend', function (el) {
+      // 予約ベース客単価（見込み込み）と実績客単価（会計済みのみ）の月次推移。
+      // 予約・来店の無い月は null にして¥0へ落とさずギャップにする。
+      C.lineArea(el, {
+        xLabels: s.monthly.map(function (m) { return monthShort(m.m); }), area: false,
+        series: [
+          // 2本の終端月が異なり（見込みを含む予約ベースの方が先の月まで伸びる）、
+          // 終端ラベルはどちらの線を指すのか紛らわしいため出さない（凡例で識別）。
+          { name: '予約ベース客単価', color: cvar('--series-1'), endLabel: false, values: s.monthly.map(function (m) { return m.res ? m.spend : null; }) },
+          { name: '実績客単価', color: cvar('--series-4'), endLabel: false, values: s.monthly.map(function (m) { return m.spendActual; }) }
+        ],
+        valueFmt: yen, yFmt: F.compact, height: 230
+      });
     });
     draw('cFunnel', function (el) {
       C.funnel(el, {
