@@ -199,14 +199,24 @@
     return F.int(n);
   }
   function dailyDayCell(d) {
-    var cls = 'dr-cell' + (d.dow === 0 ? ' dr-sun' : d.dow === 6 ? ' dr-sat' : '') + (d.isAsOf ? ' dr-today' : '');
+    var cls = 'dr-cell' + (d.dow === 0 ? ' dr-sun' : d.dow === 6 ? ' dr-sat' : '') +
+      (d.isAsOf ? ' dr-today' : '') + (d.isFuture ? ' dr-future' : '');
+    var date = '<div class="dr-date">' + d.month + '/' + d.day + '</div>';
+    // 未来日は「受付待ちの予約金額（見込み）」と予約件数。過去日と同じ3行構成に
+    // そろえて（店販行は空で確保）、セルの縦横幅が揃うようにする。
+    if (d.isFuture) {
+      return '<div class="' + cls + '" title="受付待ちの予約（見込み）">' + date +
+        '<div class="dr-rev"><span class="full-num">' + F.int(d.resAmount) + '</span><span class="compact-num">' + drCompact(d.resAmount) + '</span></div>' +
+        '<div class="dr-retail">&nbsp;</div>' +
+        '<div class="dr-cnt">' + d.resCount + '件</div>' +
+        '</div>';
+    }
     // 店販売上がある日だけ、()で店販売上金額を併記。無い日も同じ行を空で確保して
     // 全セルの高さを揃える（縦に伸びてバラつくのを防ぐ）。
     var retail = d.retail > 0
       ? '<span class="full-num">（' + F.int(d.retail) + '）</span><span class="compact-num">（' + drCompact(d.retail) + '）</span>'
       : '&nbsp;';
-    return '<div class="' + cls + '">' +
-      '<div class="dr-date">' + d.month + '/' + d.day + '</div>' +
+    return '<div class="' + cls + '">' + date +
       '<div class="dr-rev"><span class="full-num">' + F.int(d.rev) + '</span><span class="compact-num">' + drCompact(d.rev) + '</span></div>' +
       '<div class="dr-retail" title="うち店販売上">' + retail + '</div>' +
       '<div class="dr-cnt">' + d.count + '人</div>' +
@@ -264,11 +274,6 @@
     html += card({
       col: 'col-7', title: '月次 予約ベース売上' + taxTag + help('月ごとの売上を、会計済み（実績・濃色）と受付待ち（見込み・薄色）の内訳で積み上げ表示。見込みは受付待ちの予約金額（会計前）を反映したもの。金額は税抜。'), sub: '会計済み（実績）＋ 受付待ち（見込み）', tag: '¥',
       body: chartBox('cRevenue', 260)
-    });
-    html += card({
-      col: 'col-12', title: '日次売上（直近30日）' + taxTag + help('集計基準日から過去30日ぶんの、会計済みの売上（実績）と客数（会計件数）を日別に表示。受付待ちの見込みは含みません。店販売上がある日は、売上の下に（ ）で店販売上金額を併記します。土曜は青、日曜は赤、最新日（基準日）はアクセント枠。金額は税抜。'),
-      sub: '会計済みの実績・客数（（ ）内は店販売上）',
-      body: dailyRevGrid(s.dailyRevenue)
     });
 
     // Funnel + cohort
@@ -899,6 +904,14 @@
       wireUpload();
       return;
     }
+    // 予約状況（日別）— ここから下は管理ロック解除済みのみ表示される領域なので、
+    // 売上の日別内訳と今後の予約はオーナー（管理用の合言葉を入力した人）限定になる。
+    var taxTagD = m.taxExcluded ? '（税抜）' : '';
+    html += card({
+      col: 'col-12', title: '予約状況（日別）' + taxTagD + help('集計基準日までの過去30日は「会計済みの売上（実績）と客数」、基準日の翌日からの30日は「受付待ちの予約金額（見込み）と予約件数」を、地続きの1つのカレンダーで表示。店販売上がある日は売上の下に（ ）で店販売上金額を併記。未来の日は枠線で区別しています。土曜は青、日曜は赤、最新日（基準日）はアクセント枠。金額は税抜。'),
+      sub: '過去30日の実績（人）＋ 今後1ヶ月の予約（件）　※（ ）内は店販売上',
+      body: dailyRevGrid(A.store.dailyRevenue.concat(A.store.upcomingReservations))
+    });
     // Google Sheets link — one row per slot
     html += card({
       col: 'col-12', title: 'スプレッドシート連携', sub: 'Googleスプレッドシートに入れておけば、URLを貼るだけで自動で反映されます（両方貼ると自動結合）',

@@ -778,6 +778,19 @@ h('■ Fixture AA: 直近30日の日次売上（会計済み実績・客数）')
   check('30日前（6/17）は範囲外＝合計に含まれない', d.some(function (x) { return x.month === 6 && x.day === 17; }) ? 1 : 0, 0);
   check('受付待ち（見込み）は日次売上に含めない', d.reduce(function (s, x) { return s + x.rev; }, 0), 15000 + 8000 + 9000);
   check('来店の無い日は rev=0/count=0', d.filter(function (x) { return x.rev === 0 && x.count === 0; }).length, 27);
+  check('過去日は isFuture=false', d.every(function (x) { return x.isFuture === false; }) ? 1 : 0, 1);
+
+  // 今後1ヶ月の受付待ち予約（基準日の翌日から30日）
+  const up = R.store.upcomingReservations;
+  check('upcomingReservations は30日ぶん', up.length, 30);
+  check('先頭は基準日の翌日（7/18）', up[0].month * 100 + up[0].day, 718);
+  check('末尾は基準日の30日後（8/16）', up[29].month * 100 + up[29].day, 816);
+  check('未来日は isFuture=true', up.every(function (x) { return x.isFuture === true; }) ? 1 : 0, 1);
+  const jul20 = up.filter(function (x) { return x.month === 7 && x.day === 20; })[0];
+  check('7/20 の受付待ち予約件数（F の1件）', jul20.resCount, 1);
+  check('7/20 の受付待ち予約金額（12000）', jul20.resAmount, 12000);
+  check('予約の無い日は resCount=0 / resAmount=0', up.filter(function (x) { return x.resCount === 0 && x.resAmount === 0; }).length, 29);
+  check('未来日に会計済み実績は混ざらない（rev合計0）', up.reduce(function (s, x) { return s + x.rev; }, 0), 0);
 }
 
 // ============================================================================
