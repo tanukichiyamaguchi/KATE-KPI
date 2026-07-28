@@ -402,7 +402,31 @@
       var e2 = dailyMap[dd.getFullYear() + '|' + dd.getMonth() + '|' + dd.getDate()];
       dailyRevenue.push({
         month: dd.getMonth() + 1, day: dd.getDate(), dow: dd.getDay(),
-        rev: e2 ? e2.rev : 0, count: e2 ? e2.count : 0, retail: e2 ? e2.retail : 0, isAsOf: dOff === 0
+        rev: e2 ? e2.rev : 0, count: e2 ? e2.count : 0, retail: e2 ? e2.retail : 0,
+        resCount: 0, resAmount: 0, isFuture: false, isAsOf: dOff === 0
+      });
+    }
+
+    // ---- 今後1ヶ月の予約（受付待ち）------------------------------------------
+    // 基準日の翌日から30日ぶんの「受付待ち予約の件数」と「予約時金額（見込み）」を
+    // 日別に。上の実績カレンダーと同じ形にそろえ、UI では地続きの1つのカレンダー
+    // として描画する（過去＝確定した実績／未来＝これから入っている予約）。
+    var futureMap = {};
+    rows.forEach(function (r) {
+      if (!r.isFuture || !r.date) return;
+      var fk = r.date.getFullYear() + '|' + r.date.getMonth() + '|' + r.date.getDate();
+      var e = futureMap[fk] || (futureMap[fk] = { resCount: 0, resAmount: 0 });
+      e.resCount += 1; e.resAmount += r.yoyaku;   // yoyaku は税抜/税込設定済み
+    });
+    var upcomingReservations = [];
+    for (var fOff = 1; fOff <= 30; fOff++) {
+      var fd = new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate() + fOff);
+      var f2 = futureMap[fd.getFullYear() + '|' + fd.getMonth() + '|' + fd.getDate()];
+      upcomingReservations.push({
+        month: fd.getMonth() + 1, day: fd.getDate(), dow: fd.getDay(),
+        rev: 0, count: 0, retail: 0,
+        resCount: f2 ? f2.resCount : 0, resAmount: f2 ? f2.resAmount : 0,
+        isFuture: true, isAsOf: false
       });
     }
 
@@ -842,7 +866,8 @@
         funnel: funnel, churn: churn, cancel: cancel, route: route, retail: retail,
         ltv: { current: Math.round(ltv.current), predicted: Math.round(ltv.predicted), expectedVisits: round(ltv.expectedVisits, 2), observedVisits: round(ltv.observedVisits, 2) },
         monthly: monthly, cohort: cohort, visitCountBreakdown: visitCountBreakdown, newMix: newMix, composition: composition, serviceRetailMonthly: serviceRetailMonthly,
-        revPeriods: revPeriods, retailPeriods: retailPeriods, dailyRevenue: dailyRevenue
+        revPeriods: revPeriods, retailPeriods: retailPeriods,
+        dailyRevenue: dailyRevenue, upcomingReservations: upcomingReservations
       },
       staff: staff,
       trend: {
