@@ -985,7 +985,7 @@
     });
     // Google Sheets link — one row per slot
     html += card({
-      col: 'col-12', title: 'スプレッドシート連携', sub: 'Googleスプレッドシートに入れておけば、URLを貼るだけで自動で反映されます（両方貼ると自動結合）',
+      col: 'col-12', title: 'スプレッドシート連携' + help('URLを貼ると、開くたびに最新のシート内容を読み込みます。さらに連携中は、画面を開いたままの端末でも毎日23時に自動で再読み込みします（23時に閉じていた端末は、次に開いたときに最新を取得）。'), sub: 'URLを貼るだけで自動反映（両方貼ると自動結合）・連携中は毎日23時に自動で再読み込み',
       body: ['yoyaku', 'kaikei'].map(function (slot) {
         var sm = slotMeta(slot), linked = !!sm.sheetUrl;
         return '<div style="padding:' + (slot === 'kaikei' ? '14px 0 0' : '0 0 14px') + (slot === 'yoyaku' ? ';border-bottom:1px solid var(--hairline)' : '') + '">' +
@@ -1325,6 +1325,52 @@
     applySources();
   }
 
+  // ====================== 毎日23時の自動再読み込み ==========================
+  // スプレッドシート連携中のデータを、画面を開いたままでも毎日23時（端末の
+  // 現地時刻）に自動で再読み込みする。店頭に出しっぱなしのタブレットでも、
+  // 23時にその日の最新データへ入れ替わる。開いた瞬間に最新を取得するこれまで
+  // の動作はそのままなので、閉じていた端末は次に開いたときに最新が入る。
+  //  - 23時はタイマーで発火し、失敗時（深夜のWiFi瞬断など）は10分おきに最大
+  //    3回まで再試行する（成否は「読込成功時にだけ進む dataLoadedAt」で判定）
+  //  - 非表示タブはブラウザがタイマーを止めるため、画面復帰時にも「最後の
+  //    読み込みから23時をまたいだか」を確認して取りこぼしを拾う
+  var DAILY_RELOAD_HOUR = 23;
+  // 「直近で過ぎた23時」。この時刻より古い読み込みは1日分古い可能性がある。
+  function lastReloadBoundary(now) {
+    var b = new Date(now.getFullYear(), now.getMonth(), now.getDate(), DAILY_RELOAD_HOUR, 0, 0, 0);
+    if (now < b) b.setDate(b.getDate() - 1);
+    return b;
+  }
+  function reloadLinkedSheets() {
+    var did = false;
+    if (state.sheetUrl) { linkSheet(state.sheetUrl, 'yoyaku', { silent: true }); did = true; }
+    if (state.sheetUrlKaikei) { linkSheet(state.sheetUrlKaikei, 'kaikei', { silent: true }); did = true; }
+    return did;
+  }
+  var dailyRetry = 0;
+  function fireDailyReload() {
+    if (!reloadLinkedSheets()) return;   // 連携なし（ファイル/サンプルのみ）は対象外
+    setTimeout(function verify() {
+      if (state.dataLoadedAt && state.dataLoadedAt >= lastReloadBoundary(new Date())) { dailyRetry = 0; return; }
+      if (dailyRetry < 3) { dailyRetry++; reloadLinkedSheets(); setTimeout(verify, 10 * 60 * 1000); }
+      else dailyRetry = 0;   // 諦めて翌日へ（画面復帰時のチェックが拾う）
+    }, 10 * 60 * 1000);
+  }
+  function scheduleDailyReload() {
+    var now = new Date();
+    // :00ちょうどはシート側の同期と重なりやすいので5秒だけずらす
+    var next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), DAILY_RELOAD_HOUR, 0, 5, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    setTimeout(function () { fireDailyReload(); scheduleDailyReload(); }, next - now);
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    if (!state.sheetUrl && !state.sheetUrlKaikei) return;
+    if (!state.dataLoadedAt || state.dataLoadedAt < lastReloadBoundary(new Date())) reloadLinkedSheets();
+  });
+  global.KATE = global.KATE || {};
+  global.KATE.dailyReload = { HOUR: DAILY_RELOAD_HOUR, boundary: lastReloadBoundary };   // テスト・デバッグ用
+
   // ============================ shell ======================================
   function mount(view, html) { var v = $('#view-' + view); v.innerHTML = html; observeReveal(v); }
   function renderAll() {
@@ -1419,6 +1465,7 @@
     try { savedYoyaku = localStorage.getItem('kate-sheet-url'); savedKaikei = localStorage.getItem('kate-sheet-url-kaikei'); } catch (e) {}
     if (savedYoyaku) { state.sheetUrl = savedYoyaku; linkSheet(savedYoyaku, 'yoyaku', { silent: true }); }
     if (savedKaikei) { state.sheetUrlKaikei = savedKaikei; linkSheet(savedKaikei, 'kaikei', { silent: true }); }
+    scheduleDailyReload();   // 連携中なら毎日23時に自動で再読み込み（開きっぱなしの端末用）
 
     // 合言葉: if the repo ships an encrypted shared-link blob, load it. On a
     // device with nothing linked yet, re-render so the 合言葉 card and the
