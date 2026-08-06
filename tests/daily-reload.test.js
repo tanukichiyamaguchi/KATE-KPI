@@ -1,11 +1,11 @@
-/* 毎日23時の自動再読み込み（app.js の scheduleDailyReload / lastReloadBoundary）
- * を、Playwright のフェイククロックで実時間を使わずに検証する:
+/* 夜間同期後（毎日0:15）の自動再読み込み（app.js の scheduleDailyReload /
+ * lastReloadBoundary）を、Playwright のフェイククロックで実時間を使わずに検証:
  *
- *   1. boundary 計算 — 「直近で過ぎた23時」が日中・23時台・深夜0時台で正しい
- *   2. 23時ちょうどにシートを再フェッチする（22:59では発火しない）
- *   3. 発火後に翌日の23時へ再スケジュールされる
+ *   1. boundary 計算 — 「直近で過ぎた0:15」が日中・0:15前・23時台で正しい
+ *   2. 0:15 にシートを再フェッチする（0:13では発火しない）
+ *   3. 発火後に翌日の0:15へ再スケジュールされる
  *   4. タイマーが止まっていた端末（スリープ）でも、画面復帰イベントで
- *      23時またぎを検知して読み込む
+ *      0:15またぎを検知して読み込む
  *
  * Run: node tests/daily-reload.test.js（`npm test` に組み込み済み）。
  * ui-audit.js と同じく、playwright-core / Chromium が無い環境では SKIP。 */
@@ -84,10 +84,10 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     if (m.type() === 'error' && !/404|Failed to load resource/.test(m.text())) errors.push(m.text());
   });
 
-  // 22:58 JST で時計を固定してから起動（boot の初回フェッチが hit #1）
-  await page.clock.install({ time: JST('2026-08-06T22:50:00') });
+  // 0:12 JST で時計を固定してから起動（boot の初回フェッチが hit #1）
+  await page.clock.install({ time: JST('2026-08-07T00:05:00') });
   await page.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
-  await page.clock.pauseAt(JST('2026-08-06T22:58:00'));
+  await page.clock.pauseAt(JST('2026-08-07T00:12:00'));
   await waitFor(function () { return hits; }, 1);
   check('起動時に1回読み込む（従来どおり）', hits, 1);
 
@@ -97,45 +97,45 @@ const JST = function (s) { return new Date(s + '+09:00'); };
       var d = window.KATE.dailyReload.boundary(new Date(iso));
       return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2);
     });
-  }, ['2026-08-07T10:00:00+09:00', '2026-08-07T23:30:00+09:00', '2026-08-08T00:10:00+09:00']);
-  check('boundary: 日中10時 → 前日の23:00', b[0], '2026-8-6 23:00');
-  check('boundary: 23時30分 → 当日の23:00', b[1], '2026-8-7 23:00');
-  check('boundary: 深夜0時10分 → 前日の23:00', b[2], '2026-8-7 23:00');
+  }, ['2026-08-07T10:00:00+09:00', '2026-08-07T00:10:00+09:00', '2026-08-07T23:30:00+09:00']);
+  check('boundary: 日中10時 → 当日の0:15', b[0], '2026-8-7 0:15');
+  check('boundary: 深夜0時10分 → 前日の0:15', b[1], '2026-8-6 0:15');
+  check('boundary: 23時30分 → 当日の0:15', b[2], '2026-8-7 0:15');
 
-  // ---- 22:59 ではまだ発火しない --------------------------------------------
-  await page.clock.fastForward(60 * 1000);            // → 22:59
+  // ---- 0:13 ではまだ発火しない ---------------------------------------------
+  await page.clock.fastForward(60 * 1000);            // → 0:13
   await new Promise(function (r) { setTimeout(r, 300); });
-  check('22:59 では再読み込みしない', hits, 1);
+  check('0:13 では再読み込みしない', hits, 1);
 
-  // ---- 23:00:05 のタイマーで発火 -------------------------------------------
+  // ---- 0:15:05 のタイマーで発火 --------------------------------------------
   // 各ジャンプの後に実時間を少し待つ: フェイククロックはタイマーだけを進め、
   // フェッチ応答の反映（dataLoadedAt の更新）は実時間の非同期で走るため。
-  await page.clock.fastForward(2 * 60 * 1000);        // → 23:01
+  await page.clock.fastForward(3 * 60 * 1000);        // → 0:16
   await waitFor(function () { return hits; }, 2);
   await new Promise(function (r) { setTimeout(r, 500); });
-  check('23時に自動で再読み込みする', hits, 2);
+  check('0:15（23時台の同期後）に自動で再読み込みする', hits, 2);
 
   // ---- 読み込み成功後、10分後の成否確認タイマーは再試行しない --------------
-  await page.clock.fastForward(15 * 60 * 1000);       // → 23:16（23:10 の verify を消化）
+  await page.clock.fastForward(15 * 60 * 1000);       // → 0:31（0:25 の verify を消化）
   await new Promise(function (r) { setTimeout(r, 300); });
   check('成功後の確認タイマーは再試行しない', hits, 2);
 
-  // ---- 翌日23時にも発火（再スケジュール）-----------------------------------
-  await page.clock.fastForward(24 * 60 * 60 * 1000);  // → 翌日 23:16
+  // ---- 翌日0:15にも発火（再スケジュール）-----------------------------------
+  await page.clock.fastForward(24 * 60 * 60 * 1000);  // → 翌日 0:31
   await waitFor(function () { return hits; }, 3);
   await new Promise(function (r) { setTimeout(r, 500); });
-  check('翌日の23時にも再読み込みする（再スケジュール）', hits, 3);
-  await page.clock.fastForward(15 * 60 * 1000);       // 翌日分の verify も消化 → 23:31
+  check('翌日の0:15にも再読み込みする（再スケジュール）', hits, 3);
+  await page.clock.fastForward(15 * 60 * 1000);       // 翌日分の verify も消化 → 0:46
   await new Promise(function (r) { setTimeout(r, 300); });
 
-  // ---- スリープ復帰: タイマーを動かさず時刻だけ翌々日23:30へ ---------------
-  await page.clock.setSystemTime(JST('2026-08-09T23:30:00'));
+  // ---- スリープ復帰: タイマーを動かさず時刻だけ翌々日0:45へ ----------------
+  await page.clock.setSystemTime(JST('2026-08-09T00:45:00'));
   await page.evaluate(function () { document.dispatchEvent(new Event('visibilitychange')); });
   await waitFor(function () { return hits; }, 4);
   await new Promise(function (r) { setTimeout(r, 500); });
-  check('画面復帰時に23時またぎを検知して読み込む', hits, 4);
+  check('画面復帰時に0:15またぎを検知して読み込む', hits, 4);
 
-  // ---- 復帰しても23時をまたいでいなければ読み込まない ----------------------
+  // ---- 復帰しても0:15をまたいでいなければ読み込まない ----------------------
   await page.evaluate(function () { document.dispatchEvent(new Event('visibilitychange')); });
   await new Promise(function (r) { setTimeout(r, 300); });
   check('またいでいなければ画面復帰でも読み込まない', hits, 4);
