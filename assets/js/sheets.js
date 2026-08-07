@@ -29,10 +29,18 @@
     return null;
   }
 
+  // キャッシュ対策: ブラウザや中間キャッシュが古いCSVを返して「シートは更新
+  // されているのにダッシュボードに反映されない」となるのを防ぐ。毎回異なる
+  // _ts パラメータでURLを変え（Googleは未知のパラメータを無視する）、さらに
+  // fetch 自体も no-store でHTTPキャッシュを完全に迂回する。
+  function bust(url) {
+    return url + (url.indexOf('?') === -1 ? '?' : '&') + '_ts=' + Date.now();
+  }
+
   function fetchCsv(input) {
     var csvUrl = toCsvUrl(input);
     if (!csvUrl) return Promise.reject(new Error('URLを認識できませんでした。GoogleスプレッドシートのURLを貼ってください。'));
-    return fetch(csvUrl, { redirect: 'follow', credentials: 'omit' })
+    return fetch(bust(csvUrl), { redirect: 'follow', credentials: 'omit', cache: 'no-store' })
       .then(function (res) {
         if (!res.ok) throw new Error('取得に失敗しました（HTTP ' + res.status + '）。スプレッドシートの共有設定をご確認ください。');
         return res.text();
@@ -53,6 +61,6 @@
   }
 
   global.KATE = global.KATE || {};
-  global.KATE.sheets = { toCsvUrl: toCsvUrl, fetchCsv: fetchCsv };
+  global.KATE.sheets = { toCsvUrl: toCsvUrl, fetchCsv: fetchCsv, bust: bust };
   if (typeof module !== 'undefined' && module.exports) module.exports = global.KATE.sheets;
 })(typeof window !== 'undefined' ? window : globalThis);
