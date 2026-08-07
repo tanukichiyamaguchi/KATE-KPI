@@ -1,10 +1,10 @@
 {
   "name": "kate-kpi-dashboard",
-  "version": "1.2.32",
+  "version": "1.2.33",
   "description": "KATEstageLASH 蒲田西口店 — reservation-based KPI dashboard (static, client-side)",
   "private": true,
   "scripts": {
-    "test": "node tests/validate.js && node tests/kaikei.test.js && node tests/merge.test.js && node tests/crypto.test.js && node tests/sheets.test.js && node tests/ui-audit.js"
+    "test": "node tests/validate.js && node tests/kaikei.test.js && node tests/merge.test.js && node tests/crypto.test.js && node tests/sheets.test.js && node tests/auto-reload.test.js && node tests/ui-audit.js"
   },
   "license": "MIT"
 }

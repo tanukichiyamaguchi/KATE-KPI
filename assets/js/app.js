@@ -18,7 +18,7 @@
     sheetUrl: null, sheetUrlKaikei: null, sources: { yoyaku: null, kaikei: null }, mergeReport: null,
     sharedBlob: null,   // data/shared-link.json（合言葉で暗号化されたシートURL）があれば入る
     ownerLock: null,    // data/owner-lock.json（管理用の合言葉で暗号化されたロック）があれば入る
-    ownerUnlocked: false, // ロック解除はメモリ上のみ（リロードで再ロック・端末に保存しない）
+    ownerUnlocked: false, // 解除済みか（この端末で一度解除すれば ownerUnlockKey で記憶される）
     taxExcluded: true,  // 税抜表示をメインに（トグルで税込へ）。端末設定として localStorage に保存
     dataLoadedAt: null,   // この画面が実データを読み込んだ日時（連携/アップロード時に記録）
     sheetUpdatedAt: null  // シート側が記録した同期完了日時（「データ更新日時」列。applySources で導出）
@@ -917,8 +917,8 @@
     }
     if (ownerLocked) {
       html += card({
-        col: 'col-12', title: '管理者メニュー' + help('スプレッドシート連携の設定（URLの表示を含む）・ファイル取り込み・データのクリアなどの管理操作は、管理用の合言葉でロックされています。ロック解除はこのページを開いている間だけ有効で、端末には何も保存されません。'),
-        sub: '連携設定などの管理操作は、管理用の合言葉（店の合言葉とは別）でロックされています',
+        col: 'col-12', title: '管理者メニュー' + help('年商・予約状況、スプレッドシート連携の設定（URLの表示を含む）・ファイル取り込み・データのクリアなどの管理操作は、管理用の合言葉でロックされています。一度解除すると、この端末では次回から入力不要です（解除した記録のみを端末に保存し、合言葉そのものは保存しません）。解除後の画面から、いつでもこの端末を再ロックできます。'),
+        sub: '連携設定などの管理操作は、管理用の合言葉（店の合言葉とは別）でロックされています。入力は<b>この端末で最初の1回だけ</b>です',
         body: '<div class="field">' + lockSvg() +
           '<input type="password" id="ownerPassInput" autocomplete="off" placeholder="管理用の合言葉">' +
           '</div>' +
@@ -985,8 +985,10 @@
     });
     // Google Sheets link — one row per slot
     html += card({
-      col: 'col-12', title: 'スプレッドシート連携', sub: 'Googleスプレッドシートに入れておけば、URLを貼るだけで自動で反映されます（両方貼ると自動結合）',
-      body: ['yoyaku', 'kaikei'].map(function (slot) {
+      col: 'col-12', title: 'スプレッドシート連携' + help('URLを貼ると、開くたびに最新のシート内容を読み込みます。さらに連携中は、画面を開いたままの端末でも毎日23時〜翌1時のあいだ30分おき（23:00 / 23:30 / 0:00 / 0:30 / 1:00）に自動で再読み込みします。「今すぐ更新」でいつでも手動で最新を取得できます。'), sub: 'URLを貼るだけで自動反映（両方貼ると自動結合）・毎日23時〜翌1時は30分おきに自動更新',
+      body: (state.sheetUrl || state.sheetUrlKaikei
+        ? '<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button type="button" class="pill accent" id="sheetRefreshNow">今すぐ更新</button></div>'
+        : '') + ['yoyaku', 'kaikei'].map(function (slot) {
         var sm = slotMeta(slot), linked = !!sm.sheetUrl;
         return '<div style="padding:' + (slot === 'kaikei' ? '14px 0 0' : '0 0 14px') + (slot === 'yoyaku' ? ';border-bottom:1px solid var(--hairline)' : '') + '">' +
           '<div class="note-inline" style="margin-bottom:6px;font-weight:600;color:var(--ink-primary)">' + sm.label + '</div>' +
@@ -1048,7 +1050,12 @@
         '</div>' +
         '<textarea id="ownerGenOut" readonly style="display:none;width:100%;margin-top:8px;min-height:96px;font-family:monospace;font-size:11px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);color:var(--ink-primary)"></textarea>' +
         '<button class="pill" id="ownerGenCopy" type="button" style="display:none;margin-top:6px">暗号文をコピー</button>' +
-        '<div class="note-inline" style="margin-top:8px">作成した暗号文を開発担当に渡してアプリに組み込むと有効になります。</div>'
+        '<div class="note-inline" style="margin-top:8px">作成した暗号文を開発担当に渡してアプリに組み込むと有効になります。</div>' +
+        // 解除は端末に記憶される。共用端末を人に渡すときなどに、その場で戻せるようにする。
+        (state.ownerLock ? '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--hairline)">' +
+          '<div class="note-inline" style="margin-bottom:8px">この端末は解除済みです（次回も合言葉なしで開けます）。共用端末を他の人に渡すときは、再ロックしてください。</div>' +
+          '<button class="pill" id="ownerRelockBtn" type="button">この端末を再ロックする</button>' +
+          '</div>' : '')
     });
     // Merge report — only when both slots are loaded
     if (state.mergeReport) {
@@ -1169,6 +1176,8 @@
     wireSlot('yoyaku'); wireSlot('kaikei');
     var resetBtn = $('#resetBtn');
     if (resetBtn) resetBtn.addEventListener('click', function (e) { e.stopPropagation(); resetAll(); toast('サンプルデータに戻しました', 'ok'); });
+    var refreshBtn = $('#sheetRefreshNow');
+    if (refreshBtn) refreshBtn.addEventListener('click', function () { reloadLinkedSheets({}); });   // {} = 非silent（トーストで結果を見せる）
     wireSharedPass();
     wireOwnerLock();
   }
@@ -1234,8 +1243,9 @@
         passBtn.disabled = true;
         global.KATE.crypto.decrypt(pass, state.ownerLock).then(function () {
           state.ownerUnlocked = true;
+          rememberOwnerUnlock();
           renderAll();
-          toast('✓ ロックを解除しました（このページを開いている間だけ有効です）', 'ok');
+          toast('✓ ロックを解除しました（この端末では次回から入力不要です）', 'ok');
         }, function (err) {
           passBtn.disabled = false;
           toast('⚠ ' + (err.message || '解除に失敗しました'), 'err');
@@ -1244,6 +1254,13 @@
       passBtn.addEventListener('click', unlock);
       passInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); unlock(); } });
     }
+    var relockBtn = $('#ownerRelockBtn');
+    if (relockBtn) relockBtn.addEventListener('click', function () {
+      state.ownerUnlocked = false;
+      try { localStorage.removeItem('kate-owner-unlocked'); } catch (e) {}
+      renderAll();
+      toast('この端末を再ロックしました。次回は合言葉の入力が必要です', 'ok');
+    });
     var genInput = $('#ownerGenInput'), genBtn = $('#ownerGenBtn'), genOut = $('#ownerGenOut'), genCopy = $('#ownerGenCopy');
     if (genBtn && genInput) {
       genBtn.addEventListener('click', function () {
@@ -1348,6 +1365,71 @@
     applySources();
   }
 
+  // ---- 管理ロックの解除をこの端末で記憶する --------------------------------
+  // 合言葉そのものは保存しない（保存すると端末から読み出せてしまい、他店舗・
+  // 他端末で使い回される）。代わりに「どのロック設定を解除したか」の指紋
+  // （暗号文の一部）だけを持つ。オーナーが合言葉を作り直して差し替えると
+  // 指紋が変わるため、古い解除は自動的に無効になる。
+  function ownerUnlockKey(blob) { return blob && blob.ct ? String(blob.ct).slice(0, 32) : null; }
+  function rememberOwnerUnlock() {
+    var k = ownerUnlockKey(state.ownerLock);
+    if (k) { try { localStorage.setItem('kate-owner-unlocked', k); } catch (e) {} }
+  }
+  function restoreOwnerUnlock() {
+    var k = ownerUnlockKey(state.ownerLock);
+    if (!k) return false;
+    var saved = null;
+    try { saved = localStorage.getItem('kate-owner-unlocked'); } catch (e) {}
+    if (saved && saved === k) { state.ownerUnlocked = true; return true; }
+    if (saved) { try { localStorage.removeItem('kate-owner-unlocked'); } catch (e) {} }   // 合言葉が差し替わった
+    return false;
+  }
+
+  // ====================== 夜間の自動再読み込み ==============================
+  // スプレッドシート連携中は、毎日23時〜25時（翌1時）のあいだ30分おき
+  // （23:00 / 23:30 / 0:00 / 0:30 / 1:00・端末の現地時刻）に自動でシートを
+  // 再読み込みする。シート側の夜間同期（DailyCSVSync）がこの時間帯のどこで
+  // 完了しても、30分以内にダッシュボードへ反映される。開いた瞬間に最新を
+  // 取得する従来動作はそのままなので、閉じていた端末は次に開いたときに
+  // 最新が入る。30分おきに読むため、1回の失敗（WiFi瞬断など）も次の回が拾う。
+  // 非表示タブはブラウザがタイマーを止めるため、画面復帰時にも「直近の
+  // 予定時刻より前の読み込みのままか」を確認して取りこぼしを拾う。
+  var RELOAD_TIMES = [[0, 0], [0, 30], [1, 0], [23, 0], [23, 30]];   // 1日の中の発火時刻（時刻順）
+  function nextReloadAt(now) {
+    for (var addDay = 0; addDay <= 1; addDay++) {
+      for (var i = 0; i < RELOAD_TIMES.length; i++) {
+        var t = new Date(now.getFullYear(), now.getMonth(), now.getDate() + addDay, RELOAD_TIMES[i][0], RELOAD_TIMES[i][1], 5, 0);
+        if (t > now) return t;
+      }
+    }
+  }
+  // 直近で過ぎた予定時刻。これより古い読み込みは夜間同期を取りこぼしている可能性がある。
+  function lastReloadBoundary(now) {
+    for (var subDay = 0; subDay <= 1; subDay++) {
+      for (var i = RELOAD_TIMES.length - 1; i >= 0; i--) {
+        var t = new Date(now.getFullYear(), now.getMonth(), now.getDate() - subDay, RELOAD_TIMES[i][0], RELOAD_TIMES[i][1], 0, 0);
+        if (t <= now) return t;
+      }
+    }
+  }
+  function reloadLinkedSheets(opts) {
+    var did = false;
+    if (state.sheetUrl) { linkSheet(state.sheetUrl, 'yoyaku', opts || { silent: true }); did = true; }
+    if (state.sheetUrlKaikei) { linkSheet(state.sheetUrlKaikei, 'kaikei', opts || { silent: true }); did = true; }
+    return did;
+  }
+  function scheduleNightlyReload() {
+    var next = nextReloadAt(new Date());
+    setTimeout(function () { reloadLinkedSheets(); scheduleNightlyReload(); }, next - new Date());
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    if (!state.sheetUrl && !state.sheetUrlKaikei) return;
+    if (!state.dataLoadedAt || state.dataLoadedAt < lastReloadBoundary(new Date())) reloadLinkedSheets();
+  });
+  global.KATE = global.KATE || {};
+  global.KATE.autoReload = { times: RELOAD_TIMES, next: nextReloadAt, boundary: lastReloadBoundary };   // テスト・デバッグ用
+
   // ============================ shell ======================================
   function mount(view, html) { var v = $('#view-' + view); v.innerHTML = html; observeReveal(v); }
   function renderAll() {
@@ -1442,6 +1524,7 @@
     try { savedYoyaku = localStorage.getItem('kate-sheet-url'); savedKaikei = localStorage.getItem('kate-sheet-url-kaikei'); } catch (e) {}
     if (savedYoyaku) { state.sheetUrl = savedYoyaku; linkSheet(savedYoyaku, 'yoyaku', { silent: true }); }
     if (savedKaikei) { state.sheetUrlKaikei = savedKaikei; linkSheet(savedKaikei, 'kaikei', { silent: true }); }
+    scheduleNightlyReload();   // 連携中なら23時〜翌1時のあいだ30分おきに自動で再読み込み
 
     // 合言葉: if the repo ships an encrypted shared-link blob, load it. On a
     // device with nothing linked yet, re-render so the 合言葉 card and the
@@ -1461,6 +1544,7 @@
     }).then(function (blob) {
       if (!blob || blob.v !== 1) return;
       state.ownerLock = blob;
+      restoreOwnerUnlock();   // この端末で解除済みなら、合言葉の再入力を求めない
       if (state.view === 'data') renderAll();
     }).catch(function () { /* absent or offline — tab stays unlocked as before */ });
 
