@@ -1074,6 +1074,27 @@
         });
       }
     }
+    // シート別の更新時刻（2ソース統合時のみ内訳を表示）と、同期停止の検知。
+    // 表示中の「データ更新」は古い方のシートの時刻なので、どちらのシートが
+    // 止まっているかをここで特定できるようにする。26時間＝毎晩の同期
+    // （DailyCSVSync）が1回飛んだことを検知できる最小のしきい値。
+    var slotJa = { yoyaku: '予約データ', kaikei: '会計明細' };
+    var srcRows = '', staleWarns = '';
+    var bothLinked = state.sources.yoyaku && state.sources.kaikei;
+    ['yoyaku', 'kaikei'].forEach(function (slot2) {
+      var s2 = state.sources[slot2];
+      if (!s2) return;
+      if (bothLinked) {
+        srcRows += '<div><span>' + slotJa[slot2] + 'の更新</span><b>' +
+          (s2.updatedAt ? esc(ymdhmJa(s2.updatedAt)) : '—（データ更新日時 未設定）') + '</b></div>';
+      }
+      if (s2.via === 'スプレッドシート連携' && s2.updatedAt && (Date.now() - Number(s2.updatedAt) > 26 * 3600 * 1000)) {
+        var ageH = Math.floor((Date.now() - Number(s2.updatedAt)) / 3600000);
+        staleWarns += '<div class="status-line" style="margin-top:12px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' +
+          '<b>' + slotJa[slot2] + '</b>のシートが' + (ageH >= 48 ? Math.floor(ageH / 24) + '日' : ageH + '時間') + '更新されていません（最終更新 ' + esc(ymdhmJa(s2.updatedAt)) + '）。' +
+          'シート側の同期（DailyCSVSync）が失敗していないか、スプレッドシートの「拡張機能 → Apps Script → 実行数」でエラーをご確認ください。</div>';
+      }
+    });
     html += card({
       col: 'col-6', title: '現在のデータ', sub: 'ブラウザ内でのみ処理されます',
       body: '<div class="datainfo">' +
@@ -1084,7 +1105,9 @@
         '<div><span>対象期間</span><b>' + esc(ymRangeJa(m.periodStart, m.periodEnd)) + '</b></div>' +
         '<div><span>集計基準日</span><b>' + esc(ymdJa(m.asOf)) + '</b></div>' +
         (state.sheetUpdatedAt ? '<div><span>データ更新</span><b>' + esc(ymdhmJa(state.sheetUpdatedAt)) + '</b></div>' : '') +
+        srcRows +
         (state.dataLoadedAt ? '<div><span>最終読込</span><b>' + esc(ymdhmJa(state.dataLoadedAt)) + '</b></div>' : '') + '</div>' +
+        staleWarns +
         (m.undatedRows ? '<div class="status-line" style="margin-top:12px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' + F.int(m.undatedRows) + '件は来店日を読み取れず、日付ベースの集計から除外しました。</div>' : '')
     });
     html += card({
