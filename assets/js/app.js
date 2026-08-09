@@ -998,6 +998,13 @@
           (linked ? '<button class="pill" id="' + sm.unlinkId + '" type="button">解除</button>' : '') +
           '</div>' +
           (linked ? '<div class="status-line" style="margin-top:8px;color:var(--status-good)"><i style="background:var(--status-good)"></i>連携中。ページを開くたびに最新の内容を読み込みます。</div>' : '') +
+          // 「ウェブに公開」URLは、自動再公開が止まるとGoogle側で内容が凍結され、
+          // 何度読み込んでも古いまま になる。URL種別から判別できるので明示する。
+          (linked && isPublishedUrl(sm.sheetUrl)
+            ? '<div class="status-line" style="margin-top:6px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' +
+              '<b>「ウェブに公開」URL</b>です。公開設定の「自動的に再公開する」が外れていると、シートを更新してもこのURLの内容は<b>公開時点で凍結</b>され、更新が届きません。' +
+              '更新が止まっている場合は、<code>ファイル → 共有 → ウェブに公開</code>で再公開するか、通常の<b>編集URL</b>（<code>/spreadsheets/d/…/edit</code>）に貼り替えてください（編集URLは常に最新を読みます）。</div>'
+            : '') +
           '</div>';
       }).join('') +
         '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12.5px;color:var(--ink-secondary);font-weight:600">連携のしかた・注意点</summary>' +
@@ -1320,6 +1327,16 @@
     updateChrome(); renderAll(); route(state.view, true);
     return A;
   }
+  // 「ウェブに公開」型のURLか（/spreadsheets/d/e/… または output=csv）。この型は
+  // 自動再公開が止まるとGoogle側で内容が凍結されるため、UIで注意を出す。
+  function isPublishedUrl(u) { return /\/spreadsheets\/d\/e\//i.test(u || '') || /output=csv/i.test(u || ''); }
+  // 取得したCSVの同一性判定用の軽量ハッシュ（FNV-1a 32bit）。「更新を押したのに
+  // 何も変わらない」が、取得失敗なのか内容が同じなのかを区別して伝えるために使う。
+  function strHash(s) {
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 16777619) >>> 0; }
+    return String(h) + ':' + s.length;
+  }
   function linkSheet(url, slot, opts) {
     opts = opts || {};
     if (!url) return;
@@ -1327,14 +1344,28 @@
     global.KATE.sheets.fetchCsv(url).then(function (text) {
       var parsed = global.KATE.ingest.fromAOA(global.KATE.ingest.parseCSV(text));
       var format = parsed.format, recs = parsed.records;
-      state.sources[format] = { records: recs, fileName: null, via: 'スプレッドシート連携', updatedAt: parsed.sheetUpdatedAt || null };
+      var prevSrc = state.sources[format];
+      var hash = strHash(text);
+      var unchanged = !!(prevSrc && prevSrc.hash && prevSrc.hash === hash);
+      state.sources[format] = { records: recs, fileName: null, via: 'スプレッドシート連携', updatedAt: parsed.sheetUpdatedAt || null, hash: hash };
       if (format === 'kaikei') state.sheetUrlKaikei = url; else state.sheetUrl = url;
       try { localStorage.setItem(format === 'kaikei' ? 'kate-sheet-url-kaikei' : 'kate-sheet-url', url); } catch (e) {}
       state.dataLoadedAt = new Date();   // データを取得した日時を記録
       var A = applySources();
       var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
-      if (!opts.silent) toast('✓ スプレッドシートから ' + F.int(recs.length) + '件を読み込みました' + reroute + warn, warn ? 'err' : 'ok');
+      if (!opts.silent) {
+        // 取得は成功したのに中身が前回と1文字も違わない場合、画面は当然変わらない。
+        // 「更新したのに変わらない」の原因がダッシュボードではなくシート側にある
+        // ことをその場で伝える（黙って成功トーストを出すと誤解を招く）。
+        if (unchanged) {
+          toast('シートの内容は前回から変わっていません（' + slotMeta(format).label +
+            (parsed.sheetUpdatedAt ? '・シートの更新 ' + ymdhmJa(parsed.sheetUpdatedAt) : '') +
+            '）。シート側の同期をご確認ください', 'err');
+        } else {
+          toast('✓ スプレッドシートから ' + F.int(recs.length) + '件を読み込みました' + reroute + warn, warn ? 'err' : 'ok');
+        }
+      }
     }).catch(function (err) {
       console.warn('sheet load failed', err);
       if (!opts.silent) toast('⚠ ' + (err.message || '読み込みに失敗しました'), 'err');

@@ -45,12 +45,19 @@ const server = http.createServer(function (req, res) {
   fs.createReadStream(file).pipe(res);
 });
 
-// ingest が「予約データ」と認識する最小のCSV（REQUIRED はステータス列のみ）
+// ingest が「予約データ」と認識する最小のCSV（REQUIRED はステータス列のみ）。
+// V2 は金額とシート側の「データ更新日時」を変えたもの＝シートが同期された状態。
 const CSV = [
-  'ステータス,来店日,お名前,スタッフ名,予約時合計金額,会計時合計金額',
-  '会計済み,2026/08/05,テスト花子,momo,6000,6600',
-  '受付待ち,2026/08/20,テスト花子,momo,6000,'
+  'ステータス,来店日,お名前,スタッフ名,予約時合計金額,会計時合計金額,データ更新日時',
+  '会計済み,2026/08/05,テスト花子,momo,6000,6600,2026/08/06 1:00:00',
+  '受付待ち,2026/08/20,テスト花子,momo,6000,,'
 ].join('\n');
+const CSV_V2 = [
+  'ステータス,来店日,お名前,スタッフ名,予約時合計金額,会計時合計金額,データ更新日時',
+  '会計済み,2026/08/05,テスト花子,momo,99000,99000,2026/08/08 23:30:00',
+  '会計済み,2026/08/06,テスト太郎,aoi,99000,99000,'
+].join('\n');
+let CSV_BODY = CSV;   // ルートハンドラが返す本文（テスト中に差し替える）
 
 let pass = 0, fail = 0;
 function check(name, got, want) {
@@ -84,7 +91,7 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   let hits = 0;
   await page.route('https://docs.google.com/**', function (route) {
     hits++;
-    route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV });
+    route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV_BODY });
   });
   await context.addInitScript(function () {
     try { localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/TESTNIGHT/edit#gid=0'); } catch (e) {}
@@ -196,11 +203,44 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   await page.fill('#ownerPassInput', OWNER_PASS);
   await page.click('#ownerPassBtn');
   await page.waitForSelector('#ownerRelockBtn', { timeout: 5000 });
-  OWNER_LOCK = await crypto7.encrypt('rotated-owner-pass', { role: 'owner' });   // オーナーが作り直した
+  const ROTATED_PASS = 'rotated-owner-pass';
+  OWNER_LOCK = await crypto7.encrypt(ROTATED_PASS, { role: 'owner' });   // オーナーが作り直した
   await page.reload({ waitUntil: 'networkidle' });
   await page.evaluate(function () { location.hash = '#data'; });
   await sleep(900);
   check('合言葉を差し替えると再入力を求める', await page.$$eval('#ownerPassInput', function (n) { return n.length; }), 1);
+
+  // ---- 更新が全タブに波及すること（「データタブしか変わらない」の回帰防止）----
+  // シートの中身を差し替えて「今すぐ更新」→ データタブの更新日時と、概要タブの
+  // 数字の両方が変わることを確認する。
+  await page.fill('#ownerPassInput', ROTATED_PASS);   // 直前で差し替えた合言葉
+  await page.click('#ownerPassBtn');
+  await page.waitForSelector('#sheetRefreshNow', { timeout: 5000 });
+  const overviewTiles = function () {
+    return page.evaluate(function () { return [...document.querySelectorAll('#view-overview .stat-value')].map(function (n) { return n.textContent.trim(); }).join('|'); });
+  };
+  const headerStamp = function () { return page.evaluate(function () { return document.querySelector('#asof').textContent.trim(); }); };
+  CSV_BODY = CSV_V2;                      // シートが更新された
+  await page.click('#sheetRefreshNow');
+  await sleep(1500);
+  check('更新後：ヘッダーのデータ更新日時が変わる', await headerStamp(), 'データ更新 8月8日 23:30');
+  await page.evaluate(function () { location.hash = '#overview'; });
+  // 数値はカウントアップ演出で徐々に上がるため、確定値になるまで待ってから判定
+  await page.waitForFunction(function () {
+    return [...document.querySelectorAll('#view-overview .stat-value')].some(function (n) { return n.textContent.indexOf('90,000') !== -1; });
+  }, {}, { timeout: 5000 }).catch(function () {});
+  const tilesV2 = await overviewTiles();
+  check('更新後：概要タブの数字も新しいデータになる（¥90,000）', tilesV2.indexOf('¥90,000') !== -1, true);
+
+  // ---- 内容が同一なら「変わっていません」と伝える --------------------------
+  await page.evaluate(function () { location.hash = '#data'; });
+  await sleep(700);
+  await page.click('#sheetRefreshNow');           // CSV は差し替えていない＝同一
+  await sleep(1200);
+  const toastText = await page.evaluate(function () {
+    var t = document.querySelector('.toast'); return t ? t.textContent : '';
+  });
+  check('同じ内容なら「変わっていません」と伝える', toastText.indexOf('変わっていません') !== -1, true);
 
   check('コンソールエラーなし', errors.length, 0);
 
