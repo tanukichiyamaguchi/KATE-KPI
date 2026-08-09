@@ -223,7 +223,7 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   CSV_BODY = CSV_V2;                      // シートが更新された
   await page.click('#sheetRefreshNow');
   await sleep(1500);
-  check('更新後：ヘッダーのデータ更新日時が変わる', await headerStamp(), 'データ更新 8月8日 23:30');
+  check('更新後：ヘッダーのデータ更新日時が変わる', (await headerStamp()).indexOf('データ更新 8月8日 23:30') === 0, true);
   await page.evaluate(function () { location.hash = '#overview'; });
   // 数値はカウントアップ演出で徐々に上がるため、確定値になるまで待ってから判定
   await page.waitForFunction(function () {
@@ -241,6 +241,19 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     var t = document.querySelector('.toast'); return t ? t.textContent : '';
   });
   check('同じ内容なら「変わっていません」と伝える', toastText.indexOf('変わっていません') !== -1, true);
+
+  // ---- 取得内容の診断（更新しても変わらないときの切り分け材料）--------------
+  const diag = await page.evaluate(function () {
+    var c = [...document.querySelectorAll('#view-data .gsec')].find(function (g) { return /取得したデータの中身/.test(g.textContent); });
+    return c ? [...c.querySelectorAll('tbody tr')].map(function (r) { return [...r.children].map(function (td) { return td.textContent.trim(); }).join('|'); }) : null;
+  });
+  check('診断テーブルを表示する', Array.isArray(diag) && diag.length >= 1, true);
+  check('診断: 取得データ内の最新日を示す（8/6）', diag[0].indexOf('2026年8月6日') !== -1, true);
+  check('診断: 取得件数を示す', diag[0].indexOf('2件') !== -1, true);
+
+  // ---- ヘッダーに「確認」時刻が併記される（押したことが必ず見える）----------
+  const hdr = await headerStamp();
+  check('ヘッダーに確認時刻を併記する', /（確認 \d{1,2}:\d{2}）/.test(hdr), true);
 
   check('コンソールエラーなし', errors.length, 0);
 
