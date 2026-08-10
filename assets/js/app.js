@@ -49,6 +49,12 @@
     var yr = dt.getFullYear() !== new Date().getFullYear() ? dt.getFullYear() + '年' : '';
     return yr + (dt.getMonth() + 1) + '月' + dt.getDate() + '日 ' + z(dt.getHours()) + ':' + z(dt.getMinutes());
   }
+  // 時刻のみ（今日の「最後に確認した時刻」の併記用）
+  function hmJa(dt) {
+    function z(n) { return (n < 10 ? '0' : '') + n; }
+    var sameDay = dt.toDateString() === new Date().toDateString();
+    return (sameDay ? '' : (dt.getMonth() + 1) + '/' + dt.getDate() + ' ') + z(dt.getHours()) + ':' + z(dt.getMinutes());
+  }
   // 各ビューのリード文末尾に付ける、データの鮮度表示。優先順:
   //  1. シート側の「データ更新日時」＝同期（DailyCSVSync等）が完了した正確な時刻
   //     （tools/sheet-update-stamp.gs をシートに設定すると書き込まれる）
@@ -931,6 +937,7 @@
     // 年商・予約状況 — ここから下は管理ロック解除済みのみ表示される領域なので、
     // 売上の日別内訳と今後の予約はオーナー（管理用の合言葉を入力した人）限定になる。
     var taxTagD = m.taxExcluded ? '（税抜）' : '';
+    var slotJa = { yoyaku: '予約データ', kaikei: '会計明細' };
 
     // ---- 年商（既定は 1/1〜12/31・任意の期間に絞り込み可）---------------------
     var annDays = A.store.dailyAll || [];
@@ -998,6 +1005,13 @@
           (linked ? '<button class="pill" id="' + sm.unlinkId + '" type="button">解除</button>' : '') +
           '</div>' +
           (linked ? '<div class="status-line" style="margin-top:8px;color:var(--status-good)"><i style="background:var(--status-good)"></i>連携中。ページを開くたびに最新の内容を読み込みます。</div>' : '') +
+          // 「ウェブに公開」URLは、自動再公開が止まるとGoogle側で内容が凍結され、
+          // 何度読み込んでも古いまま になる。URL種別から判別できるので明示する。
+          (linked && isPublishedUrl(sm.sheetUrl)
+            ? '<div class="status-line" style="margin-top:6px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' +
+              '<b>「ウェブに公開」URL</b>です。公開設定の「自動的に再公開する」が外れていると、シートを更新してもこのURLの内容は<b>公開時点で凍結</b>され、更新が届きません。' +
+              '更新が止まっている場合は、<code>ファイル → 共有 → ウェブに公開</code>で再公開するか、通常の<b>編集URL</b>（<code>/spreadsheets/d/…/edit</code>）に貼り替えてください（編集URLは常に最新を読みます）。</div>'
+            : '') +
           '</div>';
       }).join('') +
         '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12.5px;color:var(--ink-secondary);font-weight:600">連携のしかた・注意点</summary>' +
@@ -1057,6 +1071,39 @@
           '<button class="pill" id="ownerRelockBtn" type="button">この端末を再ロックする</button>' +
           '</div>' : '')
     });
+    // 取得内容の診断 — 「更新しても変わらない」ときに、原因がダッシュボードなのか
+    // 取得元（シート／公開URL）なのかを、推測ではなく取得した事実そのもので示す。
+    // 特に「データに含まれる最新の日付」は、シートがどこまでのデータを持っているかを
+    // 集計を通さずに表すため、同期が止まっていればここに直接現れる。
+    var diagRows = ['yoyaku', 'kaikei'].map(function (sl) {
+      var s3 = state.sources[sl];
+      if (!s3 || !s3.diag) return '';
+      var d3 = s3.diag, today = new Date();
+      var todayNum = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+      // 「最新の日付」が2日以上前なら、取得できている中身自体が古い＝シート側の問題
+      var behind = d3.latest !== null && (todayNum - d3.latest) >= 2;
+      return '<tr><td>' + esc(slotJa[sl]) + '</td>' +
+        '<td class="tnum">' + F.int(d3.rows) + '件</td>' +
+        '<td class="tnum"' + (behind ? ' style="color:var(--status-warning);font-weight:700"' : '') + '>' +
+          (d3.latest !== null ? esc(ymdNumJa(d3.latest)) : '—') + '</td>' +
+        '<td>' + (s3.updatedAt ? esc(ymdhmJa(s3.updatedAt)) : '—') + '</td>' +
+        '<td>' + esc(ymdhmJa(d3.fetchedAt)) + '</td>' +
+        // 取得経路。export＝常に最新／gviz・pub＝Google側で古い内容が返ることがある
+        '<td' + (d3.kind === 'export' ? '' : ' style="color:var(--status-warning);font-weight:700"') + '>' +
+          (d3.kind === 'export' ? '常に最新' : d3.kind === 'gviz' ? 'キャッシュ有' : '公開スナップ') + '</td></tr>';
+    }).join('');
+    if (diagRows) {
+      html += card({
+        col: 'col-12', title: '取得したデータの中身（診断）' + help('「更新しても数字が変わらない」ときに、原因がこのダッシュボードなのか、取得元のシートなのかを切り分けるための表です。<b>データ内の最新日</b>は、いま実際に取得できたCSVに含まれる一番新しい来店日／会計日です。ここが今日・昨日になっていなければ、シート側にまだ新しいデータが入っていない（＝同期が止まっている）ことを意味します。<b>シートの更新日時</b>はシート側が記録した同期完了時刻、<b>取得時刻</b>はこの画面が読みに行った時刻です。<b>取得経路</b>は、通常の編集URLなら「常に最新」（ファイルのCSV書き出しを直接読む経路）になります。「キャッシュ有」「公開スナップ」の場合はGoogle側で古い内容が返ることがあるため、編集URL（<code>/spreadsheets/d/…/edit</code>）に貼り替えてください。'),
+        sub: '「更新しても変わらない」ときは、ここで取得元とダッシュボードのどちらの問題か切り分けられます',
+        body: '<div class="table-wrap"><table class="kate-table">' +
+          '<thead><tr><th>シート</th><th>取得件数</th><th>データ内の最新日</th><th>シートの更新日時</th><th>取得時刻</th><th>取得経路</th></tr></thead>' +
+          '<tbody>' + diagRows + '</tbody></table></div>' +
+          '<div class="note-inline" style="margin-top:10px">' +
+          '「取得時刻」は更新のたびに必ず新しくなります。それでも<b>「データ内の最新日」が進まない場合、原因はシート側</b>です（このダッシュボードは取得できた内容をそのまま表示しています）。' +
+          '</div>'
+      });
+    }
     // Merge report — only when both slots are loaded
     if (state.mergeReport) {
       var mr = state.mergeReport;
@@ -1085,7 +1132,6 @@
     // 表示中の「データ更新」は古い方のシートの時刻なので、どちらのシートが
     // 止まっているかをここで特定できるようにする。26時間＝毎晩の同期
     // （DailyCSVSync）が1回飛んだことを検知できる最小のしきい値。
-    var slotJa = { yoyaku: '予約データ', kaikei: '会計明細' };
     var srcRows = '', staleWarns = '';
     var bothLinked = state.sources.yoyaku && state.sources.kaikei;
     ['yoyaku', 'kaikei'].forEach(function (slot2) {
@@ -1320,21 +1366,66 @@
     updateChrome(); renderAll(); route(state.view, true);
     return A;
   }
+  // 「ウェブに公開」型のURLか（/spreadsheets/d/e/… または output=csv）。この型は
+  // 自動再公開が止まるとGoogle側で内容が凍結されるため、UIで注意を出す。
+  function isPublishedUrl(u) { return /\/spreadsheets\/d\/e\//i.test(u || '') || /output=csv/i.test(u || ''); }
+  // 取得したCSVの同一性判定用の軽量ハッシュ（FNV-1a 32bit）。「更新を押したのに
+  // 何も変わらない」が、取得失敗なのか内容が同じなのかを区別して伝えるために使う。
+  function strHash(s) {
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 16777619) >>> 0; }
+    return String(h) + ':' + s.length;
+  }
+  // 取得したデータに含まれる最も新しい日付（来店日／会計日）。シートが実際に
+  // どこまでのデータを持っているかを、集計を通さず生の取得内容から示す。
+  function latestRecordDate(recs) {
+    var best = null;
+    for (var i = 0; i < recs.length; i++) {
+      var d = String(recs[i].date || '').trim();
+      if (!d) continue;
+      var mm = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/.exec(d);
+      if (!mm) continue;
+      var n = +mm[1] * 10000 + +mm[2] * 100 + +mm[3];
+      if (best === null || n > best) best = n;
+    }
+    return best;   // 20260809 形式の数値 / データが無ければ null
+  }
+  function ymdNumJa(n) { var s = String(n); return +s.slice(0, 4) + '年' + (+s.slice(4, 6)) + '月' + (+s.slice(6, 8)) + '日'; }
   function linkSheet(url, slot, opts) {
     opts = opts || {};
     if (!url) return;
     if (!opts.silent) toast('スプレッドシートを読み込み中…');
-    global.KATE.sheets.fetchCsv(url).then(function (text) {
+    var usedKind = null;   // どの経路で取れたか（export=常に最新 / gviz=キャッシュあり / pub=公開スナップショット）
+    global.KATE.sheets.fetchCsv(url, { onEndpoint: function (u, kind) { usedKind = kind; } }).then(function (text) {
       var parsed = global.KATE.ingest.fromAOA(global.KATE.ingest.parseCSV(text));
       var format = parsed.format, recs = parsed.records;
-      state.sources[format] = { records: recs, fileName: null, via: 'スプレッドシート連携', updatedAt: parsed.sheetUpdatedAt || null };
+      var prevSrc = state.sources[format];
+      var hash = strHash(text);
+      var unchanged = !!(prevSrc && prevSrc.hash && prevSrc.hash === hash);
+      state.sources[format] = {
+        records: recs, fileName: null, via: 'スプレッドシート連携', updatedAt: parsed.sheetUpdatedAt || null, hash: hash,
+        // 診断用: 実際に取得できた中身そのもの。「更新しても変わらない」ときに、
+        // 原因がダッシュボードなのか取得元なのかを推測ではなく事実で切り分ける。
+        diag: { rows: recs.length, bytes: text.length, latest: latestRecordDate(recs), fetchedAt: new Date(), url: url, kind: usedKind }
+      };
       if (format === 'kaikei') state.sheetUrlKaikei = url; else state.sheetUrl = url;
       try { localStorage.setItem(format === 'kaikei' ? 'kate-sheet-url-kaikei' : 'kate-sheet-url', url); } catch (e) {}
       state.dataLoadedAt = new Date();   // データを取得した日時を記録
       var A = applySources();
       var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
-      if (!opts.silent) toast('✓ スプレッドシートから ' + F.int(recs.length) + '件を読み込みました' + reroute + warn, warn ? 'err' : 'ok');
+      if (!opts.silent) {
+        // 取得は成功したのに中身が前回と1文字も違わない場合、画面は当然変わらない。
+        // 「更新したのに変わらない」の原因がダッシュボードではなくシート側にある
+        // ことをその場で伝える（黙って成功トーストを出すと誤解を招く）。
+        if (unchanged) {
+          toast('シートの内容は前回から変わっていません（' + slotMeta(format).label +
+            (parsed.sheetUpdatedAt ? '・シートの更新 ' + ymdhmJa(parsed.sheetUpdatedAt) : '') +
+            '）。シート側の同期をご確認ください', 'err');
+        } else {
+          toast('✓ スプレッドシートから ' + F.int(recs.length) + '件を読み込みました' + reroute + warn, warn ? 'err' : 'ok');
+        }
+      }
     }).catch(function (err) {
       console.warn('sheet load failed', err);
       if (!opts.silent) toast('⚠ ' + (err.message || '読み込みに失敗しました'), 'err');
@@ -1473,7 +1564,11 @@
   function updateChrome() {
     // ヘッダーの日付表示（dataStamp と同じ優先順）:
     // シートの同期完了時刻 → この画面の読込時刻 → 基準日（サンプル時のみ）
-    $('#asof').textContent = state.sheetUpdatedAt ? 'データ更新 ' + ymdhmJa(state.sheetUpdatedAt)
+    // 「データ更新」＝シート側が記録した同期完了時刻（複数シート連携時は古い方）。
+    // これは更新ボタンを押しても、シートが同期されない限り動かない。押したこと自体が
+    // 伝わらず「壊れている」ように見えるため、最後に確認した時刻を必ず併記する。
+    $('#asof').textContent = state.sheetUpdatedAt
+      ? 'データ更新 ' + ymdhmJa(state.sheetUpdatedAt) + (state.dataLoadedAt ? '（確認 ' + hmJa(state.dataLoadedAt) + '）' : '')
       : state.dataLoadedAt ? '最終読込 ' + ymdhmJa(state.dataLoadedAt)
       : (state.analytics.meta.asOf ? '基準日 ' + ymdJa(state.analytics.meta.asOf) : '');
     // サンプルデータ表示中はバッジ自体を非表示（実データ連携時のみ出所を表示）。
