@@ -1087,14 +1087,17 @@
         '<td class="tnum"' + (behind ? ' style="color:var(--status-warning);font-weight:700"' : '') + '>' +
           (d3.latest !== null ? esc(ymdNumJa(d3.latest)) : '—') + '</td>' +
         '<td>' + (s3.updatedAt ? esc(ymdhmJa(s3.updatedAt)) : '—') + '</td>' +
-        '<td>' + esc(ymdhmJa(d3.fetchedAt)) + '</td></tr>';
+        '<td>' + esc(ymdhmJa(d3.fetchedAt)) + '</td>' +
+        // 取得経路。export＝常に最新／gviz・pub＝Google側で古い内容が返ることがある
+        '<td' + (d3.kind === 'export' ? '' : ' style="color:var(--status-warning);font-weight:700"') + '>' +
+          (d3.kind === 'export' ? '常に最新' : d3.kind === 'gviz' ? 'キャッシュ有' : '公開スナップ') + '</td></tr>';
     }).join('');
     if (diagRows) {
       html += card({
-        col: 'col-12', title: '取得したデータの中身（診断）' + help('「更新しても数字が変わらない」ときに、原因がこのダッシュボードなのか、取得元のシートなのかを切り分けるための表です。<b>データ内の最新日</b>は、いま実際に取得できたCSVに含まれる一番新しい来店日／会計日です。ここが今日・昨日になっていなければ、シート側にまだ新しいデータが入っていない（＝同期が止まっている）ことを意味します。<b>シートの更新日時</b>はシート側が記録した同期完了時刻、<b>取得時刻</b>はこの画面が読みに行った時刻です。'),
+        col: 'col-12', title: '取得したデータの中身（診断）' + help('「更新しても数字が変わらない」ときに、原因がこのダッシュボードなのか、取得元のシートなのかを切り分けるための表です。<b>データ内の最新日</b>は、いま実際に取得できたCSVに含まれる一番新しい来店日／会計日です。ここが今日・昨日になっていなければ、シート側にまだ新しいデータが入っていない（＝同期が止まっている）ことを意味します。<b>シートの更新日時</b>はシート側が記録した同期完了時刻、<b>取得時刻</b>はこの画面が読みに行った時刻です。<b>取得経路</b>は、通常の編集URLなら「常に最新」（ファイルのCSV書き出しを直接読む経路）になります。「キャッシュ有」「公開スナップ」の場合はGoogle側で古い内容が返ることがあるため、編集URL（<code>/spreadsheets/d/…/edit</code>）に貼り替えてください。'),
         sub: '「更新しても変わらない」ときは、ここで取得元とダッシュボードのどちらの問題か切り分けられます',
         body: '<div class="table-wrap"><table class="kate-table">' +
-          '<thead><tr><th>シート</th><th>取得件数</th><th>データ内の最新日</th><th>シートの更新日時</th><th>取得時刻</th></tr></thead>' +
+          '<thead><tr><th>シート</th><th>取得件数</th><th>データ内の最新日</th><th>シートの更新日時</th><th>取得時刻</th><th>取得経路</th></tr></thead>' +
           '<tbody>' + diagRows + '</tbody></table></div>' +
           '<div class="note-inline" style="margin-top:10px">' +
           '「取得時刻」は更新のたびに必ず新しくなります。それでも<b>「データ内の最新日」が進まない場合、原因はシート側</b>です（このダッシュボードは取得できた内容をそのまま表示しています）。' +
@@ -1392,7 +1395,8 @@
     opts = opts || {};
     if (!url) return;
     if (!opts.silent) toast('スプレッドシートを読み込み中…');
-    global.KATE.sheets.fetchCsv(url).then(function (text) {
+    var usedKind = null;   // どの経路で取れたか（export=常に最新 / gviz=キャッシュあり / pub=公開スナップショット）
+    global.KATE.sheets.fetchCsv(url, { onEndpoint: function (u, kind) { usedKind = kind; } }).then(function (text) {
       var parsed = global.KATE.ingest.fromAOA(global.KATE.ingest.parseCSV(text));
       var format = parsed.format, recs = parsed.records;
       var prevSrc = state.sources[format];
@@ -1402,7 +1406,7 @@
         records: recs, fileName: null, via: 'スプレッドシート連携', updatedAt: parsed.sheetUpdatedAt || null, hash: hash,
         // 診断用: 実際に取得できた中身そのもの。「更新しても変わらない」ときに、
         // 原因がダッシュボードなのか取得元なのかを推測ではなく事実で切り分ける。
-        diag: { rows: recs.length, bytes: text.length, latest: latestRecordDate(recs), fetchedAt: new Date(), url: url }
+        diag: { rows: recs.length, bytes: text.length, latest: latestRecordDate(recs), fetchedAt: new Date(), url: url, kind: usedKind }
       };
       if (format === 'kaikei') state.sheetUrlKaikei = url; else state.sheetUrl = url;
       try { localStorage.setItem(format === 'kaikei' ? 'kate-sheet-url-kaikei' : 'kate-sheet-url', url); } catch (e) {}
