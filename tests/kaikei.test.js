@@ -829,19 +829,69 @@ h('■ Fixture BB: スタッフ月別リピート率・固定化率の推移（�
   const R = engine.compute(rows, { asOf: '2026-08-01' });
   const momo = R.staff.filter(function (s) { return s.name === 'momo'; })[0];
   const may = momo.repeatFixMonthly.filter(function (m) { return m.m === '2026-05'; })[0];
+  // 人数（分母・分子）は母数の大小にかかわらず保持する
   check('momo 5月コホート人数（X,Y,Z=3人）', may.cohortN, 3);
-  check('momo 5月リピート率（2回到達 X,Y=2/3）', Math.round(may.repeat * 1000) / 1000, 0.667);
+  check('momo 5月 2回到達人数（X,Y=2人）', may.reach2N, 2);
   check('momo 5月 固定化率の母数（Fvis>=2 は X,Y=2人）', may.fix2N, 2);
   check('momo 5月 固定化率の分子（Fvis>=2 かつ Fres>=3 は X=1人）', may.fix3N, 1);
-  check('momo 5月固定化率（1/2=0.5）', may.fix, 0.5);
+  // 率は母数5人未満だと出さない（1人の挙動が100%・0%に化けるのを防ぐ）
+  check('momo 5月リピート率は母数3人なので出さない', may.repeat, null);
+  check('momo 5月固定化率は母数2人なので出さない（1/2=50%と出さない）', may.fix, null);
   const momoJun = momo.repeatFixMonthly.filter(function (m) { return m.m === '2026-06'; })[0];
   check('momo 6月コホートは0人 → repeat=null', momoJun.repeat, null);
   check('momo 6月コホートは0人 → fix=null', momoJun.fix, null);
   const aoi = R.staff.filter(function (s) { return s.name === 'aoi'; })[0];
   const aoiJun = aoi.repeatFixMonthly.filter(function (m) { return m.m === '2026-06'; })[0];
   check('aoi 6月コホート人数（W=1人）', aoiJun.cohortN, 1);
-  check('aoi 6月リピート率（Wは未到達 0/1）', aoiJun.repeat, 0);
+  check('aoi 6月リピート率は母数1人なので出さない', aoiJun.repeat, null);
   check('aoi 6月固定化率（Fvis>=2 が0人 → null）', aoiJun.fix, null);
+}
+
+// ============================================================================
+// Fixture CC — 母数が小さい月の率を出さない（「固定化率100%」の再発防止）
+// 分母が1〜2人だと 1/1＝100% となり、1人の挙動が実態と懸け離れた率に化ける。
+// 母数5人未満は率を出さず、5人以上になった月から出すことを確認する。
+// ============================================================================
+h('■ Fixture CC: 母数の小さい月は率を出さない（固定化率100%の再発防止）');
+{
+  // 6月: aoi が2人獲得し、2人とも3回来店 → 素朴に計算すると固定化率 2/2 = 100%
+  // 7月: aoi が6人獲得し、6人とも2回来店・うち3人が3回目予約 → 3/6 = 50%（母数6人）
+  const rows = [];
+  ['A1', 'A2'].forEach(function (k, i) {
+    rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-06-0' + (i + 1), kaikeiTotal: 5000 }));
+    rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-06-1' + (i + 1), kaikeiTotal: 5000 }));
+    rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-06-2' + (i + 1), kaikeiTotal: 5000 }));
+  });
+  for (var i = 0; i < 6; i++) {
+    var k = 'B' + i;
+    rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-07-0' + (i + 1), kaikeiTotal: 5000 }));
+    rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-07-1' + (i + 1), kaikeiTotal: 5000 }));
+    if (i < 3) rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-07-2' + (i + 1), kaikeiTotal: 5000 }));
+  }
+  const R = engine.compute(rows, { asOf: '2026-09-01' });
+  const aoi = R.staff.filter(function (s) { return s.name === 'aoi'; })[0];
+  const jun = aoi.repeatFixMonthly.filter(function (m) { return m.m === '2026-06'; })[0];
+  const jul = aoi.repeatFixMonthly.filter(function (m) { return m.m === '2026-07'; })[0];
+
+  check('6月: 固定化の分母は2人', jun.fix2N, 2);
+  check('6月: 固定化の分子も2人（素朴に割ると100%）', jun.fix3N, 2);
+  check('6月: 母数2人なので固定化率は出さない（100%と表示しない）', jun.fix, null);
+  check('6月: 母数2人なのでリピート率も出さない', jun.repeat, null);
+
+  check('7月: コホート6人', jul.cohortN, 6);
+  check('7月: 固定化の分母6人・分子3人', jul.fix2N * 10 + jul.fix3N, 63);
+  check('7月: 母数5人以上なので固定化率を出す（3/6=0.5）', jul.fix, 0.5);
+  check('7月: 母数5人以上なのでリピート率を出す（6/6=1）', jul.repeat, 1);
+
+  // 集計途中の当月は、母数が足りていても率を出さない（部分的なコホートのため）。
+  // asOf を 7/10 にすると7月が「集計途中の当月」になり、同じ6人でも出さなくなる。
+  const R2 = engine.compute(rows, { asOf: '2026-07-10' });
+  const aoi2 = R2.staff.filter(function (s) { return s.name === 'aoi'; })[0];
+  const jul2 = aoi2.repeatFixMonthly.filter(function (m) { return m.m === '2026-07'; })[0];
+  check('集計途中の当月と判定される', jul2.partial ? 1 : 0, 1);
+  check('集計途中の当月は母数6人でも固定化率を出さない', jul2.fix, null);
+  check('集計途中の当月は母数6人でもリピート率を出さない', jul2.repeat, null);
+  check('人数（分母・分子）は当月でも保持する', jul2.cohortN, 6);
 }
 
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);

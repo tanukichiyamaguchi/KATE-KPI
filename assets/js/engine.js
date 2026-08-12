@@ -212,6 +212,11 @@
     // understates the true rate. Only matters for completed-checkout sources
     // (no future rows) — 予約データ already knows about upcoming bookings.
     var REPEAT_MATURITY_DAYS = 45;
+    // 率としてグラフに載せる最小の母数。分母が1〜2人だと 1/1＝100%、1/2＝50% の
+    // ように、たった1人の挙動が「固定化率100%」に化けて実態を誤って伝える。
+    // 母数がこれ未満の月は率を出さない（null＝グラフ上は点を描かない）。
+    // 人数そのもの（cohortN/fix2N など）は保持するので、内訳は失われない。
+    var MIN_RATE_DENOM = 5;
     function custMature(c) {
       if (hasFuture) return true;
       return !!(c.firstVisitDate && dayDiff(asOf, c.firstVisitDate) >= REPEAT_MATURITY_DAYS);
@@ -522,7 +527,9 @@
     var byCohort = groupBy(visitedCusts.filter(function (c) { return c.firstVisitMonth; }), function (c) { return c.firstVisitMonth; });
     var cohort = months.map(function (mo) {
       var g = byCohort[mo] || [];
-      if (!g.length || monthImmatureBy(mo, REPEAT_MATURITY_DAYS)) return null;
+      // 集計途中の当月（部分的なコホート）と、母数の小さい月は落とす。
+      // どちらも数人・数日ぶんの偏りが率に化けて、完了した月と比較できないため。
+      if (mo === currentYm || g.length < MIN_RATE_DENOM || monthImmatureBy(mo, REPEAT_MATURITY_DAYS)) return null;
       var reach2 = g.filter(function (c) { return c.Fres >= 2; }).length / g.length;
       return { m: mo, n: g.length, reach2: reach2 };
     }).filter(Boolean);
@@ -737,10 +744,17 @@
         var reach2N = cohort.filter(function (c) { return c.Fres >= 2; }).length;
         var fix2N = cohort.filter(function (c) { return c.Fvis >= 2; }).length;
         var fix3N = cohort.filter(function (c) { return c.Fvis >= 2 && c.Fres >= 3; }).length;
+        // 集計途中の当月は、月の途中までしか獲得していない部分的なコホート。
+        // 例: 基準日が7/3なら7月の獲得は3日ぶんだけで、たまたま全員が次回予約を
+        // 取っていれば 5/5＝100% になる。完了した月と同じ土俵に並べられない。
+        var partial = (mo === currentYm);
         return {
-          m: mo, cohortN: n, reach2N: reach2N, fix2N: fix2N, fix3N: fix3N,
-          repeat: n ? reach2N / n : null,
-          fix: fix2N ? fix3N / fix2N : null
+          m: mo, cohortN: n, reach2N: reach2N, fix2N: fix2N, fix3N: fix3N, partial: partial,
+          // 率を出す条件は2つ。①集計途中の当月でないこと ②母数が MIN_RATE_DENOM 以上
+          // であること。どちらも欠けると、数人・数日ぶんの偏りが 100%/0% として
+          // グラフに乗り、完了した月と並べて比較できなくなる。
+          repeat: (!partial && n >= MIN_RATE_DENOM) ? reach2N / n : null,
+          fix: (!partial && fix2N >= MIN_RATE_DENOM) ? fix3N / fix2N : null
         };
       });
 
@@ -779,7 +793,8 @@
     // ---- Trend: monthly cohort (repeat + LTV) -------------------------------
     var monthlyCohort = months.map(function (mo) {
       var g = byCohort[mo] || [];
-      if (!g.length) return null;
+      // 集計途中の当月と、母数の小さいコホートは落とす（1人＝100% を防ぐ）。
+      if (mo === currentYm || g.length < MIN_RATE_DENOM) return null;
       return { m: mo, n: g.length, repeat: g.filter(function (c) { return c.Fres >= 2; }).length / g.length, ltv: Math.round(g.reduce(function (s, c) { return s + c.M; }, 0) / g.length) };
     }).filter(Boolean);
 
