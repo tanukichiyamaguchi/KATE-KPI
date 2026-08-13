@@ -75,10 +75,12 @@ g.monthly.forEach((m, i) => check(`${m.m} 予約ベース売上`, s.monthly[i].r
 
 h('■ コホート 2回到達率');
 g.cohort.forEach((c, i) => { const mine = s.cohort.find(x => x.m === c.m); if (mine) check(`${c.m} 2回到達率`, mine.reach2, c.reach2, 0.03); });
-// 集計基準日を含む月（2026-07）は、月の途中までの部分的なコホートなので意図的に
-// 除外している（ワークブックは素朴に算出しているが、数人・数日ぶんの偏りが
-// 100%等に化けて完了月と比較できないため）。除外が消えないよう明示的に固定する。
-check('集計途中の当月(2026-07)はコホートに含めない', s.cohort.some(x => x.m === '2026-07') ? 1 : 0, 0);
+// 集計基準日を含む月（2026-07）も予約ベースで測定できるため含める（オーナー要望）。
+// partial フラグでUI側が「※集計途中」と表示する。母数5人未満の月のみ除外。
+const cur = s.cohort.find(x => x.m === '2026-07');
+check('集計途中の当月(2026-07)もコホートに含める', cur ? 1 : 0, 1);
+check('当月には partial フラグが立つ', cur && cur.partial ? 1 : 0, 1);
+check('完了月に partial フラグは立たない', s.cohort.some(x => x.m !== '2026-07' && x.partial) ? 1 : 0, 0);
 
 h('■ 来店回数別');
 g.visitCountBreakdown.forEach((b, i) => check(b.label + ' 件数', s.visitCountBreakdown[i].count, b.count, 2));
