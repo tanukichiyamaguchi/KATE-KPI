@@ -662,28 +662,58 @@ h('■ Fixture T: 固定化率はリピート率と同じ予約ベース（分�
 }
 
 // ============================================================================
-// Fixture U — 固定化率の分子: 3回目をキャンセルし別日の再予約が無い顧客は省く
-// （オーナー確認事項）。キャンセル後に別日の再予約があれば「3回目の予約有り」と数える。
+// Fixture U — キャンセルと再予約の扱い（オーナー確認事項）。
+//
+// キャンセルは「予約が無い」ものとして扱う。厳密には、キャンセル行が分子から
+// 何かを引くのではなく、キャンセルされた予約はそもそも有効予約(Fres)に数えない。
+// 結果として「3回目をキャンセルしたら分子から外れ、取り直したら分子に戻る」
+// という挙動になる。取り直しの経路（これから来店／既に来店済み）は問わない。
 // ============================================================================
-// X: 実来店2回 → 3回目を予約したが「お客様キャンセル」→ 別日の再予約なし
-//    → Fvis=2（分母○）だが Fres=2（キャンセルは実効予約に数えない）→ 分子×
-// Y: 実来店2回 → 3回目キャンセル → その後 別日に受付待ちで再予約
-//    → Fvis=2（分母○）かつ Fres=3（再予約が実効予約）→ 分子○
-h('■ Fixture U: 固定化率の分子はキャンセルのみ(再予約なし)を省く');
+// X: 来店2回 → 3回目をキャンセル → 取り直しなし        → Fres=2 → 分子×
+// Y: 来店2回 → 3回目をキャンセル → 別日に受付待ちで再予約 → Fres=3 → 分子○
+// Z: 来店2回 → 3回目をキャンセル → 別日に来店（会計済み） → Fres=3 → 分子○
+// W: 来店2回 → 3回目をキャンセル → 再予約したがその日も過ぎて未処理(受付待ちの
+//    まま基準日以前) → 滞留として有効予約に数えないため Fres=2 → 分子×
+// 分母はいずれも Fres>=2 で4人全員。分子は Y,Z の2人 → 固定化率 2/4 = 50%。
+h('■ Fixture U: キャンセルは分子から外し、取り直せば分子に戻す');
 {
   const rows = [
     rec({ custKey: 'X', date: '2026-05-01', kaikeiTotal: 6000 }),
     rec({ custKey: 'X', date: '2026-05-20', kaikeiTotal: 6000 }),
     rec({ custKey: 'X', status: 'お客様キャンセル', date: '2026-06-10' }),
+
     rec({ custKey: 'Y', date: '2026-05-02', kaikeiTotal: 6000 }),
     rec({ custKey: 'Y', date: '2026-05-21', kaikeiTotal: 6000 }),
     rec({ custKey: 'Y', status: 'お客様キャンセル', date: '2026-06-11' }),
-    rec({ custKey: 'Y', status: '受付待ち', date: '2026-08-01', yoyakuTotal: 6000 })
+    rec({ custKey: 'Y', status: '受付待ち', date: '2026-08-01', yoyakuTotal: 6000 }),   // これから来店
+
+    rec({ custKey: 'Z', date: '2026-05-03', kaikeiTotal: 6000 }),
+    rec({ custKey: 'Z', date: '2026-05-22', kaikeiTotal: 6000 }),
+    rec({ custKey: 'Z', status: 'サロンキャンセル', date: '2026-06-12' }),
+    rec({ custKey: 'Z', date: '2026-06-20', kaikeiTotal: 6000 }),                       // 取り直して来店済み
+
+    rec({ custKey: 'W', date: '2026-05-04', kaikeiTotal: 6000 }),
+    rec({ custKey: 'W', date: '2026-05-23', kaikeiTotal: 6000 }),
+    rec({ custKey: 'W', status: '無断キャンセル', date: '2026-06-13' }),
+    rec({ custKey: 'W', status: '受付待ち', date: '2026-06-25', yoyakuTotal: 6000 })     // 基準日以前＝未処理で滞留
   ];
   const R = engine.compute(rows, { asOf: '2026-07-03' });
-  check('固定化率 分母（実来店2回目 X,Y）', R.store.fixDenom, 2);
-  check('固定化率 分子（3回目の予約が現存する Y のみ・X は除外）', R.store.fixNumer, 1);
-  check('固定化率 = 1/2 = 50.0%', R.store.fixationRate, 50.0, 0.05);
+  check('分母（2回目に到達 X,Y,Z,W の4人）', R.store.fixDenom, 4);
+  check('分子（取り直しのある Y,Z の2人）', R.store.fixNumer, 2);
+  check('固定化率 = 2/4 = 50.0%', R.store.fixationRate, 50.0, 0.05);
+  check('キャンセル4件があっても分母は4人のまま', R.store.fixDenom, 4);
+  check('受付待ちのまま日付が過ぎた行は滞留として除外（W の1件）', R.store.staleExcluded, 1);
+
+  // 顧客ごとに単独で計算し、1人ずつ分子に入るかを確定させる
+  const solo = function (key) {
+    const one = rows.filter(function (r) { return r.custKey === key; });
+    const S = engine.compute(one, { asOf: '2026-07-03' }).store;
+    return S.fixDenom === 1 ? S.fixNumer : -1;   // 分母に入っていれば分子(0/1)、入らなければ -1
+  };
+  check('X: キャンセルのみ・取り直しなし → 分子に入らない', solo('X'), 0);
+  check('Y: 取り直して「これから来店」 → 分子に入る', solo('Y'), 1);
+  check('Z: 取り直して「既に来店済み」 → 分子に入る', solo('Z'), 1);
+  check('W: 取り直しが未処理のまま日付超過 → 分子に入らない', solo('W'), 0);
 }
 
 // ============================================================================
