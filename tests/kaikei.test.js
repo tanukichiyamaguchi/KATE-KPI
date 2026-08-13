@@ -894,5 +894,49 @@ h('■ Fixture CC: 母数の小さい月は率を出さない（固定化率100%
   check('人数（分母・分子）は当月でも保持する', jul2.cohortN, 6);
 }
 
+// ============================================================================
+// Fixture DD — 固定化率だけコホートの熟成を待つ（リピート率は待たない）
+//
+// 固定化率の分母は「実際に2回“来店”した人」なので、獲得から時間が経たないと
+// 育たない。育つ前は早く再来した熱心な人だけが分母に入り、3回目率が高く出る
+// （実データで aoi 7月コホートが 6/6＝100% になっていた）。一方リピート率の
+// 分子は予約ベース（Fres）なので、予約一覧を見れば獲得直後でも判定でき、
+// 時間を待つ必要がない。この非対称性を固定する。
+// ============================================================================
+h('■ Fixture DD: 固定化率はコホート熟成を待ち、リピート率は待たない');
+{
+  // 8月に6人獲得。全員が2回目の“予約”を持ち（→リピート率は即判定可能）、
+  // うち5人は実際に2回来店し、その5人全員が3回目の予約も確保している。
+  // 素朴に割ると固定化率 5/5＝100%。基準日を動かして熟成前後を比べる。
+  const rows = [];
+  for (let i = 0; i < 6; i++) {
+    const k = 'C' + i;
+    rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-08-0' + (i + 1), kaikeiTotal: 5000 }));
+    if (i < 5) {
+      rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-08-1' + (i + 1), kaikeiTotal: 5000 }));   // 2回目の来店
+      rows.push(rec({ custKey: k, staff: 'aoi', status: '受付待ち', date: '2026-12-0' + (i + 1), yoyakuTotal: 5000 }));  // 3回目の予約
+    } else {
+      rows.push(rec({ custKey: k, staff: 'aoi', status: '受付待ち', date: '2026-12-20', yoyakuTotal: 5000 }));  // 2回目は予約のみ
+    }
+  }
+  // 来店周期の中央値ぶん（このデータでは約10日）を超えて経過させるため、
+  // 熟成前=9月上旬（月末から数日）／熟成後=11月（月末から3ヶ月）で比較する。
+  const early = engine.compute(rows, { asOf: '2026-09-03' });
+  const late = engine.compute(rows, { asOf: '2026-11-30' });
+  const aug = (R) => R.staff.filter(function (s) { return s.name === 'aoi'; })[0]
+    .repeatFixMonthly.filter(function (m) { return m.m === '2026-08'; })[0];
+  const e = aug(early), l = aug(late);
+
+  check('熟成前: 固定化の分母5人・分子5人（素朴に割ると100%）', e.fix2N * 10 + e.fix3N, 55);
+  check('熟成前: コホート未熟と判定される', e.fixImmature ? 1 : 0, 1);
+  check('熟成前: 固定化率は出さない（100%を表示しない）', e.fix, null);
+  check('熟成前でもリピート率は出す（予約ベースで判定できる）', e.repeat, 1);
+
+  check('熟成後: コホート未熟ではない', l.fixImmature ? 1 : 0, 0);
+  check('熟成後: 固定化率を出す（5/5=1）', l.fix, 1);
+  check('熟成後: リピート率も出す', l.repeat, 1);
+  check('人数は熟成前後で変わらない（表示可否だけが変わる）', e.fix2N === l.fix2N && e.cohortN === l.cohortN ? 1 : 0, 1);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);

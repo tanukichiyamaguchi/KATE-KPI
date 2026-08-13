@@ -611,6 +611,11 @@
     // currentYm (the in-progress month, excluded from personal-best comparisons)
     // is defined up with the period buckets.
 
+    // 固定化率の月次推移でコホートの熟成を待つ日数。来店周期の中央値＝お客様が
+    // 次に来店するまでの実測値なので、これだけ経てば「2回来店した人」（固定化率の
+    // 分母）がひと通り出そろう。店舗ごとの実データに追従させるため定数にしない。
+    var cohortFixMatureDays = Math.max(visitCycleMedianDays || 0, 30);
+
     var staff = staffNames.map(function (name) {
       var mrows = staffMonthly(name);
       var active = mrows.filter(function (r) { return r.actual > 0; });
@@ -748,13 +753,27 @@
         // 例: 基準日が7/3なら7月の獲得は3日ぶんだけで、たまたま全員が次回予約を
         // 取っていれば 5/5＝100% になる。完了した月と同じ土俵に並べられない。
         var partial = (mo === currentYm);
+        // 固定化率だけに必要な「コホートの熟成待ち」:
+        // リピート率の分子は Fres（予約ベース）なので、獲得直後でも次回予約が
+        // 入っていれば即座に到達と判定でき、時間を待つ必要はない。
+        // 一方、固定化率の分母は Fvis（実際に2回“来店”した人）なので、
+        // 1周期ぶんの時間が経たないと分母が育たない。育つ前は「早く再来した
+        // 熱心な人」だけが分母に入り、3回目率が異常に高く出る（例: 6/6＝100%）。
+        //   実データ: 月末からの経過が43日以上のコホートは「2回来店できた割合」が
+        //   53〜64% で安定するのに対し、12日のコホートは9%しかない。
+        // そこで月末から「来店周期の中央値」以上が経過するまで固定化率は出さない。
+        // hasFuture では短絡しない — 予約情報があっても“来店”実績は増えないため。
+        var monthEnd = new Date(+mo.split('-')[0], +mo.split('-')[1], 0);
+        var fixImmature = dayDiff(asOf, monthEnd) < cohortFixMatureDays;
         return {
-          m: mo, cohortN: n, reach2N: reach2N, fix2N: fix2N, fix3N: fix3N, partial: partial,
-          // 率を出す条件は2つ。①集計途中の当月でないこと ②母数が MIN_RATE_DENOM 以上
-          // であること。どちらも欠けると、数人・数日ぶんの偏りが 100%/0% として
-          // グラフに乗り、完了した月と並べて比較できなくなる。
+          m: mo, cohortN: n, reach2N: reach2N, fix2N: fix2N, fix3N: fix3N,
+          partial: partial, fixImmature: fixImmature,
+          // リピート率（分子＝予約ベースの Fres）: 集計途中の当月でなく、母数が
+          // MIN_RATE_DENOM 以上なら出す。予約一覧に次回予約が載っているので、
+          // 獲得直後のコホートでも到達／未到達はその場で判定でき、時間待ちは不要。
           repeat: (!partial && n >= MIN_RATE_DENOM) ? reach2N / n : null,
-          fix: (!partial && fix2N >= MIN_RATE_DENOM) ? fix3N / fix2N : null
+          // 固定化率（分母＝来店実績の Fvis）: 上の条件に加えて熟成待ちが要る。
+          fix: (!partial && !fixImmature && fix2N >= MIN_RATE_DENOM) ? fix3N / fix2N : null
         };
       });
 
