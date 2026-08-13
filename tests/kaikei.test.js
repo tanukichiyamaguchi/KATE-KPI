@@ -626,15 +626,19 @@ h('■ Fixture O: meta.asOf は日本時間でも指定日のまま（UTC変換�
 }
 
 // ============================================================================
-// Fixture T — 固定化率の分母は「実来店2回目（Fvis>=2）」、分子は「そのうち3回目
-// 予約あり（Fres>=3）」（オーナー確定の定義）。予約ベースの分母とは区別する。
+// Fixture T — 固定化率はリピート率と同じ予約ベース（オーナー確定の定義）。
+// 分母＝2回目の予約に到達（Fres>=2）、分子＝3回目の予約にも到達（Fres>=3）。
+// 「1回目→2回目」がリピート率、「2回目→3回目」が固定化率で同じファネルの隣の段。
+// 来店実績(Fvis)は分母に使わない — 予約一覧を見れば X回目の予約の有無は常に
+// 判定できるので、来店を待つ必要がないため。
 // ============================================================================
-// C1: 実来店2回＋3回目の受付待ち → Fvis=2, Fres=3 → 分母○ 分子○
-// C2: 実来店2回のみ → Fvis=2, Fres=2 → 分母○ 分子×
-// C3: 実来店1回＋2回目3回目の受付待ち → Fvis=1, Fres=3 → 分母×(まだ2回来ていない)
-// 固定化率 = 分子1(C1) ÷ 分母2(C1,C2) = 0.5。もし旧・予約ベース(Fres>=2分母,
-// Fres>=3分子)なら 2/3=0.667 になるため、両定義を確実に区別できる。
-h('■ Fixture T: 固定化率の分母＝実来店2回目・分子＝そのうち3回目予約あり');
+// C1: 実来店2回＋3回目の受付待ち → Fres=3 → 分母○ 分子○
+// C2: 実来店2回のみ           → Fres=2 → 分母○ 分子×
+// C3: 実来店1回＋2回目3回目の受付待ち → Fres=3 → 分母○ 分子○（まだ1回しか
+//     来ていなくても、2回目・3回目の予約が入っているので到達として数える）
+// 固定化率 = 分子2(C1,C3) ÷ 分母3(C1,C2,C3) ≒ 66.7%。
+// 旧・来店実績ベース(Fvis>=2分母)なら 1/2=50% になるため、両定義を区別できる。
+h('■ Fixture T: 固定化率はリピート率と同じ予約ベース（分母＝2回目到達）');
 {
   const rows = [
     rec({ custKey: 'C1', date: '2026-05-01', kaikeiTotal: 5000 }),
@@ -647,50 +651,84 @@ h('■ Fixture T: 固定化率の分母＝実来店2回目・分子＝そのう�
     rec({ custKey: 'C3', status: '受付待ち', date: '2026-08-21', yoyakuTotal: 5000 })
   ];
   const R = engine.compute(rows, { asOf: '2026-07-03' });
-  check('固定化率 分母（実来店2回目 C1,C2）', R.store.fixDenom, 2);
-  check('固定化率 分子（実来店2回目＆3回目予約 C1）', R.store.fixNumer, 1);
-  check('固定化率 = 1/2 = 50.0%', R.store.fixationRate, 50.0, 0.05);
-  // 参考: 旧・予約ベース分母(Fres>=2)なら3人・分子(Fres>=3)なら2人＝66.7%だった
-  check('リピート率 分子（予約ベース Fres>=2 は C1,C2,C3 の3人）', R.store.repeatNumer, 3);
+  check('固定化率 分母（2回目到達 Fres>=2: C1,C2,C3）', R.store.fixDenom, 3);
+  check('固定化率 分子（3回目到達 Fres>=3: C1,C3）', R.store.fixNumer, 2);
+  check('固定化率 = 2/3 ≒ 66.7%', R.store.fixationRate, 66.7, 0.05);
+  // 分母はリピート率の分子と同じ集合＝同じものさしで並ぶことの確認
+  check('リピート率 分子（Fres>=2 は C1,C2,C3 の3人）', R.store.repeatNumer, 3);
+  check('固定化率の分母＝リピート率の分子（同じ母集団）', R.store.fixDenom, R.store.repeatNumer);
+  // 来店実績ベースだった旧定義（1/2=50%）に戻っていないことを明示的に固定
+  check('旧・来店実績ベースの50%にはならない', R.store.fixationRate === 50 ? 1 : 0, 0);
 }
 
 // ============================================================================
-// Fixture U — 固定化率の分子: 3回目をキャンセルし別日の再予約が無い顧客は省く
-// （オーナー確認事項）。キャンセル後に別日の再予約があれば「3回目の予約有り」と数える。
+// Fixture U — キャンセルと再予約の扱い（オーナー確認事項）。
+//
+// キャンセルは「予約が無い」ものとして扱う。厳密には、キャンセル行が分子から
+// 何かを引くのではなく、キャンセルされた予約はそもそも有効予約(Fres)に数えない。
+// 結果として「3回目をキャンセルしたら分子から外れ、取り直したら分子に戻る」
+// という挙動になる。取り直しの経路（これから来店／既に来店済み）は問わない。
 // ============================================================================
-// X: 実来店2回 → 3回目を予約したが「お客様キャンセル」→ 別日の再予約なし
-//    → Fvis=2（分母○）だが Fres=2（キャンセルは実効予約に数えない）→ 分子×
-// Y: 実来店2回 → 3回目キャンセル → その後 別日に受付待ちで再予約
-//    → Fvis=2（分母○）かつ Fres=3（再予約が実効予約）→ 分子○
-h('■ Fixture U: 固定化率の分子はキャンセルのみ(再予約なし)を省く');
+// X: 来店2回 → 3回目をキャンセル → 取り直しなし        → Fres=2 → 分子×
+// Y: 来店2回 → 3回目をキャンセル → 別日に受付待ちで再予約 → Fres=3 → 分子○
+// Z: 来店2回 → 3回目をキャンセル → 別日に来店（会計済み） → Fres=3 → 分子○
+// W: 来店2回 → 3回目をキャンセル → 再予約したがその日も過ぎて未処理(受付待ちの
+//    まま基準日以前) → 滞留として有効予約に数えないため Fres=2 → 分子×
+// 分母はいずれも Fres>=2 で4人全員。分子は Y,Z の2人 → 固定化率 2/4 = 50%。
+h('■ Fixture U: キャンセルは分子から外し、取り直せば分子に戻す');
 {
   const rows = [
     rec({ custKey: 'X', date: '2026-05-01', kaikeiTotal: 6000 }),
     rec({ custKey: 'X', date: '2026-05-20', kaikeiTotal: 6000 }),
     rec({ custKey: 'X', status: 'お客様キャンセル', date: '2026-06-10' }),
+
     rec({ custKey: 'Y', date: '2026-05-02', kaikeiTotal: 6000 }),
     rec({ custKey: 'Y', date: '2026-05-21', kaikeiTotal: 6000 }),
     rec({ custKey: 'Y', status: 'お客様キャンセル', date: '2026-06-11' }),
-    rec({ custKey: 'Y', status: '受付待ち', date: '2026-08-01', yoyakuTotal: 6000 })
+    rec({ custKey: 'Y', status: '受付待ち', date: '2026-08-01', yoyakuTotal: 6000 }),   // これから来店
+
+    rec({ custKey: 'Z', date: '2026-05-03', kaikeiTotal: 6000 }),
+    rec({ custKey: 'Z', date: '2026-05-22', kaikeiTotal: 6000 }),
+    rec({ custKey: 'Z', status: 'サロンキャンセル', date: '2026-06-12' }),
+    rec({ custKey: 'Z', date: '2026-06-20', kaikeiTotal: 6000 }),                       // 取り直して来店済み
+
+    rec({ custKey: 'W', date: '2026-05-04', kaikeiTotal: 6000 }),
+    rec({ custKey: 'W', date: '2026-05-23', kaikeiTotal: 6000 }),
+    rec({ custKey: 'W', status: '無断キャンセル', date: '2026-06-13' }),
+    rec({ custKey: 'W', status: '受付待ち', date: '2026-06-25', yoyakuTotal: 6000 })     // 基準日以前＝未処理で滞留
   ];
   const R = engine.compute(rows, { asOf: '2026-07-03' });
-  check('固定化率 分母（実来店2回目 X,Y）', R.store.fixDenom, 2);
-  check('固定化率 分子（3回目の予約が現存する Y のみ・X は除外）', R.store.fixNumer, 1);
-  check('固定化率 = 1/2 = 50.0%', R.store.fixationRate, 50.0, 0.05);
+  check('分母（2回目に到達 X,Y,Z,W の4人）', R.store.fixDenom, 4);
+  check('分子（取り直しのある Y,Z の2人）', R.store.fixNumer, 2);
+  check('固定化率 = 2/4 = 50.0%', R.store.fixationRate, 50.0, 0.05);
+  check('キャンセル4件があっても分母は4人のまま', R.store.fixDenom, 4);
+  check('受付待ちのまま日付が過ぎた行は滞留として除外（W の1件）', R.store.staleExcluded, 1);
+
+  // 顧客ごとに単独で計算し、1人ずつ分子に入るかを確定させる
+  const solo = function (key) {
+    const one = rows.filter(function (r) { return r.custKey === key; });
+    const S = engine.compute(one, { asOf: '2026-07-03' }).store;
+    return S.fixDenom === 1 ? S.fixNumer : -1;   // 分母に入っていれば分子(0/1)、入らなければ -1
+  };
+  check('X: キャンセルのみ・取り直しなし → 分子に入らない', solo('X'), 0);
+  check('Y: 取り直して「これから来店」 → 分子に入る', solo('Y'), 1);
+  check('Z: 取り直して「既に来店済み」 → 分子に入る', solo('Z'), 1);
+  check('W: 取り直しが未処理のまま日付超過 → 分子に入らない', solo('W'), 0);
 }
 
 // ============================================================================
-// Fixture V — ファネルの継続率/離脱率の母数は実来店(Fvis>=n)で補正、到達バーは予約
-// ベース(Fres>=n)のまま。まだ来店前(2回目が受付待ち)の顧客が離脱率を押し上げない。
+// Fixture V — ファネルは到達人数も段間の継続率もすべて予約ベース(Fres>=n)で統一。
+// 継続率＝隣り合う段の比そのもの（(n+1)回目到達 ÷ n回目到達）で、n=2 の継続率が
+// 固定化率と一致することを固定する。
 // ============================================================================
-// A: 実来店3回 → Fvis=3, Fres=3
-// B: 実来店2回＋3回目受付待ち → Fvis=2, Fres=3
-// C: 実来店2回のみ → Fvis=2, Fres=2
-// D: 実来店1回＋2回目受付待ち(来店前) → Fvis=1, Fres=2
-// n=2段: 到達people(Fres>=2)=4人(A,B,C,D), 継続母数(Fvis>=2)=3人(A,B,C 来店前のDを除外),
-//   継続分子(Fvis>=2&Fres>=3)=2人(A,B) → 継続66.7%。旧バー比なら 2/4=50% だったので
-//   来店前のDを母数から外したことで離脱率が下がる（＝予約ベースの過大離脱を補正）。
-h('■ Fixture V: ファネル継続率は実来店で母数補正・到達は予約ベース');
+// A: 実来店3回 → Fres=3
+// B: 実来店2回＋3回目受付待ち → Fres=3
+// C: 実来店2回のみ → Fres=2
+// D: 実来店1回＋2回目受付待ち(来店前) → Fres=2
+// n=2段: 到達people(Fres>=2)=4人(A,B,C,D), 継続母数も同じ4人,
+//   継続分子(Fres>=3)=2人(A,B) → 継続50%。来店前のDも「2回目に到達」として
+//   同じ土俵で数える（リピート率の数え方と揃える）。
+h('■ Fixture V: ファネルは到達も継続率もすべて予約ベースで統一');
 {
   const rows = [
     rec({ custKey: 'A', date: '2026-05-01', kaikeiTotal: 6000 }),
@@ -707,9 +745,13 @@ h('■ Fixture V: ファネル継続率は実来店で母数補正・到達は�
   const R = engine.compute(rows, { asOf: '2026-07-03' });
   const n2 = R.store.funnel[1];   // 2回段
   check('2回 到達人数（予約ベース Fres>=2: A,B,C,D）', n2.people, 4);
-  check('2→3 継続母数（実来店 Fvis>=2: A,B,C・来店前Dは除外）', n2.contDen, 3);
-  check('2→3 継続分子（Fvis>=2 かつ Fres>=3: A,B）', n2.contNum, 2);
-  check('2→3 継続率 = 2/3 ≒ 66.7%（旧バー比2/4=50%ではない）', n2.cont, 2 / 3, 1e-9);
+  check('2→3 継続母数（予約ベース Fres>=2 = 到達人数と同じ4人）', n2.contDen, 4);
+  check('2→3 継続分子（Fres>=3: A,B）', n2.contNum, 2);
+  check('2→3 継続率 = 2/4 = 50%（隣り合う段の比そのもの）', n2.cont, 0.5, 1e-9);
+  check('継続母数は到達人数と一致する', n2.contDen, n2.people);
+  check('3回段の到達人数 = 2回段の継続分子', R.store.funnel[2].people, n2.contNum);
+  // 2→3の継続率は固定化率と同じ値になる（同じ概念・同じ母集団）
+  check('2→3継続率と固定化率が一致する', Math.round(n2.cont * 1000), Math.round(R.store.fixationRate * 10));
 }
 
 // ============================================================================
@@ -829,19 +871,114 @@ h('■ Fixture BB: スタッフ月別リピート率・固定化率の推移（�
   const R = engine.compute(rows, { asOf: '2026-08-01' });
   const momo = R.staff.filter(function (s) { return s.name === 'momo'; })[0];
   const may = momo.repeatFixMonthly.filter(function (m) { return m.m === '2026-05'; })[0];
+  // 人数（分母・分子）は母数の大小にかかわらず保持する
   check('momo 5月コホート人数（X,Y,Z=3人）', may.cohortN, 3);
-  check('momo 5月リピート率（2回到達 X,Y=2/3）', Math.round(may.repeat * 1000) / 1000, 0.667);
+  check('momo 5月 2回到達人数（X,Y=2人）', may.reach2N, 2);
   check('momo 5月 固定化率の母数（Fvis>=2 は X,Y=2人）', may.fix2N, 2);
   check('momo 5月 固定化率の分子（Fvis>=2 かつ Fres>=3 は X=1人）', may.fix3N, 1);
-  check('momo 5月固定化率（1/2=0.5）', may.fix, 0.5);
+  // 率は母数5人未満だと出さない（1人の挙動が100%・0%に化けるのを防ぐ）
+  check('momo 5月リピート率は母数3人なので出さない', may.repeat, null);
+  check('momo 5月固定化率は母数2人なので出さない（1/2=50%と出さない）', may.fix, null);
   const momoJun = momo.repeatFixMonthly.filter(function (m) { return m.m === '2026-06'; })[0];
   check('momo 6月コホートは0人 → repeat=null', momoJun.repeat, null);
   check('momo 6月コホートは0人 → fix=null', momoJun.fix, null);
   const aoi = R.staff.filter(function (s) { return s.name === 'aoi'; })[0];
   const aoiJun = aoi.repeatFixMonthly.filter(function (m) { return m.m === '2026-06'; })[0];
   check('aoi 6月コホート人数（W=1人）', aoiJun.cohortN, 1);
-  check('aoi 6月リピート率（Wは未到達 0/1）', aoiJun.repeat, 0);
+  check('aoi 6月リピート率は母数1人なので出さない', aoiJun.repeat, null);
   check('aoi 6月固定化率（Fvis>=2 が0人 → null）', aoiJun.fix, null);
+}
+
+// ============================================================================
+// Fixture CC — 母数が小さい月の率を出さない（「固定化率100%」の再発防止）
+// 分母が1〜2人だと 1/1＝100% となり、1人の挙動が実態と懸け離れた率に化ける。
+// 母数5人未満は率を出さず、5人以上になった月から出すことを確認する。
+// ============================================================================
+h('■ Fixture CC: 母数の小さい月は率を出さない（固定化率100%の再発防止）');
+{
+  // 6月: aoi が2人獲得し、2人とも3回来店 → 素朴に計算すると固定化率 2/2 = 100%
+  // 7月: aoi が6人獲得し、6人とも2回来店・うち3人が3回目予約 → 3/6 = 50%（母数6人）
+  const rows = [];
+  ['A1', 'A2'].forEach(function (k, i) {
+    rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-06-0' + (i + 1), kaikeiTotal: 5000 }));
+    rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-06-1' + (i + 1), kaikeiTotal: 5000 }));
+    rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-06-2' + (i + 1), kaikeiTotal: 5000 }));
+  });
+  for (var i = 0; i < 6; i++) {
+    var k = 'B' + i;
+    rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-07-0' + (i + 1), kaikeiTotal: 5000 }));
+    rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-07-1' + (i + 1), kaikeiTotal: 5000 }));
+    if (i < 3) rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-07-2' + (i + 1), kaikeiTotal: 5000 }));
+  }
+  const R = engine.compute(rows, { asOf: '2026-09-01' });
+  const aoi = R.staff.filter(function (s) { return s.name === 'aoi'; })[0];
+  const jun = aoi.repeatFixMonthly.filter(function (m) { return m.m === '2026-06'; })[0];
+  const jul = aoi.repeatFixMonthly.filter(function (m) { return m.m === '2026-07'; })[0];
+
+  check('6月: 固定化の分母は2人', jun.fix2N, 2);
+  check('6月: 固定化の分子も2人（素朴に割ると100%）', jun.fix3N, 2);
+  check('6月: 母数2人なので固定化率は出さない（100%と表示しない）', jun.fix, null);
+  check('6月: 母数2人なのでリピート率も出さない', jun.repeat, null);
+
+  check('7月: コホート6人', jul.cohortN, 6);
+  check('7月: 固定化の分母6人・分子3人', jul.fix2N * 10 + jul.fix3N, 63);
+  check('7月: 母数5人以上なので固定化率を出す（3/6=0.5）', jul.fix, 0.5);
+  check('7月: 母数5人以上なのでリピート率を出す（6/6=1）', jul.repeat, 1);
+
+  // 集計途中の当月は、母数が足りていても率を出さない（部分的なコホートのため）。
+  // asOf を 7/10 にすると7月が「集計途中の当月」になり、同じ6人でも出さなくなる。
+  const R2 = engine.compute(rows, { asOf: '2026-07-10' });
+  const aoi2 = R2.staff.filter(function (s) { return s.name === 'aoi'; })[0];
+  const jul2 = aoi2.repeatFixMonthly.filter(function (m) { return m.m === '2026-07'; })[0];
+  check('集計途中の当月と判定される', jul2.partial ? 1 : 0, 1);
+  check('集計途中の当月は母数6人でも固定化率を出さない', jul2.fix, null);
+  check('集計途中の当月は母数6人でもリピート率を出さない', jul2.repeat, null);
+  check('人数（分母・分子）は当月でも保持する', jul2.cohortN, 6);
+}
+
+// ============================================================================
+// Fixture DD — リピート率と固定化率は同じ予約ベースで、どちらも「時間の経過」に
+// 依存しない。基準日を動かしても値が変わらないことを固定する。
+//
+// 以前は固定化率の分母だけ「実際に2回“来店”した人」だったため、獲得直後の
+// コホートでは分母が育たず、早く再来した少数から 6/6＝100% のような値が出て
+// いた。分母を「2回目の予約に到達した人」に統一したことで、来店を待つ必要が
+// なくなり、コホートの熟成待ちという仕掛け自体が不要になった。
+// ============================================================================
+h('■ Fixture DD: リピート率・固定化率とも予約ベースで時間に依存しない');
+{
+  // 8月に6人獲得。全員が2回目に到達（＝2回目の予約あり）。
+  //   C0〜C4 … 実際に2回来店し、3回目の予約もある     → Fres=3
+  //   C5     … まだ1回しか来ていないが2回目の予約あり  → Fres=2
+  // 新定義: 分母＝Fres>=2 の6人、分子＝Fres>=3 の5人 → 5/6 ≒ 83.3%
+  // 旧定義（分母＝実来店2回）なら 5/5＝100% になっていたケース。
+  const rows = [];
+  for (let i = 0; i < 6; i++) {
+    const k = 'C' + i;
+    rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-08-0' + (i + 1), kaikeiTotal: 5000 }));
+    if (i < 5) {
+      rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-08-1' + (i + 1), kaikeiTotal: 5000 }));                       // 2回目の来店
+      rows.push(rec({ custKey: k, staff: 'aoi', status: '受付待ち', date: '2026-12-0' + (i + 1), yoyakuTotal: 5000 }));   // 3回目の予約
+    } else {
+      rows.push(rec({ custKey: k, staff: 'aoi', status: '受付待ち', date: '2026-12-20', yoyakuTotal: 5000 }));            // 2回目は予約のみ
+    }
+  }
+  const aug = (R) => R.staff.filter(function (s) { return s.name === 'aoi'; })[0]
+    .repeatFixMonthly.filter(function (m) { return m.m === '2026-08'; })[0];
+
+  // 獲得直後（月末の数日後）と、3ヶ月以上たった後。どちらも同じ値になるはず。
+  const early = aug(engine.compute(rows, { asOf: '2026-09-03' }));
+  const late = aug(engine.compute(rows, { asOf: '2026-11-30' }));
+
+  check('分母は「2回目に到達した6人」（来店1回のC5も含む）', early.fix2N, 6);
+  check('分子は「3回目に到達した5人」', early.fix3N, 5);
+  check('固定化率 = 5/6 ≒ 83.3%（旧定義の5/5=100%ではない）', Math.round(early.fix * 1000) / 1000, 0.833);
+  check('固定化率の分母＝リピート率の分子（同じ母集団）', early.fix2N, early.reach2N);
+
+  check('基準日を3ヶ月後にしても固定化率は変わらない', early.fix, late.fix);
+  check('基準日を3ヶ月後にしてもリピート率は変わらない', early.repeat, late.repeat);
+  check('基準日を動かしても分母は変わらない', early.fix2N, late.fix2N);
+  check('熟成待ちの仕掛けは廃止（fixImmature を持たない）', early.fixImmature === undefined ? 1 : 0, 1);
 }
 
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
