@@ -530,11 +530,12 @@
     var byCohort = groupBy(visitedCusts.filter(function (c) { return c.firstVisitMonth; }), function (c) { return c.firstVisitMonth; });
     var cohort = months.map(function (mo) {
       var g = byCohort[mo] || [];
-      // 集計途中の当月（部分的なコホート）と、母数の小さい月は落とす。
-      // どちらも数人・数日ぶんの偏りが率に化けて、完了した月と比較できないため。
-      if (mo === currentYm || g.length < MIN_RATE_DENOM || monthImmatureBy(mo, REPEAT_MATURITY_DAYS)) return null;
+      // 母数の小さい月だけ落とす（1人＝100% を防ぐ）。集計途中の当月は予約ベースで
+      // 測定できるため隠さない（partial フラグつき）。monthImmatureBy は会計明細のみ
+      // （未来の予約が無いデータ）のときだけ働く45日の保険。
+      if (g.length < MIN_RATE_DENOM || monthImmatureBy(mo, REPEAT_MATURITY_DAYS)) return null;
       var reach2 = g.filter(function (c) { return c.Fres >= 2; }).length / g.length;
-      return { m: mo, n: g.length, reach2: reach2 };
+      return { m: mo, n: g.length, reach2: reach2, partial: mo === currentYm };
     }).filter(Boolean);
 
     // ---- Visit-count breakdown (ordinal visit → count + avg spend) ----------
@@ -752,14 +753,23 @@
         var reach2N = cohort.filter(function (c) { return c.Fres >= 2; }).length;
         var fix2N = reach2N;                                                        // 固定化率の母数＝2回目到達
         var fix3N = cohort.filter(function (c) { return c.Fres >= 3; }).length;
-        // 集計途中の当月だけは、月の途中までしか獲得していない部分的なコホートで、
-        // 完了した月と同じ土俵に並べられないため両方とも出さない（両指標に共通）。
+        // 集計途中の当月も隠さず表示する（オーナー要望）。予約ベースなので当月でも
+        // 測定でき、実データでも当月のリピート率は完了月と同水準に出る。UI 側で
+        // 「※集計途中」の印を付けて区別する。非表示にするのは母数不足の月だけ。
+        //
+        // 固定化率の直近月が低く出るのは仕様（欠陥ではない）: 3回目の予約は通常
+        // 「2回目の来店時」に取られるため、2回目の来店がまだ先のお客様は3回目を
+        // 持ちようがない。分母（2回目の予約に到達）には既に入っているので、率は
+        // いったん低く出て、コホートの2回目来店が進むにつれて上がっていく。
         var partial = (mo === currentYm);
+        // 会計明細のみ（hasFuture=false）では将来予約が見えず、直近コホートの率は
+        // 右打ち切りで構造的に0%へ落ちるため45日の成熟ガードで伏せる（人数は保持）。
+        // 予約データでは monthImmatureBy が常に false なので影響しない。
+        var immature = monthImmatureBy(mo, REPEAT_MATURITY_DAYS);
         return {
           m: mo, cohortN: n, reach2N: reach2N, fix2N: fix2N, fix3N: fix3N, partial: partial,
-          // 条件は2つとも同じ: 集計途中の当月でないこと、母数が MIN_RATE_DENOM 以上。
-          repeat: (!partial && n >= MIN_RATE_DENOM) ? reach2N / n : null,
-          fix: (!partial && fix2N >= MIN_RATE_DENOM) ? fix3N / fix2N : null
+          repeat: (!immature && n >= MIN_RATE_DENOM) ? reach2N / n : null,
+          fix: (!immature && fix2N >= MIN_RATE_DENOM) ? fix3N / fix2N : null
         };
       });
 
@@ -798,9 +808,13 @@
     // ---- Trend: monthly cohort (repeat + LTV) -------------------------------
     var monthlyCohort = months.map(function (mo) {
       var g = byCohort[mo] || [];
-      // 集計途中の当月と、母数の小さいコホートは落とす（1人＝100% を防ぐ）。
-      if (mo === currentYm || g.length < MIN_RATE_DENOM) return null;
-      return { m: mo, n: g.length, repeat: g.filter(function (c) { return c.Fres >= 2; }).length / g.length, ltv: Math.round(g.reduce(function (s, c) { return s + c.M; }, 0) / g.length) };
+      // 母数の小さいコホートは落とす（1人＝100% を防ぐ）。集計途中の当月は
+      // 予約ベースで測定できるため隠さず、partial フラグでUI側に「※」を付けさせる。
+      // ただし会計明細のみ（hasFuture=false）のデータでは将来予約が見えず、直近の
+      // コホートは構造的に0%へ落ちるため、45日の成熟ガードで落とす（store.cohort と
+      // 同じ扱い。予約データでは monthImmatureBy が常に false なので影響しない）。
+      if (g.length < MIN_RATE_DENOM || monthImmatureBy(mo, REPEAT_MATURITY_DAYS)) return null;
+      return { m: mo, n: g.length, partial: mo === currentYm, repeat: g.filter(function (c) { return c.Fres >= 2; }).length / g.length, ltv: Math.round(g.reduce(function (s, c) { return s + c.M; }, 0) / g.length) };
     }).filter(Boolean);
 
     // ---- Trend: coupons -----------------------------------------------------

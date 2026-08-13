@@ -289,11 +289,11 @@
       body: '<div id="cFunnel"></div>'
     });
     html += card({
-      col: 'col-7', title: '月次コホート リピート率' + help('初回来店した月ごとに顧客をグループ化し、そのグループの何%が2回目来店に到達したかを表示。'), sub: '初回獲得月ごとの2回目到達', tag: '%',
+      col: 'col-7', title: '月次コホート リピート率' + help('初回来店した月ごとに顧客をグループ化し、そのグループの何%が2回目の予約に到達したかを表示。' + (A.meta.completedOnly ? '会計明細のみのデータでは将来の予約が見えないため、獲得から45日経っていない直近の月は表示しません。' : '予約ベースなので集計途中の当月（※印）も測定でき、月末までに多少上下します。') + '母数5人未満の月は非表示。'), sub: '初回獲得月ごとの2回目到達　※印は集計途中の当月', tag: '%',
       body: chartBox('cTCohortR', 230)
     });
     html += card({
-      col: 'col-6', title: '月次コホート LTV' + help('初回来店した月ごとに顧客をグループ化し、そのグループの現時点までの累計売上を平均したもの。'), sub: '初回獲得月ごとの累計売上', tag: '¥',
+      col: 'col-6', title: '月次コホート LTV' + help('初回来店した月ごとに顧客をグループ化し、そのグループの現時点までの累計売上を平均したもの。新しい月ほど来店回数がまだ少ないため低く出て、時間とともに積み上がります（※印は集計途中の当月）。'), sub: '初回獲得月ごとの累計売上　※印は集計途中の当月', tag: '¥',
       body: chartBox('cTCohortL', 220)
     });
     html += card({
@@ -348,11 +348,13 @@
         valueFmt: function (v) { return yen(Math.round(v)); }, totalFmt: F.compact, yFmt: F.compact, height: 260
       });
     });
+    // 集計途中の当月は月ラベルに ※ を付けて区別（値は隠さない）
+    var cohortLabel = function (c) { return monthShort(c.m) + (c.partial ? '※' : ''); };
     draw('cTCohortR', function (el) {
-      C.lineArea(el, { xLabels: t.monthlyCohort.map(function (c) { return monthShort(c.m); }), yMax: 100, series: [{ name: 'リピート率', color: cvar('--series-1'), values: t.monthlyCohort.map(function (c) { return c.repeat * 100; }) }], valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230 });
+      C.lineArea(el, { xLabels: t.monthlyCohort.map(cohortLabel), yMax: 100, series: [{ name: 'リピート率', color: cvar('--series-1'), values: t.monthlyCohort.map(function (c) { return c.repeat * 100; }) }], valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230 });
     });
     draw('cTCohortL', function (el) {
-      C.columns(el, { groups: t.monthlyCohort.map(function (c) { return monthShort(c.m); }), series: [{ name: 'LTV', color: cvar('--series-4'), values: t.monthlyCohort.map(function (c) { return c.ltv; }) }], valueFmt: yen, yFmt: F.compact, height: 220 });
+      C.columns(el, { groups: t.monthlyCohort.map(cohortLabel), series: [{ name: 'LTV', color: cvar('--series-4'), values: t.monthlyCohort.map(function (c) { return c.ltv; }) }], valueFmt: yen, yFmt: F.compact, height: 220 });
     });
     draw('cSpendTrend', function (el) {
       // 予約ベース客単価（見込み込み）と実績客単価（会計済みのみ）の月次推移。
@@ -546,8 +548,8 @@
     html += card({ col: 'col-6', title: '客単価の推移' + help('月ごとの客単価（予約ベース売上÷予約数）の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffSpend', 230) });
     var censNote = A.meta.completedOnly ? '　※直近の月は再来待ちのため集計対象外' : '';
     html += card({ col: 'col-6', title: '次回予約取得率の推移' + help('来店（会計済み）のうち、その後に何らかの予約・来店があった割合の月次推移。'), sub: '来店時に次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext', 230) });
-    html += card({ col: 'col-6', title: '月別リピート率の推移' + help('初回来店した月ごとに、このスタッフが担当した新規顧客を母数として、<b>2回目の予約に到達した割合</b>の推移。会計済みと今後の受付待ちを合算した予約ベースで、キャンセルは到達に数えず、取り直せば数えます。<b>到達したかどうかは予約一覧で判定できる</b>ため、獲得したばかりの月でも待たずに集計します。表示しないのは、<b>集計途中の当月</b>（月の途中までの部分的なコホート）と、<b>母数が5人未満の月</b>（1人の挙動が100%や0%に化けるため）だけです。'), sub: '獲得月コホートの2回到達率　※集計途中の当月・母数5人未満の月は非表示', tag: '%', body: chartBox('cStaffRepeatRate', 230) });
-    html += card({ col: 'col-6', title: '月別固定化率の推移' + help('初回来店した月ごとに、<b>2回目の予約に到達した顧客</b>を母数として、<b>3回目の予約にも到達した割合</b>の推移。左の月別リピート率と<b>まったく同じ予約ベースの数え方</b>で、リピート率が「1回目→2回目」、固定化率が「2回目→3回目」という関係です。キャンセルは到達に数えず、取り直せば数えます。表示しない条件もリピート率と同じで、<b>集計途中の当月</b>と<b>母数5人未満の月</b>だけです。'), sub: '獲得月コホートの3回到達率（2回目到達が母数）　※集計途中の当月・母数5人未満の月は非表示', tag: '%', body: chartBox('cStaffFixRate', 230) });
+    html += card({ col: 'col-6', title: '月別リピート率の推移' + help('初回来店した月ごとに、このスタッフが担当した新規顧客を母数として、<b>2回目の予約に到達した割合</b>の推移。会計済みと今後の受付待ちを合算した予約ベースで、キャンセルは到達に数えず、取り直せば数えます。' + (A.meta.completedOnly ? '会計明細のみのデータでは将来の予約が見えないため、獲得から45日経っていない直近の月は表示しません。' : '予約ベースなので集計途中の当月（※印）も測定でき、月末までに多少上下します。') + '<b>母数が5人未満の月</b>も非表示です（1人の挙動が100%や0%に化けるため）。'), sub: '獲得月コホートの2回到達率　※印は集計途中の当月・母数5人未満の月は非表示', tag: '%', body: chartBox('cStaffRepeatRate', 230) });
+    html += card({ col: 'col-6', title: '月別固定化率の推移' + help('初回来店した月ごとに、<b>2回目の予約に到達した顧客</b>を母数として、<b>3回目の予約にも到達した割合</b>の推移。左の月別リピート率とまったく同じ予約ベースの数え方で、リピート率が「1回目→2回目」、固定化率が「2回目→3回目」という関係です。キャンセルは到達に数えず、取り直せば数えます。<br><br><b>直近の月が低く出るのは正常です。</b>3回目の予約は通常「2回目の来店時」に取られるため、2回目の来店がまだ先のお客様は3回目を持ちようがありません。分母（2回目の予約に到達）には既に入っているので率はいったん低く出て、コホートの2回目来店が進むにつれて上がっていきます。非表示は<b>母数5人未満の月</b>' + (A.meta.completedOnly ? 'と、将来の予約が見えないため判定できない直近45日の月' : '') + '（※印は集計途中の当月）。'), sub: '獲得月コホートの3回到達率（2回目到達が母数）　※直近の月は低く出て、時間とともに上がります', tag: '%', body: chartBox('cStaffFixRate', 230) });
     if (A.store.retail.hasAmount) {
       html += card({ col: 'col-6', title: '店販売上の推移' + help('月ごとの店販売上金額の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffRetail', 230) });
     }
@@ -611,16 +613,20 @@
         valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230
       });
     });
+    // コホート2チャートは、集計途中の当月のラベルに ※ を付ける（値は隠さない）
+    var cohortXLabels = staff.length
+      ? staff[0].repeatFixMonthly.map(function (m) { return monthShort(m.m) + (m.partial ? '※' : ''); })
+      : months;
     draw('cStaffRepeatRate', function (el) {
       C.lineArea(el, {
-        xLabels: months, area: false, yMax: 100,
+        xLabels: cohortXLabels, area: false, yMax: 100,
         series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.repeatFixMonthly.map(function (m) { return m.repeat == null ? null : m.repeat * 100; }) }; }),
         valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230
       });
     });
     draw('cStaffFixRate', function (el) {
       C.lineArea(el, {
-        xLabels: months, area: false, yMax: 100,
+        xLabels: cohortXLabels, area: false, yMax: 100,
         series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.repeatFixMonthly.map(function (m) { return m.fix == null ? null : m.fix * 100; }) }; }),
         valueFmt: function (v) { return v.toFixed(0) + '%'; }, yFmt: function (v) { return v.toFixed(0) + '%'; }, height: 230
       });

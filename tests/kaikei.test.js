@@ -910,6 +910,10 @@ h('■ Fixture CC: 母数の小さい月は率を出さない（固定化率100%
     rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-07-1' + (i + 1), kaikeiTotal: 5000 }));
     if (i < 3) rows.push(rec({ custKey: k, staff: 'aoi', date: '2026-07-2' + (i + 1), kaikeiTotal: 5000 }));
   }
+  // 番兵: 未来の受付待ち（来店実績なし＝コホートに影響しない）。このFixtureは
+  // 「予約データモード（hasFuture=true）」の挙動を検証するためのもので、これが
+  // 無いと会計明細のみモードに落ちて45日の成熟ガードが働いてしまう。
+  rows.push(rec({ custKey: 'SENTINEL', staff: 'aoi', status: '受付待ち', date: '2026-12-31', yoyakuTotal: 5000 }));
   const R = engine.compute(rows, { asOf: '2026-09-01' });
   const aoi = R.staff.filter(function (s) { return s.name === 'aoi'; })[0];
   const jun = aoi.repeatFixMonthly.filter(function (m) { return m.m === '2026-06'; })[0];
@@ -925,15 +929,42 @@ h('■ Fixture CC: 母数の小さい月は率を出さない（固定化率100%
   check('7月: 母数5人以上なので固定化率を出す（3/6=0.5）', jul.fix, 0.5);
   check('7月: 母数5人以上なのでリピート率を出す（6/6=1）', jul.repeat, 1);
 
-  // 集計途中の当月は、母数が足りていても率を出さない（部分的なコホートのため）。
-  // asOf を 7/10 にすると7月が「集計途中の当月」になり、同じ6人でも出さなくなる。
+  // 集計途中の当月も、母数が足りていれば率を出す（オーナー要望）。予約ベースなので
+  // 当月でも測定でき、partial フラグでUI側が「※集計途中」の印を付ける。
+  // asOf を 7/10 にすると7月が「集計途中の当月」になる。
   const R2 = engine.compute(rows, { asOf: '2026-07-10' });
   const aoi2 = R2.staff.filter(function (s) { return s.name === 'aoi'; })[0];
   const jul2 = aoi2.repeatFixMonthly.filter(function (m) { return m.m === '2026-07'; })[0];
-  check('集計途中の当月と判定される', jul2.partial ? 1 : 0, 1);
-  check('集計途中の当月は母数6人でも固定化率を出さない', jul2.fix, null);
-  check('集計途中の当月は母数6人でもリピート率を出さない', jul2.repeat, null);
+  check('集計途中の当月と判定される（partial フラグ）', jul2.partial ? 1 : 0, 1);
+  check('集計途中の当月でも母数6人なら固定化率を出す', jul2.fix, 0.5);
+  check('集計途中の当月でも母数6人ならリピート率を出す', jul2.repeat, 1);
   check('人数（分母・分子）は当月でも保持する', jul2.cohortN, 6);
+  // trend.monthlyCohort（傾向タブ）も同じ扱い: 当月を含み partial を立てる
+  const tJul = R2.trend.monthlyCohort.filter(function (c) { return c.m === '2026-07'; })[0];
+  check('傾向タブの月次コホートにも当月が含まれる', tJul ? 1 : 0, 1);
+  check('傾向タブの当月にも partial フラグが立つ', tJul && tJul.partial ? 1 : 0, 1);
+  const tJun = R2.trend.monthlyCohort.filter(function (c) { return c.m === '2026-06'; })[0];
+  check('母数5人未満の月（6月=2人）は引き続き出さない', tJun ? 1 : 0, 0);
+
+  // ---- 会計明細のみ（hasFuture=false）では45日の成熟ガードが働く -----------
+  // 将来予約が見えないデータで直近コホートを出すと、構造的に0%へ落ちた率が
+  // 「※集計途中」の顔をして表示されてしまう（レビューで検出）。番兵行を除いた
+  // 同じデータで、未成熟な月が伏せられ、成熟後は出ることを確認する。
+  const noFuture = rows.filter(function (r) { return r.status !== '受付待ち'; });
+  const C1 = engine.compute(noFuture, { asOf: '2026-09-01' });   // 7月末から32日＝未成熟
+  check('会計明細のみ: completedOnly と判定される', C1.meta.completedOnly ? 1 : 0, 1);
+  const cJul = C1.staff.filter(function (s) { return s.name === 'aoi'; })[0]
+    .repeatFixMonthly.filter(function (m) { return m.m === '2026-07'; })[0];
+  check('会計明細のみ: 未成熟な7月のリピート率は伏せる', cJul.repeat, null);
+  check('会計明細のみ: 未成熟な7月の固定化率も伏せる', cJul.fix, null);
+  check('会計明細のみ: 人数は保持する', cJul.cohortN, 6);
+  check('会計明細のみ: 傾向タブの月次コホートからも未成熟月を落とす',
+    C1.trend.monthlyCohort.some(function (c) { return c.m === '2026-07'; }) ? 1 : 0, 0);
+  const C2 = engine.compute(noFuture, { asOf: '2026-11-30' });   // 7月末から122日＝成熟
+  const cJul2 = C2.staff.filter(function (s) { return s.name === 'aoi'; })[0]
+    .repeatFixMonthly.filter(function (m) { return m.m === '2026-07'; })[0];
+  check('会計明細のみ: 成熟後（45日経過）はリピート率を出す', cJul2.repeat, 1);
+  check('会計明細のみ: 成熟後は固定化率も出す（3/6=0.5）', cJul2.fix, 0.5);
 }
 
 // ============================================================================
