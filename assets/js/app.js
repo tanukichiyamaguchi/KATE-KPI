@@ -284,7 +284,7 @@
 
     // Funnel + cohort
     html += card({
-      col: 'col-5', title: 'リテンション ファネル' + help('各バーの到達人数も、段の間の継続率／離脱率も、すべて予約ベースで統一：受付待ちの予約も「到達」に数え、キャンセルのみで次の予約が無い場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。継続率は「(n+1)回目に到達した人 ÷ n回目に到達した人」＝隣り合う段の比そのもので、2回目→3回目の継続率が固定化率と一致する。'),
+      col: 'col-5', title: 'リテンション ファネル' + help('各バーの到達人数は予約ベース：受付待ちの予約も「到達」に数え、キャンセルのみで次の予約が無い場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。段の間の継続率／離脱率は「実際にその回数まで来店した人」が母数（固定化率と同じ考え方で、2回目→3回目の継続率が固定化率と一致する）。'),
       sub: '来店顧客 ' + s.customers + '人が母数（1回 → 5回 到達）',
       body: '<div id="cFunnel"></div>'
     });
@@ -335,7 +335,7 @@
 
     draw('mRepeat', function (el) { C.meter(el, { label: 'リピート率（2回到達）', help: '来店顧客のうち、2回目の予約（来店・今後の予約含む）に到達した人の割合。キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。', value: s.repeatRate / 100, display: pct(s.repeatRate), target: 0.7, sub: frac(s.repeatNumer, s.repeatDenom, '人') + ' ・ 目安 70%' }); });
     draw('mNext', function (el) { C.meter(el, { label: '次回予約取得率', help: '来店（会計済み）のうち、その後に何らかの予約・来店（キャンセルは除く）があった割合。1回目〜複数回目まで、来店ごとに1件として集計。', value: s.nextReserveRate / 100, display: pct(s.nextReserveRate), sub: frac(s.nextReserveNumer, s.nextReserveDenom, '件') }); });
-    draw('mFix', function (el) { C.meter(el, { label: '固定化率（3回到達）', help: 'リピート率と同じ予約ベース。分母は「2回目の予約に到達した顧客」、分子は「3回目の予約にも到達した顧客」（どちらも会計済み＋今後の受付待ちを合算。キャンセルは数えず、キャンセル後に取り直せば数える）。リピート率が「1回目→2回目」、固定化率が「2回目→3回目」で、同じファネルの隣り合う段。', value: s.fixationRate / 100, display: pct(s.fixationRate), target: 0.6, sub: frac(s.fixNumer, s.fixDenom, '人') + ' ・ 目安 60%' }); });
+    draw('mFix', function (el) { C.meter(el, { label: '固定化率（3回到達）', help: '分母は「実際に2回来店した顧客」、分子は「そのうち3回目の予約に到達した顧客」（受付待ちを含み、キャンセルは数えず、キャンセル後に取り直せば数える）。「2回目まで来てくれた方が、その来店で次を取れたか」という接客の成果を測る指標。リピート率（2回目の予約に到達した割合・予約ベース）とは分母の基準が異なる。', value: s.fixationRate / 100, display: pct(s.fixationRate), target: 0.6, sub: frac(s.fixNumer, s.fixDenom, '人') + ' ・ 目安 60%' }); });
 
     draw('cRevenue', function (el) {
       // 会計済み（実績・濃色）＋受付待ち（見込み・薄色）を積み上げ表示。
@@ -501,7 +501,7 @@
         sub: function (st) { return st.reach2 == null ? '' : frac(st.reach2Num, st.reachDen, '人'); } },
       { label: '次回予約取得率', help: 'このスタッフが直近3ヶ月に担当した来店のうち、その後に何らかの予約・来店があった割合。次回を確保した来店の合計 ÷ 来店の合計（件数で重み付けしたプール平均）。', fmt: function (st) { return pctOrDash(st.avgRecent.nextRes); },
         sub: function (st) { return st.avgRecent.nextRes == null ? '' : frac(st.avgRecent.nextResNum, st.avgRecent.nextResDen, '件'); } },
-      { label: '固定化率（3回到達）', help: 'リピート率と同じ予約ベース。分母は「2回目の予約に到達した顧客」、分子は「3回目の予約にも到達した顧客」（受付待ち含む・キャンセルは数えず、取り直せば数える）。', fmt: function (st) { return pctOrDash(st.fixationRate); },
+      { label: '固定化率（3回到達）', help: '分母は「実際に2回来店した顧客」、分子は「そのうち3回目の予約に到達した顧客」（受付待ち含む・キャンセルは数えず、取り直せば数える）。', fmt: function (st) { return pctOrDash(st.fixationRate); },
         sub: function (st) { return st.fixationRate == null ? '' : frac(st.fixNumer, st.fixDenom, '人'); } },
       { label: '店販顧客比率', help: 'このスタッフが直近3ヶ月に担当した来店顧客のうち、店販を購入した人の割合。', fmt: function (st) { return pctOrDash(st.avgRecent.retailCustomerRatio, 1); },
         sub: function (st) { return st.avgRecent.retailVisitCustomers ? frac(st.avgRecent.retailBuyers, st.avgRecent.retailVisitCustomers, '人') : ''; } }
@@ -549,7 +549,7 @@
     var censNote = A.meta.completedOnly ? '　※直近の月は再来待ちのため集計対象外' : '';
     html += card({ col: 'col-6', title: '次回予約取得率の推移' + help('来店（会計済み）のうち、その後に何らかの予約・来店があった割合の月次推移。'), sub: '来店時に次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext', 230) });
     html += card({ col: 'col-6', title: '月別リピート率の推移' + help('初回来店した月ごとに、このスタッフが担当した新規顧客を母数として、<b>2回目の予約に到達した割合</b>の推移。会計済みと今後の受付待ちを合算した予約ベースで、キャンセルは到達に数えず、取り直せば数えます。' + (A.meta.completedOnly ? '会計明細のみのデータでは将来の予約が見えないため、獲得から45日経っていない直近の月は表示しません。' : '予約ベースなので集計途中の当月（※印）も測定でき、月末までに多少上下します。') + '<b>母数が5人未満の月</b>も非表示です（1人の挙動が100%や0%に化けるため）。'), sub: '獲得月コホートの2回到達率　※印は集計途中の当月・母数5人未満の月は非表示', tag: '%', body: chartBox('cStaffRepeatRate', 230) });
-    html += card({ col: 'col-6', title: '月別固定化率の推移' + help('初回来店した月ごとに、<b>2回目の予約に到達した顧客</b>を母数として、<b>3回目の予約にも到達した割合</b>の推移。左の月別リピート率とまったく同じ予約ベースの数え方で、リピート率が「1回目→2回目」、固定化率が「2回目→3回目」という関係です。キャンセルは到達に数えず、取り直せば数えます。<br><br><b>直近の月が低く出るのは正常です。</b>3回目の予約は通常「2回目の来店時」に取られるため、2回目の来店がまだ先のお客様は3回目を持ちようがありません。分母（2回目の予約に到達）には既に入っているので率はいったん低く出て、コホートの2回目来店が進むにつれて上がっていきます。非表示は<b>母数5人未満の月</b>' + (A.meta.completedOnly ? 'と、将来の予約が見えないため判定できない直近45日の月' : '') + '（※印は集計途中の当月）。'), sub: '獲得月コホートの3回到達率（2回目到達が母数）　※直近の月は低く出て、時間とともに上がります', tag: '%', body: chartBox('cStaffFixRate', 230) });
+    html += card({ col: 'col-6', title: '月別固定化率の推移' + help('初回来店した月ごとに、<b>実際に2回来店した顧客</b>を母数として、<b>3回目の予約に到達した割合</b>の推移。受付待ちを含み、キャンセルは到達に数えず、取り直せば数えます。<br><br>この分母（2回目の来店を済ませた方）は獲得から時間が経たないと育たず、育つ前は早く再来した熱心な方だけが母数に入って100%のような値が出てしまうため、<b>月末から「来店周期の中央値」（最低30日）が経つまでの月は表示しません</b>。あわせて<b>母数5人未満の月</b>も非表示です。'), sub: '獲得月コホートの3回到達率（2回来店が母数）　※母数が育つまでの直近月・母数5人未満の月は非表示', tag: '%', body: chartBox('cStaffFixRate', 230) });
     if (A.store.retail.hasAmount) {
       html += card({ col: 'col-6', title: '店販売上の推移' + help('月ごとの店販売上金額の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffRetail', 230) });
     }
@@ -567,7 +567,7 @@
         C.meter(el, { label: '次回予約取得率', help: '来店（会計済み）のうち、その後に何らかの予約・来店（キャンセルは除く）があった割合。全期間のプール平均（次回を確保した来店の合計 ÷ 来店の合計）。', value: st.avg.nextRes || 0, display: st.avg.nextRes == null ? '—' : pct(st.avg.nextRes * 100), color: cvar(STAFF_COLOR[st.name]), sub: (st.avg.nextRes == null ? '来店なし' : frac(st.avg.nextResNum, st.avg.nextResDen, '件') + '（全期間）') });
       });
       draw('stMeterFix' + i, function (el) {
-        C.meter(el, { label: '固定化率（3回到達）', help: 'リピート率と同じ予約ベース。分母は「このスタッフが直近3ヶ月に初回担当し、2回目の予約に到達した顧客」、分子は「3回目の予約にも到達した顧客」（受付待ち含む・キャンセルは数えず、取り直せば数える）。2回目に到達した方がまだ0人なら「—」（母数不足で測定不能）。', value: st.fixationRate || 0, display: st.fixationRate == null ? '—' : pct(st.fixationRate * 100), color: cvar(STAFF_COLOR[st.name]), target: 0.6, sub: (st.fixationRate == null ? '2回目に到達した方がまだいません' : frac(st.fixNumer, st.fixDenom, '人')) + ' ・ 目安 60%' });
+        C.meter(el, { label: '固定化率（3回到達）', help: '分母は「このスタッフが直近3ヶ月に初回担当し、実際に2回来店した顧客」、分子は「そのうち3回目の予約に到達した顧客」（受付待ち含む・キャンセルは数えず、取り直せば数える）。実来店2回目がまだ0人なら「—」（母数不足で測定不能）。', value: st.fixationRate || 0, display: st.fixationRate == null ? '—' : pct(st.fixationRate * 100), color: cvar(STAFF_COLOR[st.name]), target: 0.6, sub: (st.fixationRate == null ? '実来店2回目の方がまだいません' : frac(st.fixNumer, st.fixDenom, '人')) + ' ・ 目安 60%' });
       });
     });
     // 月次予約数の比較: 月ごとのクラスターにスタッフ別の積み上げ棒をまとめて表示
@@ -1180,7 +1180,7 @@
         '<li><b>有効予約</b> ＝ 会計済み ＋ これからの受付待ち予約。基準日以前の未処理（滞留）は除外。</li>' +
         '<li><b>顧客の識別</b>：<code>フリガナ</code>で名寄せ。リピート／RFMの母数は来店実績のある顧客。</li>' +
         '<li><b>リピート率・ファネル</b>：来店顧客のうち2回目以降の予約（会計済み＋今後の予約）を確保した割合。予約ベースの判定のため、キャンセルのみで次の予約が入っていない場合は「未到達」、キャンセル後に別の予約を取っていれば「到達」として数える（経過日数による母数除外は行わない）。<b>RFMのF</b>は実来店回数。</li>' +
-        '<li><b>固定化率</b>：リピート率とまったく同じ予約ベースの数え方で、2回目の予約に到達した顧客のうち3回目の予約にも到達した割合。リピート率が「1回目→2回目」、固定化率が「2回目→3回目」で、リテンションファネルの隣り合う段にあたる。</li>' +
+        '<li><b>固定化率</b>：実際に2回来店した顧客のうち、3回目の予約に到達した割合（受付待ちを含み、キャンセルは数えず取り直せば数える）。リピート率は予約ベース（2回目の予約に到達した割合）で、分母の基準が異なる。</li>' +
         '<li><b>スタッフ比較</b>：表内の数値はすべて直近3ヶ月（今月を含まない確定3ヶ月）平均。リピート率・固定化率は、そのスタッフが直近3ヶ月に初回担当した顧客のコホートが対象。</li>' +
         '<li><b>店販顧客比率</b> ＝ 店販（物販）を購入した<b>人数</b> ÷ 来店した<b>人数</b>。<b>店販単価</b>は「店販金額 ÷ 店販のあった会計数」（1人が複数回購入する場合があるため会計単位）。</li>' +
         '<li><b>LTV（予測）</b>：実績客単価 × 期待来店回数（5回到達までの期待値）。</li>' +

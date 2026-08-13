@@ -268,30 +268,33 @@
     // counting a rebooking after a cancellation but not the cancellation itself),
     // not a time-elapsed guess — a brand-new customer with no 2nd reservation yet
     // correctly counts as "not yet reached 2", the same as any other customer.
-    // 到達人数(バー)も段間の継続率/離脱率も、すべて予約ベース(Fres)で統一する。
-    // 段間継続率 = (n+1)回目に到達した人 ÷ n回目に到達した人。つまり隣り合う段の
-    // 比そのもので、n=2 の継続率が固定化率と一致する（同じ概念を同じ母集団で数える）。
-    // 受付待ちの予約も「到達」に数え、キャンセルは数えない（取り直せば数える）。
+    // 到達人数(バー)は予約ベース(Fres): 受付待ちの予約も「到達」に数える。
+    // 段間の継続率/離脱率の母数は「実際にn回来店した人(Fvis>=n)」（オーナー確定の
+    // 固定化率と同じ考え方）。まだ来店前（n回目が受付待ち）の顧客は、構造上まだ
+    // (n+1)回目を予約しようがないため母数に含めない。分子は予約ベースのまま
+    // (n+1)回目の予約を数える。n=2 の継続率が固定化率と一致する。
     var funnel = [1, 2, 3, 4, 5].map(function (n) {
       var people = visitedCusts.filter(function (c) { return c.Fres >= n; }).length;
-      var contDen = people;
-      var contNum = visitedCusts.filter(function (c) { return c.Fres >= n + 1; }).length;
+      var contDen = visitedCusts.filter(function (c) { return c.Fvis >= n; }).length;
+      var contNum = visitedCusts.filter(function (c) { return c.Fvis >= n && c.Fres >= n + 1; }).length;
       return {
         n: n, people: people, reach: baseN ? people / baseN : 0,
         contDen: contDen, contNum: contNum, cont: contDen ? contNum / contDen : null
       };
     });
     var repeatRate = baseN ? funnel[1].people / baseN : 0;
-    // 固定化率: 「2回目の予約に到達した顧客のうち、3回目の予約にも到達した割合」。
-    // リピート率と同じ予約ベースで統一する（オーナー確定の定義）。リピート率が
-    // 「1回目→2回目」、固定化率が「2回目→3回目」で、同じファネルの隣り合う段。
-    // 分母＝Fres>=2、分子＝Fres>=3。Fres は来店済み＋受付待ちの有効予約数で、
-    // キャンセルは数えず、キャンセル後に取り直せば数える。
-    // 来店実績（Fvis）を分母にしないのは、同じ概念の2つの指標で母集団の取り方を
-    // 変えないため。予約一覧を見れば「X回目の予約が有るか」は常に判定できるので、
-    // 来店を待つ必要がない（＝コホートの熟成待ちも不要）。
-    var fix2Visit = visitedCusts.filter(function (c) { return c.Fres >= 2; }).length;
-    var fix3Reserve = visitedCusts.filter(function (c) { return c.Fres >= 3; }).length;
+    // 固定化率: 「2回目の来店を済ませた顧客のうち、3回目の予約に到達した割合」
+    // （オーナー確定の定義・2026-08-13）。分母＝Fvis>=2（実際に2回来店した人）、
+    // 分子＝そのうち Fres>=3（3回目の予約あり。受付待ちを含み、キャンセルは数えず、
+    // キャンセル後に取り直せば数える）。
+    // リピート率（分母＝来店顧客全員・分子＝Fres>=2）とは分母の基準が異なる:
+    // 固定化率は「2回目まで来てくれた方が、その来店で次を取ったか」という
+    // 接客の成果を測る指標なので、まだ2回目に来ていない（予約だけの）方は
+    // 分母に入れない。その代償として、獲得から日が浅いコホートは「早く再来した
+    // 熱心な方」だけが分母に入り率が高く出るため、月次推移では母数が育つまで
+    // 表示を伏せる（repeatFixMonthly の fixImmature を参照）。
+    var fix2Visit = visitedCusts.filter(function (c) { return c.Fvis >= 2; }).length;
+    var fix3Reserve = visitedCusts.filter(function (c) { return c.Fvis >= 2 && c.Fres >= 3; }).length;
     var fixationRate = fix2Visit ? fix3Reserve / fix2Visit : 0;
 
     // ---- Next-reservation rate (per visit) ----------------------------------
@@ -615,6 +618,11 @@
     // currentYm (the in-progress month, excluded from personal-best comparisons)
     // is defined up with the period buckets.
 
+    // 固定化率の月次推移でコホートの熟成を待つ日数。来店周期の中央値＝お客様が次に
+    // 来店するまでの実測値なので、これだけ経てば「2回来店した人」（固定化率の分母）が
+    // ひと通り出そろう。店舗ごとの実データに追従させるため定数にしない（最低30日）。
+    var cohortFixMatureDays = Math.max(visitCycleMedianDays || 0, 30);
+
     var staff = staffNames.map(function (name) {
       var mrows = staffMonthly(name);
       var active = mrows.filter(function (r) { return r.actual > 0; });
@@ -632,13 +640,12 @@
       // null (not 0) when there's no recent-cohort base yet — a brand-new staff
       // hasn't "failed" to retain anyone, there just hasn't been anyone to test yet.
       function reach(n) { return acqRecent.length ? acqRecent.filter(function (c) { return c.Fres >= n; }).length / acqRecent.length : null; }
-      // 固定化率: 「このスタッフが直近3ヶ月に初回担当した顧客のうち、2回目の予約に
-      // 到達した人を母数として、3回目の予約にも到達した割合」。店舗全体と同じ
-      // 予約ベース（分母＝Fres>=2、分子＝Fres>=3）。reach(2)→reach(3) の段と
-      // 同じ母集団なので、リピート率と固定化率が同じものさしで並ぶ。
-      // 2回目到達がまだ0人なら null（新任は母数不足で測定不能＝正直な表示）。
-      var fix2Visit = acqRecent.filter(function (c) { return c.Fres >= 2; }).length;
-      var fix3Reserve = acqRecent.filter(function (c) { return c.Fres >= 3; }).length;
+      // 固定化率: 「このスタッフが直近3ヶ月に初回担当し、実際に2回来店した顧客の
+      // うち、3回目の予約に到達した割合」。店舗全体と同じオーナー確定の定義
+      // （分母＝Fvis>=2、分子＝Fvis>=2 かつ Fres>=3）。
+      // 実来店2回目がまだ0人なら null（新任は母数不足で測定不能＝正直な表示）。
+      var fix2Visit = acqRecent.filter(function (c) { return c.Fvis >= 2; }).length;
+      var fix3Reserve = acqRecent.filter(function (c) { return c.Fvis >= 2 && c.Fres >= 3; }).length;
       var fixationRate = fix2Visit ? fix3Reserve / fix2Visit : null;
       var mature = active.filter(function (r) { return !r.nextResImmature; });
       // プール平均（件数で重み付け／オーナー確定）: 月ごとの率を単純平均するのでなく、
@@ -746,30 +753,27 @@
       var repeatFixMonthly = months.map(function (mo) {
         var cohort = customers.filter(function (c) { return c.firstVisitStaff === name && c.firstVisitMonth === mo; });
         var n = cohort.length;
-        // リピート率も固定化率も同じ予約ベース（Fres）で数える。リピート率が
-        // 「1回目→2回目」、固定化率が「2回目→3回目」の到達率で、同じファネルの
-        // 隣り合う段。予約一覧を見れば X回目の予約の有無は常に判定できるため、
-        // どちらも来店を待つ必要がない（＝コホートの熟成待ちは不要）。
+        // リピート率＝予約ベース（分子 Fres>=2。予約一覧で即判定できるため、
+        // 集計途中の当月も隠さず表示し、UI側で「※」を付ける）。
         var reach2N = cohort.filter(function (c) { return c.Fres >= 2; }).length;
-        var fix2N = reach2N;                                                        // 固定化率の母数＝2回目到達
-        var fix3N = cohort.filter(function (c) { return c.Fres >= 3; }).length;
-        // 集計途中の当月も隠さず表示する（オーナー要望）。予約ベースなので当月でも
-        // 測定でき、実データでも当月のリピート率は完了月と同水準に出る。UI 側で
-        // 「※集計途中」の印を付けて区別する。非表示にするのは母数不足の月だけ。
-        //
-        // 固定化率の直近月が低く出るのは仕様（欠陥ではない）: 3回目の予約は通常
-        // 「2回目の来店時」に取られるため、2回目の来店がまだ先のお客様は3回目を
-        // 持ちようがない。分母（2回目の予約に到達）には既に入っているので、率は
-        // いったん低く出て、コホートの2回目来店が進むにつれて上がっていく。
+        // 固定化率＝分母 Fvis>=2（実際に2回来店した人・オーナー確定）、分子＝
+        // そのうち Fres>=3。この分母は獲得から時間が経たないと育たず、育つ前は
+        // 「早く再来した熱心な方」だけが分母に入り 6/6＝100% のような値が出る。
+        // そこで月末から「来店周期の中央値」（最低30日）が経つまで率を伏せる。
+        var fix2N = cohort.filter(function (c) { return c.Fvis >= 2; }).length;
+        var fix3N = cohort.filter(function (c) { return c.Fvis >= 2 && c.Fres >= 3; }).length;
         var partial = (mo === currentYm);
+        var monthEnd = new Date(+mo.split('-')[0], +mo.split('-')[1], 0);
+        var fixImmature = dayDiff(asOf, monthEnd) < cohortFixMatureDays;
         // 会計明細のみ（hasFuture=false）では将来予約が見えず、直近コホートの率は
         // 右打ち切りで構造的に0%へ落ちるため45日の成熟ガードで伏せる（人数は保持）。
         // 予約データでは monthImmatureBy が常に false なので影響しない。
         var immature = monthImmatureBy(mo, REPEAT_MATURITY_DAYS);
         return {
-          m: mo, cohortN: n, reach2N: reach2N, fix2N: fix2N, fix3N: fix3N, partial: partial,
+          m: mo, cohortN: n, reach2N: reach2N, fix2N: fix2N, fix3N: fix3N,
+          partial: partial, fixImmature: fixImmature,
           repeat: (!immature && n >= MIN_RATE_DENOM) ? reach2N / n : null,
-          fix: (!immature && fix2N >= MIN_RATE_DENOM) ? fix3N / fix2N : null
+          fix: (!immature && !fixImmature && fix2N >= MIN_RATE_DENOM) ? fix3N / fix2N : null
         };
       });
 
