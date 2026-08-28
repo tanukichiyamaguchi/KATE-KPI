@@ -270,22 +270,32 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   await p2.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
   await sleep(2000);
   check('失敗時: 候補を2つとも試す（/export → gviz）', tried.length, 2);
+  const bannerHtml = function () {
+    return p2.evaluate(function () {
+      var el = document.querySelector('#sheetAlert');
+      return el ? el.innerHTML : '';
+    });
+  };
   const bannerText = await p2.evaluate(function () {
-    var el = [...document.querySelectorAll('#view-overview .gsec')]
-      .find(function (g) { return /読み込めませんでした/.test(g.textContent); });
+    var el = document.querySelector('#sheetAlert');
     return el ? el.textContent.replace(/\s+/g, ' ') : '';
   });
-  check('失敗時: 概要に警告バナーを出す', bannerText.indexOf('読み込めませんでした') !== -1, true);
+  check('失敗時: 警告バナーを出す', bannerText.indexOf('読み込めませんでした') !== -1, true);
   check('失敗時: サンプルデータであることを明示する', bannerText.indexOf('サンプルデータ') !== -1, true);
-  check('失敗時: 試した取得先を示す', bannerText.indexOf('/export?format=csv') !== -1, true);
+  check('失敗時: 試した取得経路を示す', bannerText.indexOf('CSV書き出し → クエリ') !== -1, true);
+  // バナーは全ビュー（スタッフも見る画面）に出る。ここに取得先URLを載せると、
+  // 管理ロックが隠しているシートのIDがそのまま漏れる。経路名だけを出すこと。
+  const rawBanner = await bannerHtml();
+  check('失敗時: シートのIDを画面に出さない', rawBanner.indexOf('FAILCASE') === -1, true);
+  check('失敗時: 取得先URLを画面に出さない', rawBanner.indexOf('docs.google.com') === -1 && rawBanner.indexOf('/export') === -1, true);
   for (const view of ['staff', 'trend', 'rfm', 'data']) {
     await p2.evaluate(function (v) { location.hash = '#' + v; }, view);
     await sleep(500);
-    const shown = await p2.evaluate(function (v) {
-      return [...document.querySelectorAll('#view-' + v + ' .gsec')]
-        .some(function (g) { return /読み込めませんでした/.test(g.textContent); });
-    }, view);
-    check('失敗時: ' + view + 'タブにも警告を出す', shown, true);
+    const shown = await p2.evaluate(function () {
+      var el = document.querySelector('#sheetAlert');
+      return !!el && /読み込めませんでした/.test(el.textContent);
+    });
+    check('失敗時: ' + view + 'タブでも警告が消えない', shown, true);
   }
   await p2.close(); await ctx2.close();
 
@@ -328,14 +338,88 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   await sleep(600);
   await p3.evaluate(function () { location.hash = '#overview'; location.hash = '#data'; });
   await sleep(700);
-  const after3 = await p3.evaluate(function () {
-    var el = [...document.querySelectorAll('#view-data .gsec')]
-      .find(function (g) { return /取得したデータの中身/.test(g.textContent); });
-    return el ? el.textContent.replace(/\s+/g, ' ') : '';
+  // 「23:00」は予定時刻の固定ラベル（23:00 / 23:30 / …）にも含まれるため、
+  // カード全体の文字列で探すと何を書いても通ってしまう。実績値そのものを読む。
+  const lastFire = await p3.evaluate(function () {
+    var d = [...document.querySelectorAll('#view-data .datainfo div')]
+      .find(function (n) { return /前回の自動更新/.test(n.textContent); });
+    var b = d && d.querySelector('b');
+    return b ? b.textContent.trim() : '(なし)';
   });
-  check('自動更新後: 前回の実績時刻を表示する', after3.indexOf('まだ一度も動いていません') === -1, true);
-  check('自動更新後: 23:00 の発火が記録される', after3.indexOf('23:00') !== -1, true);
+  check('自動更新後: 前回の実績時刻を表示する', lastFire !== 'まだ一度も動いていません', true);
+  // 記録されるのは「実際に発火した瞬間」。フェイククロックは 22:58 → 23:01 と
+  // 飛ぶため 23:01 になるが、実運用では 23:00:05 に発火して 23:00 と出る。
+  // どちらにせよ 8/20 の 23時台でなければ、予定時刻や別の値を出している。
+  check('自動更新後: 発火時刻そのものを記録する',
+    /^8月20日 23:0\d$/.test(lastFire) ? 'ok' : lastFire, 'ok');
   await p3.close(); await ctx3.close();
+
+  // ---- 失敗しても「いま何が表示されているか」の記録を消さない／復旧で消える ----
+  // 失敗行で診断表を置き換えると、表示中の数字がどのデータなのか分からなくなる。
+  // また、復旧・連携解除のあともバナーが残ると、直しようのない警告になる。
+  const ctx4 = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+  const p4 = await ctx4.newPage();
+  let failMode = false;
+  await p4.route('https://docs.google.com/**', function (route) {
+    if (failMode) return route.abort('failed');
+    route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV });
+  });
+  await ctx4.addInitScript(function () {
+    try { localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/DIAGCASE/edit#gid=0'); } catch (e) {}
+  });
+  await p4.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+  await p4.evaluate(function () { location.hash = '#data'; });
+  await sleep(600);
+  await p4.fill('#ownerPassInput', OWNER_PASS);
+  await p4.click('#ownerPassBtn');
+  await p4.waitForSelector('#sheetRefreshNow', { timeout: 5000 });
+  const diagRows = function () {
+    return p4.evaluate(function () {
+      var c = [...document.querySelectorAll('#view-data .gsec')]
+        .find(function (g) { return /取得したデータの中身/.test(g.textContent); });
+      if (!c) return [];
+      return [...c.querySelectorAll('tbody tr')].map(function (tr) { return tr.textContent.replace(/\s+/g, ' ').trim(); });
+    });
+  };
+  const alertText = function () {
+    return p4.evaluate(function () {
+      var el = document.querySelector('#sheetAlert');
+      return el ? el.textContent.replace(/\s+/g, ' ') : '';
+    });
+  };
+  const okRows = await diagRows();
+  check('成功時: 診断表にデータ行が出る', okRows.filter(function (r) { return /予約データ/.test(r) && /件/.test(r); }).length, 1);
+
+  // 未連携の会計側URL欄に入力途中の文字を置く（再描画で消えないことの確認用）
+  await p4.fill('#sheetUrlKaikei', 'https://docs.google.com/spreadsheets/d/TYPING-IN-PROGRESS/edit');
+  failMode = true;
+  await p4.click('#sheetRefreshNow');
+  await sleep(1500);
+  const failRows = await diagRows();
+  check('失敗時: 診断表に失敗行を足す', failRows.some(function (r) { return /読み込み失敗/.test(r); }), true);
+  check('失敗時: 診断表のデータ行を消さない', failRows.some(function (r) { return /予約データ/.test(r) && /件/.test(r); }), true);
+  const failAlert = await alertText();
+  check('失敗時: 前回の内容を表示中だと伝える', failAlert.indexOf('前回読み込んだ内容') !== -1, true);
+  check('失敗時: サンプルだと誤って言わない', failAlert.indexOf('サンプルデータ') === -1, true);
+  check('失敗時: 入力途中のURLを消さない',
+    await p4.inputValue('#sheetUrlKaikei'), 'https://docs.google.com/spreadsheets/d/TYPING-IN-PROGRESS/edit');
+
+  // 復旧したらバナーも失敗行も消える（消えなければ「直しようのない警告」になる）
+  failMode = false;
+  await p4.click('#sheetRefreshNow');
+  await sleep(1500);
+  check('復旧時: 警告バナーが消える', (await alertText()).indexOf('読み込めませんでした'), -1);
+  check('復旧時: 診断表の失敗行が消える', (await diagRows()).some(function (r) { return /読み込み失敗/.test(r); }), false);
+
+  // 連携を解除したら、その連携についての警告は残らない
+  failMode = true;
+  await p4.click('#sheetRefreshNow');
+  await sleep(1500);
+  check('解除前: 警告バナーが出ている', (await alertText()).indexOf('読み込めませんでした') !== -1, true);
+  await p4.click('#sheetUnlinkBtnYoyaku');
+  await sleep(800);
+  check('解除後: 警告バナーが消える', (await alertText()).indexOf('読み込めませんでした'), -1);
+  await p4.close(); await ctx4.close();
 
   await browser.close(); server.close();
   console.log('\x1b[1mSUMMARY\x1b[0m  \x1b[32m' + pass + ' pass\x1b[0m · \x1b[31m' + fail + ' fail\x1b[0m');

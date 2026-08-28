@@ -45,6 +45,9 @@
   </div>
 
   <main id="main">
+    <!-- シートを読み込めなかったときの警告。ビューの外に置くことで、タブを
+         切り替えても消えず、再描画で入力途中の値を壊すこともない。 -->
+    <div id="sheetAlert" role="status" aria-live="polite"></div>
     <section class="view active" id="view-overview" role="tabpanel" aria-labelledby="tab-overview"></section>
     <section class="view" id="view-staff" role="tabpanel" aria-labelledby="tab-staff"></section>
     <section class="view" id="view-trend" role="tabpanel" aria-labelledby="tab-trend"></section>
