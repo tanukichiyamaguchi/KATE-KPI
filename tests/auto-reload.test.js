@@ -59,6 +59,12 @@ const CSV_V2 = [
 ].join('\n');
 let CSV_BODY = CSV;   // ルートハンドラが返す本文（テスト中に差し替える）
 
+// 1回の読み込みで叩く取得先の本数。編集URLは /export と gviz の両方を並行して
+// 取りに行き、取れた中から中身がいちばん新しいものを採用する（片方がCORSで
+// 読めない環境／片方が古いキャッシュを返す場合の取りこぼしを防ぐため）。
+const PER_LOAD = require('../assets/js/sheets.js')
+  .csvEndpoints('https://docs.google.com/spreadsheets/d/X/edit#gid=0').length;
+
 let pass = 0, fail = 0;
 function check(name, got, want) {
   const ok = got === want;
@@ -106,7 +112,7 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   await page.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
   await page.clock.pauseAt(JST('2026-08-07T22:58:00'));
   await waitFor(function () { return hits; }, 1);
-  check('起動時に1回読み込む（従来どおり）', hits, 1);
+  check('起動時に1回読み込む（従来どおり）', hits, 1 * PER_LOAD);
 
   // ---- next / boundary 計算（ページ内の実装をそのまま検証）-----------------
   const fmt = 'function(d){return (d.getMonth()+1)+"/"+d.getDate()+" "+d.getHours()+":"+("0"+d.getMinutes()).slice(-2);}';
@@ -136,22 +142,22 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   // フェッチ応答の反映（dataLoadedAt の更新）は実時間の非同期で走るため。
   await page.clock.fastForward(60 * 1000);            // → 22:59
   await sleep(300);
-  check('22:59 では再読み込みしない', hits, 1);
+  check('22:59 では再読み込みしない', hits, 1 * PER_LOAD);
 
   await page.clock.fastForward(2 * 60 * 1000);        // → 23:01（23:00:05 発火）
   await waitFor(function () { return hits; }, 2);
   await sleep(500);
-  check('23:00 に自動で再読み込みする', hits, 2);
+  check('23:00 に自動で再読み込みする', hits, 2 * PER_LOAD);
 
   await page.clock.fastForward(30 * 60 * 1000);       // → 23:31（23:30:05 発火）
   await waitFor(function () { return hits; }, 3);
   await sleep(500);
-  check('23:30 にも再読み込みする（30分おき）', hits, 3);
+  check('23:30 にも再読み込みする（30分おき）', hits, 3 * PER_LOAD);
 
   await page.clock.fastForward(30 * 60 * 1000);       // → 翌0:01（0:00:05 発火）
   await waitFor(function () { return hits; }, 4);
   await sleep(500);
-  check('0:00 にも再読み込みする（日付またぎ）', hits, 4);
+  check('0:00 にも再読み込みする（日付またぎ）', hits, 4 * PER_LOAD);
 
   // ---- 「今すぐ更新」は管理ロック解除後のみ（ロック中は出さない）-----------
   await page.evaluate(function () { location.hash = '#data'; });
@@ -168,18 +174,18 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   await page.click('#sheetRefreshNow');
   await waitFor(function () { return hits; }, 5);
   await sleep(500);
-  check('「今すぐ更新」ボタンで手動再読み込みできる', hits, 5);
+  check('「今すぐ更新」ボタンで手動再読み込みできる', hits, 5 * PER_LOAD);
 
   // ---- スリープ復帰: タイマーを動かさず時刻だけ同日9:00へ（0:30/1:00を取りこぼし）
   await page.clock.setSystemTime(JST('2026-08-08T09:00:00'));
   await page.evaluate(function () { document.dispatchEvent(new Event('visibilitychange')); });
   await waitFor(function () { return hits; }, 6);
   await sleep(500);
-  check('画面復帰時に取りこぼし（1:00未読）を検知して読み込む', hits, 6);
+  check('画面復帰時に取りこぼし（1:00未読）を検知して読み込む', hits, 6 * PER_LOAD);
 
   await page.evaluate(function () { document.dispatchEvent(new Event('visibilitychange')); });
   await sleep(300);
-  check('取りこぼしが無ければ画面復帰でも読み込まない', hits, 6);
+  check('取りこぼしが無ければ画面復帰でも読み込まない', hits, 6 * PER_LOAD);
 
   // ---- 合言葉はこの端末で記憶される（リロードしても再入力を求めない）------
   const stored = await page.evaluate(function () { return localStorage.getItem('kate-owner-unlocked'); });
@@ -223,7 +229,12 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   CSV_BODY = CSV_V2;                      // シートが更新された
   await page.click('#sheetRefreshNow');
   await sleep(1500);
-  check('更新後：ヘッダーのデータ更新日時が変わる', (await headerStamp()).indexOf('データ更新 8月8日 23:30') === 0, true);
+  // ヘッダーの主役は「最終読込」＝読みに行って成功した時刻（押せば必ず進む）。
+  // シート側の同期時刻は併記。シート側が止まっても読込時刻は動くため、
+  // 「更新したのに日時が変わらない」という誤解が起きない。
+  const hdrV2 = await headerStamp();
+  check('更新後：ヘッダーの最終読込が進む', hdrV2.indexOf('最終読込 ') === 0, true);
+  check('更新後：シート側の同期時刻を併記する', hdrV2.indexOf('（シート同期 8月8日 23:30）') !== -1, true);
   await page.evaluate(function () { location.hash = '#overview'; });
   // 数値はカウントアップ演出で徐々に上がるため、確定値になるまで待ってから判定
   await page.waitForFunction(function () {
@@ -248,12 +259,17 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     return c ? [...c.querySelectorAll('tbody tr')].map(function (r) { return [...r.children].map(function (td) { return td.textContent.trim(); }).join('|'); }) : null;
   });
   check('診断テーブルを表示する', Array.isArray(diag) && diag.length >= 1, true);
-  check('診断: 取得データ内の最新日を示す（8/6）', diag[0].indexOf('2026年8月6日') !== -1, true);
-  check('診断: 取得件数を示す', diag[0].indexOf('2件') !== -1, true);
+  const dataRow = (diag || []).find(function (r) { return /件/.test(r) && /2026年/.test(r); }) || '';
+  check('診断: 取得データ内の最新日を示す（8/6）', dataRow.indexOf('2026年8月6日') !== -1, true);
+  check('診断: 取得件数を示す', dataRow.indexOf('2件') !== -1, true);
+  // 経路ごとの結果（どちらの経路が古いのかが一目で分かる切り分け材料）
+  const routeRow = (diag || []).find(function (r) { return /経路ごとの取得結果/.test(r); }) || '';
+  check('診断: 経路ごとの取得結果を出す', routeRow.indexOf('（採用）') !== -1, true);
 
   // ---- ヘッダーに「確認」時刻が併記される（押したことが必ず見える）----------
   const hdr = await headerStamp();
-  check('ヘッダーに確認時刻を併記する', /（確認 \d{1,2}:\d{2}）/.test(hdr), true);
+  check('ヘッダーの読込時刻は日時つきで出る', /^最終読込 \d{1,2}月\d{1,2}日 \d{2}:\d{2}/.test(hdr), true);
+  check('ヘッダーにシート同期時刻を併記する', /（シート同期 \d{1,2}月\d{1,2}日 \d{2}:\d{2}）/.test(hdr), true);
 
   check('コンソールエラーなし', errors.length, 0);
 
@@ -282,11 +298,15 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   });
   check('失敗時: 警告バナーを出す', bannerText.indexOf('読み込めませんでした') !== -1, true);
   check('失敗時: サンプルデータであることを明示する', bannerText.indexOf('サンプルデータ') !== -1, true);
-  check('失敗時: 試した取得経路を示す', bannerText.indexOf('CSV書き出し → クエリ') !== -1, true);
+  check('失敗時: 試した取得経路を示す',
+    bannerText.indexOf('CSV書き出し') !== -1 && bannerText.indexOf('クエリ') !== -1, true);
   // バナーは全ビュー（スタッフも見る画面）に出る。ここに取得先URLを載せると、
   // 管理ロックが隠しているシートのIDがそのまま漏れる。経路名だけを出すこと。
   const rawBanner = await bannerHtml();
   check('失敗時: シートのIDを画面に出さない', rawBanner.indexOf('FAILCASE') === -1, true);
+  // 経路ごとに失敗理由が違うことがある。1本分だけ出すと本当の原因が隠れる。
+  check('失敗時: 経路ごとの理由を並べる',
+    bannerText.indexOf('CSV書き出し：') !== -1 && bannerText.indexOf('クエリ：') !== -1, true);
   check('失敗時: 取得先URLを画面に出さない', rawBanner.indexOf('docs.google.com') === -1 && rawBanner.indexOf('/export') === -1, true);
   for (const view of ['staff', 'trend', 'rfm', 'data']) {
     await p2.evaluate(function (v) { location.hash = '#' + v; }, view);
@@ -420,6 +440,79 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   await sleep(800);
   check('解除後: 警告バナーが消える', (await alertText()).indexOf('読み込めませんでした'), -1);
   await p4.close(); await ctx4.close();
+
+  // ---- 経路が複数あるとき、いちばん新しい内容が必ず採用される ---------------
+  // 「シートは更新されているのに反映されない」の本丸。/export（常に最新だが
+  // 別オリジンからは CORS で読めないことがある）と gviz（読めるが Google 側で
+  // キャッシュされることがある）は、どちらが使えるか・どちらが新しいかが環境と
+  // タイミングで変わる。片方に賭けると必ず取りこぼすので、両方取って新しい方を採る。
+  const CSV_FRESH = [
+    'ステータス,来店日,お名前,スタッフ名,予約時合計金額,会計時合計金額,データ更新日時',
+    '会計済み,2026/08/28,新規花子,momo,30000,30000,2026/08/28 23:30:00'
+  ].join('\n');
+  const CSV_STALE = [
+    'ステータス,来店日,お名前,スタッフ名,予約時合計金額,会計時合計金額,データ更新日時',
+    '会計済み,2026/08/06,旧花子,momo,5000,5000,2026/08/06 1:00:00'
+  ].join('\n');
+
+  const freshCase = async function (label, handler) {
+    const c = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+    const pg = await c.newPage();
+    await pg.route('https://docs.google.com/**', handler);
+    await c.addInitScript(function () {
+      try { localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/FRESHPICK/edit#gid=0'); } catch (e) {}
+    });
+    await pg.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+    await sleep(1800);
+    const hdr = await pg.evaluate(function () { return document.querySelector('#asof').textContent.trim(); });
+    await pg.evaluate(function () { location.hash = '#data'; });
+    await sleep(600);
+    await pg.fill('#ownerPassInput', OWNER_PASS);
+    await pg.click('#ownerPassBtn');
+    await pg.waitForSelector('#sheetRefreshNow', { timeout: 5000 });
+    const rows = await pg.evaluate(function () {
+      var g = [...document.querySelectorAll('#view-data .gsec')].find(function (x) { return /取得したデータの中身/.test(x.textContent); });
+      return g ? [...g.querySelectorAll('tbody tr')].map(function (r) { return r.textContent.replace(/\s+/g, ' ').trim(); }) : [];
+    });
+    const alert = await pg.evaluate(function () {
+      var el = document.querySelector('#sheetAlert');
+      return el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+    });
+    await pg.close(); await c.close();
+    return { label: label, hdr: hdr, rows: rows, alert: alert };
+  };
+
+  // (1) gviz が 8/6 の古いキャッシュ、/export が 8/28 の最新 → 最新が勝つ
+  const a = await freshCase('export新', function (route) {
+    const u = route.request().url();
+    route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: /\/export\?/.test(u) ? CSV_FRESH : CSV_STALE });
+  });
+  check('古いキャッシュより新しい内容を採用する', a.hdr.indexOf('（シート同期 8月28日 23:30）') !== -1, true);
+  check('採用しなかった経路も診断に残す', a.rows.some(function (r) { return /経路ごとの取得結果/.test(r) && /2026年8月6日/.test(r); }), true);
+  check('どちらを採用したかを診断に出す',
+    a.rows.some(function (r) { return /CSV書き出し＝2026年8月28日（採用）/.test(r); }), true);
+
+  // (2) 逆方向 — /export が古く gviz が新しい場合も、新しい方が勝つ
+  const b2 = await freshCase('gviz新', function (route) {
+    const u = route.request().url();
+    route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: /\/export\?/.test(u) ? CSV_STALE : CSV_FRESH });
+  });
+  check('経路の優先順ではなく中身の新しさで選ぶ', b2.hdr.indexOf('（シート同期 8月28日 23:30）') !== -1, true);
+  check('gviz を採用したことが診断で分かる',
+    b2.rows.some(function (r) { return /クエリ＝2026年8月28日（採用）/.test(r); }), true);
+
+  // (3) /export が CORS で読めない環境でも、gviz の最新が届く（取りこぼさない）
+  const c3 = await freshCase('export不通', function (route) {
+    const u = route.request().url();
+    if (/\/export\?/.test(u)) return route.abort('failed');
+    route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV_FRESH });
+  });
+  check('片方の経路が遮断されても最新が反映される', c3.hdr.indexOf('（シート同期 8月28日 23:30）') !== -1, true);
+  check('遮断された経路は診断に「読めず」と出る', c3.rows.some(function (r) { return /読めず/.test(r); }), true);
+  // 片方が遮断されても内容は届いている。ここで警告を出すと「反映されていない」と
+  // 誤解させるため、全経路が駄目だったときだけ警告を出す。
+  check('片方が生きていれば警告バナーを出さない', c3.alert, '');
+  check('全経路が生きているときも警告を出さない', a.alert, '');
 
   await browser.close(); server.close();
   console.log('\x1b[1mSUMMARY\x1b[0m  \x1b[32m' + pass + ' pass\x1b[0m · \x1b[31m' + fail + ' fail\x1b[0m');
