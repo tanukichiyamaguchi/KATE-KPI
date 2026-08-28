@@ -108,6 +108,21 @@ gt.rfm.segments.forEach(seg => {
   if (mine) check(seg.seg, mine.people, seg.people, 1);
 });
 
+h('■ 配信キャッシュ');
+// index.html の資産URLに付けたバージョンが package.json とずれると、利用者の
+// 端末が古い app.js を使い続け、直したはずの不具合が「まだ直っていない」ように
+// 見える。ずれを必ず検知する（リリース時にスタンプを更新し忘れないため）。
+{
+  const fs2 = require('fs'), path2 = require('path');
+  const root = path2.join(__dirname, '..');
+  const ver = JSON.parse(fs2.readFileSync(path2.join(root, 'package.json'), 'utf8')).version;
+  const html = fs2.readFileSync(path2.join(root, 'index.html'), 'utf8');
+  const assets = [...html.matchAll(/(?:src|href)="(assets\/(?:js|css)\/[^"]+)"/g)].map(m => m[1]);
+  const stamped = assets.filter(a => a.indexOf('?v=' + ver) !== -1);
+  check('資産URLにバージョンを付けている', assets.length > 0, true, 0);
+  check('全ての資産URLが package.json と同じバージョン', stamped.length, assets.length, 0);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[33m${warn} warn\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 console.log(`RFM segment total people = ${R.rfm.total} (expect 358)`);
 process.exit(fail > 0 ? 1 : 0);
