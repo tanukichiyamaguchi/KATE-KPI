@@ -30,9 +30,15 @@ const MIME = {
 // テスト用の管理ロック（合言葉 = OWNER_PASS）。crypto.js で生成して配信する。
 const OWNER_PASS = 'test-owner-pass';
 let OWNER_LOCK = null;
+// data/shared-link.json（合言葉で暗号化した連携URL）。既定では配信しない。
+let SHARED_BLOB = null;
 const server = http.createServer(function (req, res) {
   const urlPath = decodeURIComponent(req.url.split('?')[0]);
   if (urlPath === '/favicon.ico') { res.writeHead(404); res.end(); return; }
+  if (urlPath === '/data/shared-link.json') {
+    if (!SHARED_BLOB) { res.writeHead(404); res.end('{}'); return; }
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(SHARED_BLOB)); return;
+  }
   if (urlPath === '/data/owner-lock.json') {
     res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(OWNER_LOCK)); return;
   }
@@ -608,6 +614,68 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   });
   check('結合0件: 概要タブでも出る', alert8b.indexOf('1件も結合できませんでした') !== -1, true);
   await p8.close(); await ctx8.close();
+
+  // ---- 壊れた端末から復旧できること（復旧手段が画面から消えない）------------
+  // 連携URLが「保存されているが読めない」端末では、合言葉カードが出ず、URL入力欄は
+  // 管理ロックの内側にあるため、スタッフ端末からは二度と直せない状態だった。
+  const SHARED = await crypto7.encrypt('store-pass', {
+    yoyaku: 'https://docs.google.com/spreadsheets/d/RECOVERED/edit#gid=0'
+  });
+  SHARED_BLOB = SHARED;
+  const ctx9 = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+  const p9 = await ctx9.newPage();
+  await p9.route('https://docs.google.com/**', function (route) {
+    if (/RECOVERED/.test(route.request().url())) {
+      return route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV });
+    }
+    return route.abort('failed');            // 保存されている壊れたURLは読めない
+  });
+  await ctx9.addInitScript(function () {
+    try { localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/BROKEN/edit#gid=0'); } catch (e) {}
+  });
+  await p9.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+  await sleep(2000);
+  const alert9 = await p9.evaluate(function () {
+    var el = document.querySelector('#sheetAlert'); return el ? el.textContent.replace(/\s+/g, ' ') : '';
+  });
+  check('壊れた連携: 警告を出す', alert9.indexOf('読み込めませんでした') !== -1, true);
+  check('壊れた連携: 復旧の入口をバナーに置く', alert9.indexOf('合言葉を入力して連携をやり直す') !== -1, true);
+  await p9.evaluate(function () { location.hash = '#data'; });
+  await sleep(700);
+  check('壊れた連携: データタブに合言葉カードが出る',
+    await p9.$$eval('#sharedPassInput', function (n) { return n.length; }), 1);
+  // 実際に復旧できる
+  await p9.fill('#sharedPassInput', 'store-pass');
+  await p9.click('#sharedPassBtn');
+  await sleep(2000);
+  const recovered = await p9.evaluate(function () {
+    return {
+      url: localStorage.getItem('kate-sheet-url'),
+      alert: (document.querySelector('#sheetAlert') || {}).textContent.replace(/\s+/g, ' ') || ''
+    };
+  });
+  check('壊れた連携: 合言葉で正しいURLに戻る',
+    recovered.url, 'https://docs.google.com/spreadsheets/d/RECOVERED/edit#gid=0');
+  check('壊れた連携: 復旧すると警告が消える', recovered.alert.indexOf('読み込めませんでした'), -1);
+  await p9.close(); await ctx9.close();
+
+  // ---- 端末の保存領域が消えた場合も、全ビューで「未接続」と知らせる ----------
+  // Safari の自動削除やプライベートブラウズで連携URLが消えると、従来は概要タブの
+  // 案内カードしか無く、他のタブではサンプルデータが実データの顔で出ていた。
+  const ctx10 = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+  const p10 = await ctx10.newPage();
+  await p10.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+  await sleep(1200);
+  for (const v of ['overview', 'staff', 'trend', 'rfm']) {
+    await p10.evaluate(function (x) { location.hash = '#' + x; }, v);
+    await sleep(400);
+    const a = await p10.evaluate(function () {
+      var el = document.querySelector('#sheetAlert'); return el ? el.textContent : '';
+    });
+    check('未接続: ' + v + 'タブでもサンプルだと明示する', a.indexOf('店舗データに接続していません') !== -1, true);
+  }
+  await p10.close(); await ctx10.close();
+  SHARED_BLOB = null;
 
   await browser.close(); server.close();
   console.log('\x1b[1mSUMMARY\x1b[0m  \x1b[32m' + pass + ' pass\x1b[0m · \x1b[31m' + fail + ' fail\x1b[0m');
