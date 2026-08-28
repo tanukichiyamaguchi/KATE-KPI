@@ -929,10 +929,17 @@
     var html = '';
     // 合言葉 (shared passphrase) — decrypt the repo-hosted encrypted sheet URLs
     // so a brand-new device links up without anyone typing the raw URL.
-    if (state.sharedBlob && !(state.sheetUrl || state.sheetUrlKaikei)) {
+    // 連携URLが保存されていても、それが壊れている／読めない場合は復旧手段が要る。
+    // 以前は「何も連携していない端末」にしか出していなかったため、壊れた連携を
+    // 抱えた端末では合言葉カードが消え、URL入力欄は管理ロックの内側にあるため、
+    // スタッフ端末からは二度と直せなかった。
+    var linkBroken = Object.keys(state.sheetErrors || {}).length > 0;
+    if (state.sharedBlob && (!(state.sheetUrl || state.sheetUrlKaikei) || linkBroken)) {
       html += card({
         col: 'col-12', title: '合言葉で店舗データを表示' + help('お店のスプレッドシートのURLを暗号化したものがこのアプリに同梱されています。合言葉を入力すると、この端末で復元されて自動連携が始まります（合言葉の入力は端末ごとに最初の1回だけ）。'),
-        sub: 'この端末で初めて使うときは、お店の合言葉を入力してください（1回だけ）',
+        sub: linkBroken
+          ? '<b>この端末の連携がうまくいっていません。</b>合言葉を入れ直すと、正しい連携URLが復元されます'
+          : 'この端末で初めて使うときは、お店の合言葉を入力してください（1回だけ）',
         body: '<div class="field">' + lockSvg() +
           '<input type="password" id="sharedPassInput" autocomplete="off" placeholder="合言葉">' +
           '</div>' +
@@ -1392,7 +1399,7 @@
   // Every data-commit path funnels through here: whichever slot(s) are filled
   // in state.sources drive the recompute (merged when both, single-source
   // otherwise, bundled sample data when neither).
-  function applySources() {
+  function applySources(opts) {
     var y = state.sources.yoyaku, k = state.sources.kaikei;
     // 金額は税抜表示がメイン（元データ＝HOT PEPPER Beauty 等は税込／消費税10%）。
     // ヘッダーの「税抜／税込」トグル（state.taxExcluded）で切り替え可能。税抜換算は
@@ -1415,7 +1422,10 @@
       ? new Date(Math.min.apply(null, used.map(function (s) { return Number(s.updatedAt); })))
       : null;
     state.data = recs; state.analytics = A; state.source = source; state.fileName = fileName; state.mergeReport = mergeReport;
-    updateChrome(); renderAll(); route(state.view, true);
+    // 夜間の自動更新が「成功」したときも再描画が走る。利用者の操作と無関係な
+    // タイミングなので、入力途中の値（合言葉・貼り付け中のURL）を巻き添えにしない。
+    var run = function () { updateChrome(); renderAll(); route(state.view, true); };
+    if (opts && opts.preserveInput) preserveInputs(run); else run();
     return A;
   }
   // 「ウェブに公開」型のURLか（/spreadsheets/d/e/… または output=csv）。この型は
@@ -1520,7 +1530,7 @@
       try { localStorage.setItem(format === 'kaikei' ? 'kate-sheet-url-kaikei' : 'kate-sheet-url', url); } catch (e) {}
       state.dataLoadedAt = new Date();   // データを取得した日時を記録
       delete state.sheetErrors[format]; delete state.sheetErrors[slot];   // 復旧したので失敗表示を消す
-      var A = applySources();
+      var A = applySources({ preserveInput: true });
       var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
       if (!opts.silent) {
@@ -1639,6 +1649,9 @@
       '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ スプレッドシートを読み込めませんでした' + headline + '</div>' +
       '<ul style="margin:0 0 10px;padding-left:1.2em;font-size:14px;line-height:1.8">' + rows + '</ul>' +
       '<div class="note-inline">' + advice + '</div>' +
+      // 復旧の入口をこのバナー自身に置く。連携が壊れている端末では、データタブの
+      // URL入力欄は管理ロックの内側にあり、スタッフからは辿り着けないため。
+      (state.sharedBlob ? '<div style="margin-top:12px"><button class="pill accent" type="button" onclick="location.hash=\'#data\'">合言葉を入力して連携をやり直す</button></div>' : '') +
       '</div></div></div>';
   }
   // 会計明細は取得できているのに、予約データと1件も結合できなかった場合。
@@ -1655,7 +1668,24 @@
       '「データ」タブの突合レポートで、どの行が一致していないかを確認できます。</div>' +
       '</div></div></div>';
   }
-  function renderSheetAlert() { var host = $('#sheetAlert'); if (host) host.innerHTML = sheetErrorBanner() + mergeAlertBanner(); }
+  // 連携が1つも無く、サンプルデータを見ている状態。端末の保存領域が消えると
+  // （Safari の自動削除・プライベートブラウズなど）ここに落ちるが、失敗ではないので
+  // 失敗バナーは出ず、従来は概要タブの案内カードしか無かった。どのタブから開いても
+  // 「これはお店の数字ではない」と分かるようにする。
+  function notLinkedBanner() {
+    if (!state.sharedBlob) return '';
+    if (state.sheetUrl || state.sheetUrlKaikei) return '';
+    if (state.source !== 'サンプルデータ') return '';
+    return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
+      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ この端末は店舗データに接続していません（いまの表示は<u>サンプルデータ</u>です）</div>' +
+      '<div class="note-inline">お店の数字ではありません。合言葉を入力すると、この端末でも実データが表示されます（入力は端末ごとに1回だけ）。</div>' +
+      '<div style="margin-top:12px"><button class="pill accent" type="button" onclick="location.hash=\'#data\'">合言葉を入力する</button></div>' +
+      '</div></div></div>';
+  }
+  function renderSheetAlert() {
+    var host = $('#sheetAlert');
+    if (host) host.innerHTML = sheetErrorBanner() + mergeAlertBanner() + notLinkedBanner();
+  }
 
   // 再描画はビューのHTMLを丸ごと作り直すため、入力途中の値（貼り付けたURL・
   // 入力中の合言葉）が消える。夜間の自動更新の失敗など、ユーザーの操作と無関係な
@@ -1740,7 +1770,9 @@
       // 実際に発火したことを記録（端末に残すので、翌日開いたときに前回実績が分かる）
       state.autoReloadLast = new Date();
       try { localStorage.setItem('kate-auto-last', String(+state.autoReloadLast)); } catch (e) {}
-      reloadLinkedSheets();
+      // 次回の予約は必ず入れる。ここで例外が漏れると鎖が切れ、そのタブでは
+      // 二度と自動更新が走らなくなる（開きっぱなしの端末ほど影響が長く残る）。
+      try { reloadLinkedSheets(); } catch (e) { console.warn('auto reload failed', e); }
       scheduleNightlyReload();
     }, next - new Date());
   }
@@ -1878,7 +1910,9 @@
     }).then(function (blob) {
       if (!blob || blob.v !== 1) return;
       state.sharedBlob = blob;
-      if (!state.sheetUrl && !state.sheetUrlKaikei) renderAll();
+      // 以前は「何も連携していない端末」でしか再描画していなかったため、連携が
+      // 壊れている端末では復旧の案内が初回描画に出なかった。常に描き直す。
+      preserveInputs(renderAll);
     }).catch(function () { /* file absent (404) or offline — feature stays dormant */ });
 
     // 管理ロック: data/owner-lock.json が有効なら、データ入力ページの管理操作を
