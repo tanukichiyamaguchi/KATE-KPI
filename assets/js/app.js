@@ -21,6 +21,8 @@
     ownerUnlocked: false, // 解除済みか（この端末で一度解除すれば ownerUnlockKey で記憶される）
     taxExcluded: true,  // 税抜表示をメインに（トグルで税込へ）。端末設定として localStorage に保存
     dataLoadedAt: null,   // この画面が実データを読み込んだ日時（連携/アップロード時に記録）
+    autoReloadLast: null, // 夜間の自動更新が実際に発火した日時（ページを開いていた時のみ）
+    autoReloadNext: null, // 次回の発火予定日時
     sheetErrors: {},      // スロット別の読み込み失敗 { yoyaku|kaikei: {message, at, urls} }。
                           // 起動時の自動読み込みは silent なので、失敗しても従来は画面に
                           // 何も出ず、サンプルデータのまま「反映されない」ように見えていた。
@@ -1001,7 +1003,7 @@
     });
     // Google Sheets link — one row per slot
     html += card({
-      col: 'col-12', title: 'スプレッドシート連携' + help('URLを貼ると、開くたびに最新のシート内容を読み込みます。さらに連携中は、画面を開いたままの端末でも毎日23時〜翌1時のあいだ30分おき（23:00 / 23:30 / 0:00 / 0:30 / 1:00）に自動で再読み込みします。「今すぐ更新」でいつでも手動で最新を取得できます。'), sub: 'URLを貼るだけで自動反映（両方貼ると自動結合）・毎日23時〜翌1時は30分おきに自動更新',
+      col: 'col-12', title: 'スプレッドシート連携' + help('URLを貼ると、開くたびに最新のシート内容を読み込みます。さらに<b>この画面を開いたままの端末</b>では、毎日23時〜翌1時のあいだ30分おき（23:00 / 23:30 / 0:00 / 0:30 / 1:00）に自動で再読み込みします。<br><br><b>重要</b>：このダッシュボードはサーバーを持たない仕組みのため、その時間帯に<b>誰もページを開いていなければ自動更新は行われません</b>（次に開いたときに最新を読み込みます）。毎晩必ず更新したい場合は、店頭の端末でこの画面を開いたままにしてください。実際に自動更新が動いたかは、下の「取得したデータの中身（診断）」で確認できます。'), sub: 'URLを貼るだけで自動反映（両方貼ると自動結合）・<b>この画面を開いている端末</b>のみ毎日23時〜翌1時に30分おきで自動更新',
       body: (state.sheetUrl || state.sheetUrlKaikei
         ? '<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button type="button" class="pill accent" id="sheetRefreshNow">今すぐ更新</button></div>'
         : '') + ['yoyaku', 'kaikei'].map(function (slot) {
@@ -1116,6 +1118,20 @@
           '<tbody>' + diagRows + '</tbody></table></div>' +
           '<div class="note-inline" style="margin-top:10px">' +
           '「取得時刻」は更新のたびに必ず新しくなります。それでも<b>「データ内の最新日」が進まない場合、原因はシート側</b>です（このダッシュボードは取得できた内容をそのまま表示しています）。' +
+          '</div>' +
+          // 夜間の自動更新が「実際に動いたか」。動いていなければ、その時間帯に
+          // この画面を開いた端末が1台も無かったということ（下の注記を参照）。
+          '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--hairline)">' +
+          '<div class="datainfo">' +
+          '<div><span>夜間の自動更新</span><b>23:00 / 23:30 / 0:00 / 0:30 / 1:00</b></div>' +
+          '<div><span>前回の自動更新</span><b' + (state.autoReloadLast ? '' : ' style="color:var(--status-warning)"') + '>' +
+            (state.autoReloadLast ? esc(ymdhmJa(state.autoReloadLast)) : 'まだ一度も動いていません') + '</b></div>' +
+          (state.autoReloadNext ? '<div><span>次回の予定</span><b>' + esc(ymdhmJa(state.autoReloadNext)) + '</b></div>' : '') +
+          '</div>' +
+          '<div class="status-line" style="margin-top:10px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' +
+          '<b>自動更新は、この画面を開いたままの端末でのみ動きます。</b>このダッシュボードはサーバーを持たない仕組みのため、' +
+          '23時〜翌1時に誰もページを開いていなければ自動更新は行われません（次に開いたときに最新を読み込みます）。' +
+          '毎晩必ず更新したい場合は、店頭の端末でこの画面を開いたままにしておいてください。</div>' +
           '</div>'
       });
     }
@@ -1565,7 +1581,15 @@
   }
   function scheduleNightlyReload() {
     var next = nextReloadAt(new Date());
-    setTimeout(function () { reloadLinkedSheets(); scheduleNightlyReload(); }, next - new Date());
+    state.autoReloadNext = next;
+    try { localStorage.setItem('kate-auto-next', String(+next)); } catch (e) {}
+    setTimeout(function () {
+      // 実際に発火したことを記録（端末に残すので、翌日開いたときに前回実績が分かる）
+      state.autoReloadLast = new Date();
+      try { localStorage.setItem('kate-auto-last', String(+state.autoReloadLast)); } catch (e) {}
+      reloadLinkedSheets();
+      scheduleNightlyReload();
+    }, next - new Date());
   }
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible') return;
@@ -1673,6 +1697,10 @@
     try { savedYoyaku = localStorage.getItem('kate-sheet-url'); savedKaikei = localStorage.getItem('kate-sheet-url-kaikei'); } catch (e) {}
     if (savedYoyaku) { state.sheetUrl = savedYoyaku; linkSheet(savedYoyaku, 'yoyaku', { silent: true }); }
     if (savedKaikei) { state.sheetUrlKaikei = savedKaikei; linkSheet(savedKaikei, 'kaikei', { silent: true }); }
+    try {
+      var la = localStorage.getItem('kate-auto-last');
+      if (la) state.autoReloadLast = new Date(+la);
+    } catch (e) {}
     scheduleNightlyReload();   // 連携中なら23時〜翌1時のあいだ30分おきに自動で再読み込み
 
     // 合言葉: if the repo ships an encrypted shared-link blob, load it. On a

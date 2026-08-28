@@ -289,6 +289,54 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   }
   await p2.close(); await ctx2.close();
 
+  // ---- 自動更新の実績を記録し、動いていなければそう表示する ----------------
+  // 「毎日23時に更新のはずが更新されていない」の切り分け材料。ページを開いて
+  // いない端末ではタイマーが動かないため、実績が無いことを画面で示す。
+  // 直前のシナリオで合言葉を差し替えているので、元の OWNER_PASS に戻してから開く
+  OWNER_LOCK = await crypto7.encrypt(OWNER_PASS, { role: 'owner' });
+  const ctx3 = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+  const p3 = await ctx3.newPage();
+  let hits3 = 0;
+  await p3.route('https://docs.google.com/**', function (route) {
+    hits3++; route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV });
+  });
+  await ctx3.addInitScript(function () {
+    try { localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/AUTOSTAT/edit#gid=0'); } catch (e) {}
+  });
+  await p3.clock.install({ time: JST('2026-08-20T22:50:00') });
+  await p3.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+  await p3.clock.pauseAt(JST('2026-08-20T22:58:00'));
+  await waitFor(function () { return hits3; }, 1);
+  await p3.evaluate(function () { location.hash = '#data'; });
+  await sleep(700);
+  await p3.fill('#ownerPassInput', OWNER_PASS);
+  await p3.click('#ownerPassBtn');
+  // 時計を止めているとカードの表示アニメーション（rAF）も止まり「不可視」と
+  // 判定されるため、可視ではなく DOM 上の存在で待つ。
+  await p3.waitForSelector('#sheetRefreshNow', { state: 'attached', timeout: 5000 });
+  const before3 = await p3.evaluate(function () {
+    var el = [...document.querySelectorAll('#view-data .gsec')]
+      .find(function (g) { return /取得したデータの中身/.test(g.textContent); });
+    return el ? el.textContent.replace(/\s+/g, ' ') : '';
+  });
+  check('自動更新前: まだ動いていないと表示する', before3.indexOf('まだ一度も動いていません') !== -1, true);
+  check('自動更新前: 次回の予定を表示する', before3.indexOf('次回の予定') !== -1, true);
+  check('開いた端末でのみ動く旨を明示する', before3.indexOf('開いたままの端末でのみ動きます') !== -1, true);
+
+  await p3.clock.fastForward(3 * 60 * 1000);   // → 23:01（23:00:05 発火）
+  await waitFor(function () { return hits3; }, 2);
+  await sleep(600);
+  await p3.evaluate(function () { location.hash = '#overview'; location.hash = '#data'; });
+  await sleep(700);
+  const after3 = await p3.evaluate(function () {
+    var el = [...document.querySelectorAll('#view-data .gsec')]
+      .find(function (g) { return /取得したデータの中身/.test(g.textContent); });
+    return el ? el.textContent.replace(/\s+/g, ' ') : '';
+  });
+  check('自動更新後: 前回の実績時刻を表示する', after3.indexOf('まだ一度も動いていません') === -1, true);
+  check('自動更新後: 23:00 の発火が記録される', after3.indexOf('23:00') !== -1, true);
+  await p3.close(); await ctx3.close();
+
   await browser.close(); server.close();
   console.log('\x1b[1mSUMMARY\x1b[0m  \x1b[32m' + pass + ' pass\x1b[0m · \x1b[31m' + fail + ' fail\x1b[0m');
   process.exit(fail ? 1 : 0);
