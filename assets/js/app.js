@@ -1488,6 +1488,16 @@
       var win = good[0], text = win.r.text, parsed = win.parsed;
       usedKind = win.r.kind;
       var format = parsed.format, recs = parsed.records;
+      // 検出した形式が要求スロットと違う場合、従来は無条件にその形式のスロットへ
+      // 書き込み、localStorage の連携URLも上書きしていた。タブ指定が効かず両方の
+      // URLが同じタブを読んでしまう状況では、これで**もう一方の連携URLが端末から
+      // 永久に消える**（2つのキーが同じURLになる）。上書きは絶対にしない。
+      var heldUrl = format === 'kaikei' ? state.sheetUrlKaikei : state.sheetUrl;
+      if (format !== slot && heldUrl && heldUrl !== url) {
+        throw new Error('このURLは' + slotMeta(format).label + 'の内容を返しました（' +
+          slotMeta(slot).label + 'として連携しようとしています）。連携先のタブ（gid）をご確認ください。' +
+          slotMeta(format).label + '側の連携はそのまま保っています。');
+      }
       var prevSrc = state.sources[format];
       var hash = strHash(text);
       var unchanged = !!(prevSrc && prevSrc.hash && prevSrc.hash === hash);
@@ -1586,11 +1596,11 @@
     var slots = Object.keys(state.sheetErrors || {});
     if (!slots.length) return '';
     var onSample = state.source === 'サンプルデータ';
-    var anyFetchStage = false, allHeld = true;
+    var stages = {}, allHeld = true;
     var rows = slots.map(function (sl) {
       var e = state.sheetErrors[sl];
       var name = (slotMeta(sl) || {}).label || sl;
-      if (e.stage !== 'parse') anyFetchStage = true;
+      stages[e.stage || 'fetch'] = true;
       var held = !!state.sources[sl];   // 前回読み込んだ内容がまだ残っているか
       if (!held) allHeld = false;
       var kinds = (e.kinds || []).map(function (k) { return KIND_JA[k] || k; });
@@ -1614,20 +1624,38 @@
       : allHeld
         ? '（表示中の数字は前回読み込んだ内容です）'
         : '（表示中の数字に、このシートの内容は入っていません）';
-    // 取得できたのに読めなかった場合に「共有設定を確認」と案内するのは誤り。
-    var advice = anyFetchStage
-      ? 'スプレッドシートの共有を「リンクを知っている全員（閲覧者）」にするか、' +
-        '<code>ファイル → 共有 → ウェブに公開 → CSV</code> のURLを「データ」タブに貼り直すと解消することがあります。' +
-        'ネットワーク側でGoogleへの接続が遮断されている場合もあります。'
-      : 'シート自体は取得できましたが、中身を表として読み取れませんでした。' +
-        '1行目の見出しが変わっていないか、連携しているタブ（gid）が正しいかを「データ」タブでご確認ください。';
+    // 原因の段階によって、打つ手はまったく違う。取得できたのに読めなかった場合に
+    // 「共有設定を確認」と案内するのは誤り。
+    var advice = stages.conflict
+      ? '「データ」タブで<b>合言葉を入力し直す</b>と、正しい連携URLが復元されます。' +
+        '（合言葉には正しい2本のURLが入っています。この端末に保存されていた方が壊れていました。）'
+      : stages.fetch
+        ? 'スプレッドシートの共有を「リンクを知っている全員（閲覧者）」にするか、' +
+          '<code>ファイル → 共有 → ウェブに公開 → CSV</code> のURLを「データ」タブに貼り直すと解消することがあります。' +
+          'ネットワーク側でGoogleへの接続が遮断されている場合もあります。'
+        : 'シート自体は取得できましたが、中身を表として読み取れませんでした。' +
+          '1行目の見出しが変わっていないか、連携しているタブ（gid）が正しいかを「データ」タブでご確認ください。';
     return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
       '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ スプレッドシートを読み込めませんでした' + headline + '</div>' +
       '<ul style="margin:0 0 10px;padding-left:1.2em;font-size:14px;line-height:1.8">' + rows + '</ul>' +
       '<div class="note-inline">' + advice + '</div>' +
       '</div></div></div>';
   }
-  function renderSheetAlert() { var host = $('#sheetAlert'); if (host) host.innerHTML = sheetErrorBanner(); }
+  // 会計明細は取得できているのに、予約データと1件も結合できなかった場合。
+  // このとき会計明細は丸ごと捨てられ、予約データ単独で集計される（＝売上・店販の
+  // 数字が変わる）。取得は成功しているので失敗バナーは出ず、突合レポートは
+  // 管理ロックの内側にあるため、従来は誰も気づけなかった。
+  function mergeAlertBanner() {
+    var mr = state.mergeReport;
+    if (!mr || mr.matched !== 0) return '';
+    return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
+      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ 会計明細が予約データと1件も結合できませんでした（会計明細は集計に入っていません）</div>' +
+      '<div class="note-inline">両方のシートは読み込めていますが、フリガナの表記または対象期間が一致しないため結合できず、' +
+      '<b>予約データ単独で集計しています</b>。売上・客単価・店販の数字は会計実績ではなく予約金額ベースになります。' +
+      '「データ」タブの突合レポートで、どの行が一致していないかを確認できます。</div>' +
+      '</div></div></div>';
+  }
+  function renderSheetAlert() { var host = $('#sheetAlert'); if (host) host.innerHTML = sheetErrorBanner() + mergeAlertBanner(); }
 
   // 再描画はビューのHTMLを丸ごと作り直すため、入力途中の値（貼り付けたURL・
   // 入力中の合言葉）が消える。夜間の自動更新の失敗など、ユーザーの操作と無関係な
@@ -1821,6 +1849,19 @@
     // Auto-reconnect previously linked spreadsheets (always pull the latest)
     var savedYoyaku = null, savedKaikei = null;
     try { savedYoyaku = localStorage.getItem('kate-sheet-url'); savedKaikei = localStorage.getItem('kate-sheet-url-kaikei'); } catch (e) {}
+    // 予約データと会計明細に**同じURL**が保存されているのは、過去の不具合で片方が
+    // 上書きされた状態（1つのタブが両方であることはあり得ない）。どちらが正しいかは
+    // 端末側からは判断できないので、壊れている方（会計明細）の連携だけ外して知らせる。
+    // 正しい2本は合言葉（data/shared-link.json）に入っているので、そこから復元できる。
+    var dupLink = !!(savedYoyaku && savedKaikei && savedYoyaku === savedKaikei);
+    if (dupLink) {
+      try { localStorage.removeItem('kate-sheet-url-kaikei'); } catch (e) {}
+      savedKaikei = null;
+      state.sheetErrors.kaikei = {
+        message: '会計明細の連携URLが予約データと同じものになっています（この端末に保存された連携URLが壊れています）。',
+        at: new Date(), stage: 'conflict', kinds: [], routes: []
+      };
+    }
     if (savedYoyaku) { state.sheetUrl = savedYoyaku; linkSheet(savedYoyaku, 'yoyaku', { silent: true }); }
     if (savedKaikei) { state.sheetUrlKaikei = savedKaikei; linkSheet(savedKaikei, 'kaikei', { silent: true }); }
     try {

@@ -514,6 +514,101 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   check('片方が生きていれば警告バナーを出さない', c3.alert, '');
   check('全経路が生きているときも警告を出さない', a.alert, '');
 
+  // ---- 連携URLを取り違えても、もう一方の連携URLを壊さない -------------------
+  // 2枚の連携URLが（タブ指定が効かないなどで）どちらも同じ形式の内容を返すと、
+  // 従来は検出フォーマット側のスロットへ無条件に書き込み、localStorage の
+  // 連携URLまで上書きしていた。結果、片方のURLが端末から永久に消え、
+  // 以後どれだけ直しても会計明細が入らない状態になっていた（恒久的な破損）。
+  const ctx6 = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+  const p6 = await ctx6.newPage();
+  // どのURLを叩いても「予約データ」の内容が返る（＝タブ指定が効いていない状態）
+  await p6.route('https://docs.google.com/**', function (route) {
+    route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV });
+  });
+  await ctx6.addInitScript(function () {
+    try {
+      localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/AAA/edit#gid=0');
+      localStorage.setItem('kate-sheet-url-kaikei', 'https://docs.google.com/spreadsheets/d/BBB/edit#gid=999');
+    } catch (e) {}
+  });
+  await p6.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+  await sleep(2000);
+  const saved6 = await p6.evaluate(function () {
+    return { y: localStorage.getItem('kate-sheet-url'), k: localStorage.getItem('kate-sheet-url-kaikei') };
+  });
+  check('取り違えても予約データの連携URLを保つ', saved6.y, 'https://docs.google.com/spreadsheets/d/AAA/edit#gid=0');
+  check('取り違えても会計明細の連携URLを保つ', saved6.k, 'https://docs.google.com/spreadsheets/d/BBB/edit#gid=999');
+  check('2つの連携URLが同じものにならない', saved6.y !== saved6.k, true);
+  const alert6 = await p6.evaluate(function () {
+    var el = document.querySelector('#sheetAlert'); return el ? el.textContent.replace(/\s+/g, ' ') : '';
+  });
+  check('取り違えを黙って処理せず知らせる', alert6.indexOf('読み込めませんでした') !== -1, true);
+  check('どのタブを見ているかを疑うよう案内する', alert6.indexOf('タブ（gid）') !== -1, true);
+  await p6.close(); await ctx6.close();
+
+  // ---- すでに壊れている端末（2つのキーが同じURL）を検知して復旧を案内する ----
+  const ctx7 = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+  const p7 = await ctx7.newPage();
+  await p7.route('https://docs.google.com/**', function (route) {
+    route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV });
+  });
+  await ctx7.addInitScript(function () {
+    var dup = 'https://docs.google.com/spreadsheets/d/SAME/edit#gid=0';
+    try { localStorage.setItem('kate-sheet-url', dup); localStorage.setItem('kate-sheet-url-kaikei', dup); } catch (e) {}
+  });
+  await p7.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+  await sleep(2000);
+  const after7 = await p7.evaluate(function () {
+    return {
+      k: localStorage.getItem('kate-sheet-url-kaikei'),
+      y: localStorage.getItem('kate-sheet-url'),
+      alert: (document.querySelector('#sheetAlert') || {}).textContent.replace(/\s+/g, ' ') || ''
+    };
+  });
+  check('壊れた重複リンクを検知して外す', after7.k, null);
+  check('予約データ側は残す（どちらが正しいか分からないため）',
+    after7.y, 'https://docs.google.com/spreadsheets/d/SAME/edit#gid=0');
+  check('重複リンクを利用者に知らせる', after7.alert.indexOf('同じものになっています') !== -1, true);
+  check('合言葉からの復元を案内する', after7.alert.indexOf('合言葉を入力し直す') !== -1, true);
+  await p7.close(); await ctx7.close();
+
+  // ---- 会計明細が1件も結合できないときは、全ビューで知らせる -----------------
+  // 両方のシートが読めていても、フリガナ表記や期間が合わないと結合0件になり、
+  // 会計明細は丸ごと捨てられて予約データ単独で集計される（売上・店販が変わる）。
+  // 取得は成功しているので失敗バナーは出ず、突合レポートは管理ロックの内側に
+  // あるため、従来はスタッフも店長も気づけなかった。
+  const CSV_KAIKEI_NOMATCH = [
+    '会計日,お名前,フリガナ,スタッフ名,メニュー,金額',
+    '2020/01/05,別人太郎,ベツジンタロウ,aoi,ラッシュ,8000'
+  ].join('\n');
+  const ctx8 = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+  const p8 = await ctx8.newPage();
+  await p8.route('https://docs.google.com/**', function (route) {
+    const isKaikei = /gid=222/.test(route.request().url());
+    route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: isKaikei ? CSV_KAIKEI_NOMATCH : CSV });
+  });
+  await ctx8.addInitScript(function () {
+    try {
+      localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/MERGE0/edit#gid=0');
+      localStorage.setItem('kate-sheet-url-kaikei', 'https://docs.google.com/spreadsheets/d/MERGE0/edit#gid=222');
+    } catch (e) {}
+  });
+  await p8.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+  await sleep(2200);
+  const alert8 = await p8.evaluate(function () {
+    var el = document.querySelector('#sheetAlert'); return el ? el.textContent.replace(/\s+/g, ' ') : '';
+  });
+  check('結合0件を全ビューで知らせる', alert8.indexOf('1件も結合できませんでした') !== -1, true);
+  check('結合0件: 集計に入っていないことを明示する', alert8.indexOf('集計に入っていません') !== -1, true);
+  // 概要タブでも消えない（管理ロックの内側だけに出しても誰も気づけない）
+  await p8.evaluate(function () { location.hash = '#overview'; });
+  await sleep(600);
+  const alert8b = await p8.evaluate(function () {
+    var el = document.querySelector('#sheetAlert'); return el ? el.textContent.replace(/\s+/g, ' ') : '';
+  });
+  check('結合0件: 概要タブでも出る', alert8b.indexOf('1件も結合できませんでした') !== -1, true);
+  await p8.close(); await ctx8.close();
+
   await browser.close(); server.close();
   console.log('\x1b[1mSUMMARY\x1b[0m  \x1b[32m' + pass + ' pass\x1b[0m · \x1b[31m' + fail + ' fail\x1b[0m');
   process.exit(fail ? 1 : 0);
