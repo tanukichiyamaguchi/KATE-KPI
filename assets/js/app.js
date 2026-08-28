@@ -65,9 +65,16 @@
   //     （tools/sheet-update-stamp.gs をシートに設定すると書き込まれる）
   //  2. 無ければ、この画面がデータを読み込んだ時刻（最終読込）
   //  3. サンプル表示中は集計基準日
+  // 日付表示の主役は「最終読込」＝この画面がシートを読みに行って成功した時刻。
+  // 更新すれば必ず進むので、「更新したのに変わらない」という誤解が起きない。
+  // 「シート同期」＝シート側が「データ更新日時」列に記録した同期完了時刻
+  // （2枚連携時は古い方）。片方のシートの同期が止まるとここは止まったままになる。
+  // 以前はこちらを主表示にしていたため、実際には毎回最新を読めていても
+  // ヘッダーの日時が動かず「反映されていない」ように見えていた。
   function dataStamp() {
+    if (state.dataLoadedAt) return ' <span class="lead-upd" title="この画面がスプレッドシート／ファイルを読み込んだ日時">最終読込 ' + ymdhmJa(state.dataLoadedAt) + ' 時点' +
+      (state.sheetUpdatedAt ? '（シート同期 ' + ymdhmJa(state.sheetUpdatedAt) + '）' : '') + '</span>';
     if (state.sheetUpdatedAt) return ' <span class="lead-upd" title="スプレッドシート側で記録された、データの同期（更新）が完了した日時">データ更新 ' + ymdhmJa(state.sheetUpdatedAt) + ' 時点</span>';
-    if (state.dataLoadedAt) return ' <span class="lead-upd" title="この画面がスプレッドシート／ファイルを読み込んだ日時（シート側の更新日時は未設定）">最終読込 ' + ymdhmJa(state.dataLoadedAt) + ' 時点</span>';
     var a = state.analytics && state.analytics.meta && state.analytics.meta.asOf;
     return a ? ' <span class="lead-upd">基準日 ' + ymdJa(a) + '</span>' : '';
   }
@@ -1111,7 +1118,17 @@
         '<td>' + esc(ymdhmJa(d3.fetchedAt)) + '</td>' +
         // 取得経路。export＝常に最新／gviz・pub＝Google側で古い内容が返ることがある
         '<td' + (d3.kind === 'export' ? '' : ' style="color:var(--status-warning);font-weight:700"') + '>' +
-          (d3.kind === 'export' ? '常に最新' : d3.kind === 'gviz' ? 'キャッシュ有' : '公開スナップ') + '</td></tr>';
+          (d3.kind === 'export' ? '常に最新' : d3.kind === 'gviz' ? 'キャッシュ有' : '公開スナップ') + '</td></tr>' +
+        // 取得経路ごとの結果。片方の経路だけが古い内容を返している場合、
+        // ここに並べて出ることで「どちらが古いのか」が一目で分かる。
+        ((d3.routes && d3.routes.length > 1)
+          ? '<tr><td></td><td colspan="5" style="text-align:left;font-size:12px;color:var(--ink-muted)">経路ごとの取得結果： ' +
+            d3.routes.map(function (rt) {
+              return esc(KIND_JA[rt.kind] || rt.kind) + '＝' +
+                (rt.error ? '読めず' : rt.latest ? esc(ymdNumJa(rt.latest)) : rt.rows !== null ? F.int(rt.rows) + '件' : '—') +
+                (rt.used ? '（採用）' : '');
+            }).join(' ／ ') + '</td></tr>'
+          : '');
     }).join('');
     if (diagRows) {
       html += card({
@@ -1430,17 +1447,46 @@
     opts = opts || {};
     if (!url) return;
     if (!opts.silent) toast('スプレッドシートを読み込み中…');
-    var usedKind = null;   // どの経路で取れたか（export=常に最新 / gviz=キャッシュあり / pub=公開スナップショット）
-    var triedKinds = [], fetched = false;
-    global.KATE.sheets.fetchCsv(url, {
-      onEndpoint: function (u, kind) { usedKind = kind; },
-      // 記録するのはURLではなく経路の種別だけ。URLにはシートのIDが含まれ、
-      // 失敗バナーはスタッフも見る全ビューに出るため、そのまま出すと管理ロックが
-      // 隠している連携先が漏れる。
+    var usedKind = null;   // どの経路の内容を採用したか（export / gviz / pub）
+    var triedKinds = [], fetched = false, routeErrors = [];
+    // 記録するのはURLではなく経路の種別だけ。URLにはシートのIDが含まれ、
+    // 失敗バナーはスタッフも見る全ビューに出るため、そのまま出すと管理ロックが
+    // 隠している連携先が漏れる。
+    global.KATE.sheets.fetchAllCsv(url, {
       onAttempt: function (u, kind) { if (kind && triedKinds.indexOf(kind) === -1) triedKinds.push(kind); }
-    }).then(function (text) {
-      fetched = true;   // 取得は成功。ここから先で失敗した場合は「中身の解釈」の問題
-      var parsed = global.KATE.ingest.fromAOA(global.KATE.ingest.parseCSV(text));
+    }).then(function (res) {
+      if (res.ok.length) fetched = true;   // 取得は成功。ここから先は「中身の解釈」
+      // 取れた経路をすべて解釈し、**いちばん新しい内容**を採用する。
+      // /export が CORS で読めない環境でも gviz の内容が届き、逆に gviz が古い
+      // スナップショットを返しても /export の新しい内容が勝つ。どちらか一方に
+      // 賭けないことで、「シートは更新されているのに反映されない」を塞ぐ。
+      var cands = res.ok.map(function (r) {
+        try {
+          var p = global.KATE.ingest.fromAOA(global.KATE.ingest.parseCSV(r.text));
+          return {
+            r: r, parsed: p,
+            stamp: p.sheetUpdatedAt ? +p.sheetUpdatedAt : 0,
+            latest: latestRecordDate(p.records) || 0,
+            rows: p.records.length
+          };
+        } catch (e) { return { r: r, error: e }; }
+      });
+      // 経路ごとの失敗理由を全部残す。1本分だけ出すと、たとえば「/export は共有設定、
+      // gviz は接続遮断」のうち片方しか見えず、原因の切り分けを誤らせる。
+      routeErrors = res.failed.map(function (f) {
+        return { kind: f.kind, message: (f.error && f.error.message) || '取得に失敗しました' };
+      }).concat(cands.filter(function (c) { return c.error; }).map(function (c) {
+        return { kind: c.r.kind, message: c.error.message || '中身を読み取れませんでした' };
+      }));
+      var good = cands.filter(function (c) { return c.parsed; });
+      if (!good.length) {
+        var first = cands[0] || res.failed[0];
+        throw (first && (first.error || (first.r && first.r.error))) || new Error('取得に失敗しました。');
+      }
+      // 新しさの順: シート側の同期スタンプ → データ内の最新日 → 件数
+      good.sort(function (a, b) { return (b.stamp - a.stamp) || (b.latest - a.latest) || (b.rows - a.rows); });
+      var win = good[0], text = win.r.text, parsed = win.parsed;
+      usedKind = win.r.kind;
       var format = parsed.format, recs = parsed.records;
       var prevSrc = state.sources[format];
       var hash = strHash(text);
@@ -1449,7 +1495,16 @@
         records: recs, fileName: null, via: 'スプレッドシート連携', updatedAt: parsed.sheetUpdatedAt || null, hash: hash,
         // 診断用: 実際に取得できた中身そのもの。「更新しても変わらない」ときに、
         // 原因がダッシュボードなのか取得元なのかを推測ではなく事実で切り分ける。
-        diag: { rows: recs.length, bytes: text.length, latest: latestRecordDate(recs), fetchedAt: new Date(), url: url, kind: usedKind }
+        // routes には経路ごとの結果を残す（どの経路が古いのかがそのまま見える）。
+        diag: {
+          rows: recs.length, bytes: text.length, latest: latestRecordDate(recs), fetchedAt: new Date(),
+          url: url, kind: usedKind,
+          routes: cands.map(function (c) {
+            return { kind: c.r.kind, rows: c.parsed ? c.parsed.records.length : null, latest: c.parsed ? c.latest : null, used: c === win };
+          }).concat(res.failed.map(function (f) {
+            return { kind: f.kind, rows: null, latest: null, used: false, error: f.error && f.error.message };
+          }))
+        }
       };
       if (format === 'kaikei') state.sheetUrlKaikei = url; else state.sheetUrl = url;
       try { localStorage.setItem(format === 'kaikei' ? 'kate-sheet-url-kaikei' : 'kate-sheet-url', url); } catch (e) {}
@@ -1474,11 +1529,12 @@
       console.warn('sheet load failed', err);
       // silent（起動時の自動読み込み）でも記録して画面に出す。黙って失敗すると
       // サンプルデータのまま表示され、実データだと誤認されるため。
-      // stage: fetch=取得できなかった（共有設定・回線）／parse=取得はできたが
-      // 中身を表として読めなかった（見出し行など）。原因が違えば案内も違う。
+      // stage: fetch=どの経路でも取得できなかった（共有設定・回線）／
+      //        parse=取得はできたが中身を表として読めなかった（見出し行など）。
       state.sheetErrors[slot] = {
         message: err.message || '読み込みに失敗しました',
-        at: new Date(), stage: fetched ? 'parse' : 'fetch', kinds: triedKinds.slice()
+        at: new Date(), stage: fetched ? 'parse' : 'fetch', kinds: triedKinds.slice(),
+        routes: routeErrors.length ? routeErrors : (err.routes || [])
       };
       if (!opts.silent) toast('⚠ ' + (err.message || '読み込みに失敗しました'), 'err');
       // 夜間の自動更新など、ユーザーの操作と無関係なタイミングでも起きる。
@@ -1538,9 +1594,16 @@
       var held = !!state.sources[sl];   // 前回読み込んだ内容がまだ残っているか
       if (!held) allHeld = false;
       var kinds = (e.kinds || []).map(function (k) { return KIND_JA[k] || k; });
-      return '<li><b>' + esc(name) + '</b>：' + esc(e.message) +
+      // 経路ごとに失敗理由が違うことがある（片方は共有設定・片方は接続遮断）。
+      // 1本分だけ出すと本当の原因が隠れるため、取れた分はすべて並べる。
+      var per = (e.routes || []).length
+        ? '<br><span class="note-inline">' + e.routes.map(function (r) {
+            return esc(KIND_JA[r.kind] || r.kind) + '：' + esc(r.message);
+          }).join('<br>') + '</span>'
+        : '';
+      return '<li><b>' + esc(name) + '</b>：' + esc(e.message) + per +
         '<br><span class="note-inline">' + esc(ymdhmJa(e.at)) + '時点' +
-        (kinds.length ? '／試した取得経路：' + esc(kinds.join(' → ')) : '') +
+        (kinds.length && !per ? '／試した取得経路：' + esc(kinds.join(' → ')) : '') +
         '／' + (held ? 'このシートは<b>前回読み込んだ内容のまま</b>です' : 'このシートの内容は<b>入っていません</b>') +
         '</span></li>';
     }).join('');
@@ -1704,13 +1767,13 @@
 
   function updateChrome() {
     // ヘッダーの日付表示（dataStamp と同じ優先順）:
-    // シートの同期完了時刻 → この画面の読込時刻 → 基準日（サンプル時のみ）
-    // 「データ更新」＝シート側が記録した同期完了時刻（複数シート連携時は古い方）。
-    // これは更新ボタンを押しても、シートが同期されない限り動かない。押したこと自体が
-    // 伝わらず「壊れている」ように見えるため、最後に確認した時刻を必ず併記する。
-    $('#asof').textContent = state.sheetUpdatedAt
-      ? 'データ更新 ' + ymdhmJa(state.sheetUpdatedAt) + (state.dataLoadedAt ? '（確認 ' + hmJa(state.dataLoadedAt) + '）' : '')
-      : state.dataLoadedAt ? '最終読込 ' + ymdhmJa(state.dataLoadedAt)
+    // この画面の読込時刻（＋シート側の同期時刻を併記）→ 同期時刻のみ → 基準日。
+    // 主役を「最終読込」にしているのは、シート側の「データ更新日時」列は片方の
+    // シートの同期が止まると凍結し、実際には毎回最新を読めていても日時が動かず
+    // 「反映されていない」ように見えてしまうため。
+    $('#asof').textContent = state.dataLoadedAt
+      ? '最終読込 ' + ymdhmJa(state.dataLoadedAt) + (state.sheetUpdatedAt ? '（シート同期 ' + ymdhmJa(state.sheetUpdatedAt) + '）' : '')
+      : state.sheetUpdatedAt ? 'データ更新 ' + ymdhmJa(state.sheetUpdatedAt)
       : (state.analytics.meta.asOf ? '基準日 ' + ymdJa(state.analytics.meta.asOf) : '');
     // サンプルデータ表示中はバッジ自体を非表示（実データ連携時のみ出所を表示）。
     // 出所ラベルは短く（「統合データ（予約＋会計）」→「統合データ」）、右に取得日時を併記。
