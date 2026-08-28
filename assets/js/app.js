@@ -21,6 +21,11 @@
     ownerUnlocked: false, // 解除済みか（この端末で一度解除すれば ownerUnlockKey で記憶される）
     taxExcluded: true,  // 税抜表示をメインに（トグルで税込へ）。端末設定として localStorage に保存
     dataLoadedAt: null,   // この画面が実データを読み込んだ日時（連携/アップロード時に記録）
+    autoReloadLast: null, // 夜間の自動更新が実際に発火した日時（ページを開いていた時のみ）
+    autoReloadNext: null, // 次回の発火予定日時
+    sheetErrors: {},      // スロット別の読み込み失敗 { yoyaku|kaikei: {message, at, stage, kinds} }。
+                          // 起動時の自動読み込みは silent なので、失敗しても従来は画面に
+                          // 何も出ず、サンプルデータのまま「反映されない」ように見えていた。
     sheetUpdatedAt: null  // シート側が記録した同期完了日時（「データ更新日時」列。applySources で導出）
   };
   (function () { try { if (localStorage.getItem('kate-tax') === 'incl') state.taxExcluded = false; } catch (e) {} })();
@@ -998,7 +1003,7 @@
     });
     // Google Sheets link — one row per slot
     html += card({
-      col: 'col-12', title: 'スプレッドシート連携' + help('URLを貼ると、開くたびに最新のシート内容を読み込みます。さらに連携中は、画面を開いたままの端末でも毎日23時〜翌1時のあいだ30分おき（23:00 / 23:30 / 0:00 / 0:30 / 1:00）に自動で再読み込みします。「今すぐ更新」でいつでも手動で最新を取得できます。'), sub: 'URLを貼るだけで自動反映（両方貼ると自動結合）・毎日23時〜翌1時は30分おきに自動更新',
+      col: 'col-12', title: 'スプレッドシート連携' + help('URLを貼ると、開くたびに最新のシート内容を読み込みます。さらに<b>この画面を開いたままの端末</b>では、毎日23時〜翌1時のあいだ30分おき（23:00 / 23:30 / 0:00 / 0:30 / 1:00）に自動で再読み込みします。<br><br><b>重要</b>：このダッシュボードはサーバーを持たない仕組みのため、その時間帯に<b>誰もページを開いていなければ自動更新は行われません</b>（次に開いたときに最新を読み込みます）。毎晩必ず更新したい場合は、店頭の端末でこの画面を開いたままにしてください。実際に自動更新が動いたかは、下の「取得したデータの中身（診断）」で確認できます。'), sub: 'URLを貼るだけで自動反映（両方貼ると自動結合）・<b>この画面を開いている端末</b>のみ毎日23時〜翌1時に30分おきで自動更新',
       body: (state.sheetUrl || state.sheetUrlKaikei
         ? '<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button type="button" class="pill accent" id="sheetRefreshNow">今すぐ更新</button></div>'
         : '') + ['yoyaku', 'kaikei'].map(function (slot) {
@@ -1083,12 +1088,22 @@
     // 集計を通さずに表すため、同期が止まっていればここに直接現れる。
     var diagRows = ['yoyaku', 'kaikei'].map(function (sl) {
       var s3 = state.sources[sl];
-      if (!s3 || !s3.diag) return '';
+      var err = state.sheetErrors[sl];
+      // 読み込めなかったスロットも行として出す（黙って消さない）。ただし失敗行で
+      // 置き換えてはいけない — いま画面に出ている数字がどのデータなのかという
+      // 記録まで消えてしまい、「取得は失敗したが表示は前回の内容」の切り分けが
+      // できなくなる。失敗行は既存のデータ行の「上に足す」。
+      var errRow = err
+        ? '<tr><td>' + esc(slotJa[sl]) + '</td>' +
+          '<td colspan="4" style="text-align:left;color:var(--status-warning)">読み込み失敗（' + esc(ymdhmJa(err.at)) + '）：' + esc(err.message) + '</td>' +
+          '<td style="color:var(--status-warning);font-weight:700">失敗</td></tr>'
+        : '';
+      if (!s3 || !s3.diag) return errRow;
       var d3 = s3.diag, today = new Date();
       var todayNum = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
       // 「最新の日付」が2日以上前なら、取得できている中身自体が古い＝シート側の問題
       var behind = d3.latest !== null && (todayNum - d3.latest) >= 2;
-      return '<tr><td>' + esc(slotJa[sl]) + '</td>' +
+      return errRow + '<tr><td>' + esc(slotJa[sl]) + '</td>' +
         '<td class="tnum">' + F.int(d3.rows) + '件</td>' +
         '<td class="tnum"' + (behind ? ' style="color:var(--status-warning);font-weight:700"' : '') + '>' +
           (d3.latest !== null ? esc(ymdNumJa(d3.latest)) : '—') + '</td>' +
@@ -1107,6 +1122,20 @@
           '<tbody>' + diagRows + '</tbody></table></div>' +
           '<div class="note-inline" style="margin-top:10px">' +
           '「取得時刻」は更新のたびに必ず新しくなります。それでも<b>「データ内の最新日」が進まない場合、原因はシート側</b>です（このダッシュボードは取得できた内容をそのまま表示しています）。' +
+          '</div>' +
+          // 夜間の自動更新が「実際に動いたか」。動いていなければ、その時間帯に
+          // この画面を開いた端末が1台も無かったということ（下の注記を参照）。
+          '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--hairline)">' +
+          '<div class="datainfo">' +
+          '<div><span>夜間の自動更新</span><b>23:00 / 23:30 / 0:00 / 0:30 / 1:00</b></div>' +
+          '<div><span>前回の自動更新</span><b' + (state.autoReloadLast ? '' : ' style="color:var(--status-warning)"') + '>' +
+            (state.autoReloadLast ? esc(ymdhmJa(state.autoReloadLast)) : 'まだ一度も動いていません') + '</b></div>' +
+          (state.autoReloadNext ? '<div><span>次回の予定</span><b>' + esc(ymdhmJa(state.autoReloadNext)) + '</b></div>' : '') +
+          '</div>' +
+          '<div class="status-line" style="margin-top:10px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' +
+          '<b>自動更新は、この画面を開いたままの端末でのみ動きます。</b>このダッシュボードはサーバーを持たない仕組みのため、' +
+          '23時〜翌1時に誰もページを開いていなければ自動更新は行われません（次に開いたときに最新を読み込みます）。' +
+          '毎晩必ず更新したい場合は、店頭の端末でこの画面を開いたままにしておいてください。</div>' +
           '</div>'
       });
     }
@@ -1402,7 +1431,15 @@
     if (!url) return;
     if (!opts.silent) toast('スプレッドシートを読み込み中…');
     var usedKind = null;   // どの経路で取れたか（export=常に最新 / gviz=キャッシュあり / pub=公開スナップショット）
-    global.KATE.sheets.fetchCsv(url, { onEndpoint: function (u, kind) { usedKind = kind; } }).then(function (text) {
+    var triedKinds = [], fetched = false;
+    global.KATE.sheets.fetchCsv(url, {
+      onEndpoint: function (u, kind) { usedKind = kind; },
+      // 記録するのはURLではなく経路の種別だけ。URLにはシートのIDが含まれ、
+      // 失敗バナーはスタッフも見る全ビューに出るため、そのまま出すと管理ロックが
+      // 隠している連携先が漏れる。
+      onAttempt: function (u, kind) { if (kind && triedKinds.indexOf(kind) === -1) triedKinds.push(kind); }
+    }).then(function (text) {
+      fetched = true;   // 取得は成功。ここから先で失敗した場合は「中身の解釈」の問題
       var parsed = global.KATE.ingest.fromAOA(global.KATE.ingest.parseCSV(text));
       var format = parsed.format, recs = parsed.records;
       var prevSrc = state.sources[format];
@@ -1417,6 +1454,7 @@
       if (format === 'kaikei') state.sheetUrlKaikei = url; else state.sheetUrl = url;
       try { localStorage.setItem(format === 'kaikei' ? 'kate-sheet-url-kaikei' : 'kate-sheet-url', url); } catch (e) {}
       state.dataLoadedAt = new Date();   // データを取得した日時を記録
+      delete state.sheetErrors[format]; delete state.sheetErrors[slot];   // 復旧したので失敗表示を消す
       var A = applySources();
       var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
@@ -1434,13 +1472,27 @@
       }
     }).catch(function (err) {
       console.warn('sheet load failed', err);
+      // silent（起動時の自動読み込み）でも記録して画面に出す。黙って失敗すると
+      // サンプルデータのまま表示され、実データだと誤認されるため。
+      // stage: fetch=取得できなかった（共有設定・回線）／parse=取得はできたが
+      // 中身を表として読めなかった（見出し行など）。原因が違えば案内も違う。
+      state.sheetErrors[slot] = {
+        message: err.message || '読み込みに失敗しました',
+        at: new Date(), stage: fetched ? 'parse' : 'fetch', kinds: triedKinds.slice()
+      };
       if (!opts.silent) toast('⚠ ' + (err.message || '読み込みに失敗しました'), 'err');
+      // 夜間の自動更新など、ユーザーの操作と無関係なタイミングでも起きる。
+      // 入力途中の値（貼り付けたURL・入力中の合言葉）を巻き添えにしない。
+      preserveInputs(renderAll);
     });
   }
   function unlinkSheet(slot) {
     if (slot === 'kaikei') { state.sheetUrlKaikei = null; try { localStorage.removeItem('kate-sheet-url-kaikei'); } catch (e) {} }
     else { state.sheetUrl = null; try { localStorage.removeItem('kate-sheet-url'); } catch (e) {} }
     state.sources[slot] = null;
+    // 連携を解除した以上、そのシートの失敗表示は用済み。残すと「共有設定を
+    // 直してください」という消せない警告が、もう存在しない連携について出続ける。
+    delete state.sheetErrors[slot];
     applySources(); route('data', true); toast(slotMeta(slot).label + 'の連携を解除しました', 'ok');
   }
   function handleFile(file, slot) {
@@ -1449,6 +1501,7 @@
       var format = parsed.format, recs = parsed.records;
       state.sources[format] = { records: recs, fileName: file.name, via: 'アップロード', updatedAt: parsed.sheetUpdatedAt || null };
       state.dataLoadedAt = new Date();   // データを読み込んだ日時を記録
+      delete state.sheetErrors[format]; delete state.sheetErrors[slot];   // 手動で入れ直したので失敗表示を消す
       var A = applySources();
       var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
@@ -1458,8 +1511,82 @@
   function resetAll() {
     state.sources = { yoyaku: null, kaikei: null };
     state.sheetUrl = null; state.sheetUrlKaikei = null;
+    state.sheetErrors = {};   // 連携ごとクリアするので、失敗表示も残さない
     try { localStorage.removeItem('kate-sheet-url'); localStorage.removeItem('kate-sheet-url-kaikei'); } catch (e) {}
     applySources();
+  }
+
+  // 連携中のシートが読み込めていないときの警告バナー。ビューの中ではなく
+  // #sheetAlert（<main> 直下）に描くので、タブを切り替えても消えず、ビューの
+  // 再描画で入力途中の値を巻き添えにすることもない。
+  // 起動時の自動読み込みは silent なので、失敗すると従来は何も出ないまま
+  // サンプルデータが表示され、実データだと誤認される恐れがあった。
+  //
+  // 取得先のURLはここに出さない。このバナーはスタッフも見る全ビューに出るため、
+  // URLを載せると管理ロックが隠しているシートのIDがそのまま漏れる。原因の
+  // 切り分けに要るのは経路の種別だけなので、それだけを日本語で示す。
+  var KIND_JA = { export: 'CSV書き出し', gviz: 'クエリ', pub: 'ウェブ公開' };
+  function sheetErrorBanner() {
+    var slots = Object.keys(state.sheetErrors || {});
+    if (!slots.length) return '';
+    var onSample = state.source === 'サンプルデータ';
+    var anyFetchStage = false, allHeld = true;
+    var rows = slots.map(function (sl) {
+      var e = state.sheetErrors[sl];
+      var name = (slotMeta(sl) || {}).label || sl;
+      if (e.stage !== 'parse') anyFetchStage = true;
+      var held = !!state.sources[sl];   // 前回読み込んだ内容がまだ残っているか
+      if (!held) allHeld = false;
+      var kinds = (e.kinds || []).map(function (k) { return KIND_JA[k] || k; });
+      return '<li><b>' + esc(name) + '</b>：' + esc(e.message) +
+        '<br><span class="note-inline">' + esc(ymdhmJa(e.at)) + '時点' +
+        (kinds.length ? '／試した取得経路：' + esc(kinds.join(' → ')) : '') +
+        '／' + (held ? 'このシートは<b>前回読み込んだ内容のまま</b>です' : 'このシートの内容は<b>入っていません</b>') +
+        '</span></li>';
+    }).join('');
+    // 見出しは「いま画面に出ている数字が何なのか」を正確に言う。サンプルなのか、
+    // 前回の内容なのか、片方だけ欠けているのかで意味がまったく違う。
+    var headline = onSample
+      ? '（いまの表示は<u>サンプルデータ</u>です。お店の数字ではありません）'
+      : allHeld
+        ? '（表示中の数字は前回読み込んだ内容です）'
+        : '（表示中の数字に、このシートの内容は入っていません）';
+    // 取得できたのに読めなかった場合に「共有設定を確認」と案内するのは誤り。
+    var advice = anyFetchStage
+      ? 'スプレッドシートの共有を「リンクを知っている全員（閲覧者）」にするか、' +
+        '<code>ファイル → 共有 → ウェブに公開 → CSV</code> のURLを「データ」タブに貼り直すと解消することがあります。' +
+        'ネットワーク側でGoogleへの接続が遮断されている場合もあります。'
+      : 'シート自体は取得できましたが、中身を表として読み取れませんでした。' +
+        '1行目の見出しが変わっていないか、連携しているタブ（gid）が正しいかを「データ」タブでご確認ください。';
+    return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
+      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ スプレッドシートを読み込めませんでした' + headline + '</div>' +
+      '<ul style="margin:0 0 10px;padding-left:1.2em;font-size:14px;line-height:1.8">' + rows + '</ul>' +
+      '<div class="note-inline">' + advice + '</div>' +
+      '</div></div></div>';
+  }
+  function renderSheetAlert() { var host = $('#sheetAlert'); if (host) host.innerHTML = sheetErrorBanner(); }
+
+  // 再描画はビューのHTMLを丸ごと作り直すため、入力途中の値（貼り付けたURL・
+  // 入力中の合言葉）が消える。夜間の自動更新の失敗など、ユーザーの操作と無関係な
+  // タイミングで再描画が起きても入力を失わないよう、id を持つ入力欄の値と
+  // カーソル位置を保存して復元する。
+  function preserveInputs(fn) {
+    var root = $('#view-' + state.view), snap = [];
+    if (root) {
+      Array.prototype.forEach.call(root.querySelectorAll('input[id], textarea[id]'), function (n) {
+        if (n.type === 'file' || !n.value) return;
+        var st = null, en = null;
+        try { st = n.selectionStart; en = n.selectionEnd; } catch (e) {}
+        snap.push({ id: n.id, value: n.value, focused: document.activeElement === n, start: st, end: en });
+      });
+    }
+    fn();
+    snap.forEach(function (sn) {
+      var n = document.getElementById(sn.id);
+      if (!n) return;
+      n.value = sn.value;
+      if (sn.focused) { try { n.focus(); if (sn.start !== null) n.setSelectionRange(sn.start, sn.end); } catch (e) {} }
+    });
   }
 
   // ---- 管理ロックの解除をこの端末で記憶する --------------------------------
@@ -1517,7 +1644,14 @@
   }
   function scheduleNightlyReload() {
     var next = nextReloadAt(new Date());
-    setTimeout(function () { reloadLinkedSheets(); scheduleNightlyReload(); }, next - new Date());
+    state.autoReloadNext = next;
+    setTimeout(function () {
+      // 実際に発火したことを記録（端末に残すので、翌日開いたときに前回実績が分かる）
+      state.autoReloadLast = new Date();
+      try { localStorage.setItem('kate-auto-last', String(+state.autoReloadLast)); } catch (e) {}
+      reloadLinkedSheets();
+      scheduleNightlyReload();
+    }, next - new Date());
   }
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible') return;
@@ -1533,6 +1667,7 @@
     // (re)render only the active view for performance; others render on demand
     activeCharts = [];
     ({ overview: renderOverview, staff: renderStaff, trend: renderTrend, rfm: renderRFM, data: renderData }[state.view])();
+    renderSheetAlert();   // ビューの外にある警告バナー（全タブ共通）も合わせて更新
     // count-up any stat tiles
     Array.prototype.forEach.call(document.querySelectorAll('#view-' + state.view + ' .cu'), function (n) {
       var to = parseFloat(n.dataset.to), unit = n.dataset.unit;
@@ -1625,6 +1760,10 @@
     try { savedYoyaku = localStorage.getItem('kate-sheet-url'); savedKaikei = localStorage.getItem('kate-sheet-url-kaikei'); } catch (e) {}
     if (savedYoyaku) { state.sheetUrl = savedYoyaku; linkSheet(savedYoyaku, 'yoyaku', { silent: true }); }
     if (savedKaikei) { state.sheetUrlKaikei = savedKaikei; linkSheet(savedKaikei, 'kaikei', { silent: true }); }
+    try {
+      var la = localStorage.getItem('kate-auto-last');
+      if (la) state.autoReloadLast = new Date(+la);
+    } catch (e) {}
     scheduleNightlyReload();   // 連携中なら23時〜翌1時のあいだ30分おきに自動で再読み込み
 
     // 合言葉: if the repo ships an encrypted shared-link blob, load it. On a

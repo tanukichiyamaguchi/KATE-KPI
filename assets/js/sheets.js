@@ -57,6 +57,7 @@
     return 'pub';
   }
   // opts.onEndpoint(url, kind) — 実際に取得できたエンドポイントを呼び出し側に伝える
+  // opts.onAttempt(url, kind)   — 試したエンドポイントを順に伝える（失敗診断用）
   function fetchCsv(input, opts) {
     opts = opts || {};
     var list = csvEndpoints(input);
@@ -65,6 +66,7 @@
     // 候補を順に試し、最初にCSVが取れたものを採用する（/export が使えない場合の保険）
     function attempt(i) {
       if (i >= list.length) return Promise.reject(lastErr || new Error('取得に失敗しました。'));
+      if (opts.onAttempt) opts.onAttempt(list[i], endpointKind(list[i]));
       return fetch(bust(list[i]), { redirect: 'follow', credentials: 'omit', cache: 'no-store' })
         .then(function (res) {
           if (!res.ok) throw new Error('取得に失敗しました（HTTP ' + res.status + '）。スプレッドシートの共有設定をご確認ください。');
