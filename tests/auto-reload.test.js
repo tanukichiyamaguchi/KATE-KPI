@@ -257,6 +257,38 @@ const JST = function (s) { return new Date(s + '+09:00'); };
 
   check('コンソールエラーなし', errors.length, 0);
 
+  // ---- 取得に失敗したら黙って隠さず、全ビューに警告を出す ------------------
+  // 起動時の自動読み込みは silent なので、従来は失敗しても何も表示されず
+  // サンプルデータのまま「反映されない」状態に見えていた（実運用で発生）。
+  const ctx2 = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1100, height: 900 } });
+  const p2 = await ctx2.newPage();
+  const tried = [];
+  await p2.route('https://docs.google.com/**', function (route) { tried.push(route.request().url()); route.abort('failed'); });
+  await ctx2.addInitScript(function () {
+    try { localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/FAILCASE/edit#gid=0'); } catch (e) {}
+  });
+  await p2.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+  await sleep(2000);
+  check('失敗時: 候補を2つとも試す（/export → gviz）', tried.length, 2);
+  const bannerText = await p2.evaluate(function () {
+    var el = [...document.querySelectorAll('#view-overview .gsec')]
+      .find(function (g) { return /読み込めませんでした/.test(g.textContent); });
+    return el ? el.textContent.replace(/\s+/g, ' ') : '';
+  });
+  check('失敗時: 概要に警告バナーを出す', bannerText.indexOf('読み込めませんでした') !== -1, true);
+  check('失敗時: サンプルデータであることを明示する', bannerText.indexOf('サンプルデータ') !== -1, true);
+  check('失敗時: 試した取得先を示す', bannerText.indexOf('/export?format=csv') !== -1, true);
+  for (const view of ['staff', 'trend', 'rfm', 'data']) {
+    await p2.evaluate(function (v) { location.hash = '#' + v; }, view);
+    await sleep(500);
+    const shown = await p2.evaluate(function (v) {
+      return [...document.querySelectorAll('#view-' + v + ' .gsec')]
+        .some(function (g) { return /読み込めませんでした/.test(g.textContent); });
+    }, view);
+    check('失敗時: ' + view + 'タブにも警告を出す', shown, true);
+  }
+  await p2.close(); await ctx2.close();
+
   await browser.close(); server.close();
   console.log('\x1b[1mSUMMARY\x1b[0m  \x1b[32m' + pass + ' pass\x1b[0m · \x1b[31m' + fail + ' fail\x1b[0m');
   process.exit(fail ? 1 : 0);

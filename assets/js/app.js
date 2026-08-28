@@ -21,6 +21,9 @@
     ownerUnlocked: false, // 解除済みか（この端末で一度解除すれば ownerUnlockKey で記憶される）
     taxExcluded: true,  // 税抜表示をメインに（トグルで税込へ）。端末設定として localStorage に保存
     dataLoadedAt: null,   // この画面が実データを読み込んだ日時（連携/アップロード時に記録）
+    sheetErrors: {},      // スロット別の読み込み失敗 { yoyaku|kaikei: {message, at, urls} }。
+                          // 起動時の自動読み込みは silent なので、失敗しても従来は画面に
+                          // 何も出ず、サンプルデータのまま「反映されない」ように見えていた。
     sheetUpdatedAt: null  // シート側が記録した同期完了日時（「データ更新日時」列。applySources で導出）
   };
   (function () { try { if (localStorage.getItem('kate-tax') === 'incl') state.taxExcluded = false; } catch (e) {} })();
@@ -328,7 +331,7 @@
     });
     html += card({ col: 'col-6', title: '来店回数の構成' + help('全期間を通じて、来店回数（1回目・2回目・3回目・4回目以上）ごとの来店件数と、その回数における平均客単価。'), sub: '回数別', body: '<div id="cVisitComp"></div>' });
 
-    mount('overview', head + '<div class="grid">' + html + '</div>');
+    mount('overview', head + sheetErrorBanner() + '<div class="grid">' + html + '</div>');
 
     // draw
     tileSpark('sparkSpend', s.monthly.map(function (m) { return m.spend; }));
@@ -557,7 +560,7 @@
       html += card({ col: 'col-6', title: '月次 施術時間と稼働率' + help('稼働率＝施術時間の合計 ÷ 稼働可能時間（実際に施術のあった日数 × 1日8時間）。進行中の当月・未来月は表示しない。予約データに所要時間の記録がある場合のみ算出可能。'), sub: '実稼働日 × 8時間を分母に算出', tag: '%', body: chartBox('cStaffUtil', 230) });
     }
 
-    mount('staff', head + '<div class="grid">' + html + '</div>');
+    mount('staff', head + sheetErrorBanner() + '<div class="grid">' + html + '</div>');
 
     staff.forEach(function (st, i) {
       draw('stMeterRepeat' + i, function (el) {
@@ -751,7 +754,7 @@
       body: chartBox('cHourDow', 0)
     });
 
-    mount('trend', head + '<div class="grid">' + html + '</div>');
+    mount('trend', head + sheetErrorBanner() + '<div class="grid">' + html + '</div>');
 
     drawDow();
     if (A.store.serviceRetailMonthly) {
@@ -829,7 +832,7 @@
         '</div><div class="table-wrap tall"><table class="kate-table" id="rfmTable"></table></div>'
     }) + '</div>';
 
-    mount('rfm', html);
+    mount('rfm', sheetErrorBanner() + html);
 
     r.segments.forEach(function (sg, i) { var elx = document.querySelectorAll('.seg-ratio i')[i]; if (elx) setTimeout(function () { elx.style.width = Math.max(2, sg.ratio * 100) + '%'; }, 120 + i * 40); });
     draw('cHeat', function (el) {
@@ -936,7 +939,7 @@
           '</div>' +
           '<button class="btn-ios" id="ownerPassBtn" type="button" style="margin-top:14px">ロック解除</button>'
       });
-      mount('data', head + '<div class="grid">' + html + '</div>');
+      mount('data', head + sheetErrorBanner() + '<div class="grid">' + html + '</div>');
       wireUpload();
       return;
     }
@@ -1083,6 +1086,12 @@
     // 集計を通さずに表すため、同期が止まっていればここに直接現れる。
     var diagRows = ['yoyaku', 'kaikei'].map(function (sl) {
       var s3 = state.sources[sl];
+      var err = state.sheetErrors[sl];
+      if (err) {   // 読み込めなかったスロットも行として出す（黙って消さない）
+        return '<tr><td>' + esc(slotJa[sl]) + '</td>' +
+          '<td colspan="4" style="text-align:left;color:var(--status-warning)">読み込み失敗（' + esc(ymdhmJa(err.at)) + '）：' + esc(err.message) + '</td>' +
+          '<td style="color:var(--status-warning);font-weight:700">失敗</td></tr>';
+      }
       if (!s3 || !s3.diag) return '';
       var d3 = s3.diag, today = new Date();
       var todayNum = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
@@ -1188,7 +1197,7 @@
         '<li>個人情報を含むデータはすべて<b>ブラウザ内で処理</b>され、サーバーには送信されません。</li>' +
         '</ul>'
     });
-    mount('data', head + '<div class="grid">' + html + '</div>');
+    mount('data', head + sheetErrorBanner() + '<div class="grid">' + html + '</div>');
     wireUpload();
 
     // 年商カード: 期間ボタン／日付を変えたら数字だけ差し替える（全体は再描画しない）。
@@ -1402,7 +1411,11 @@
     if (!url) return;
     if (!opts.silent) toast('スプレッドシートを読み込み中…');
     var usedKind = null;   // どの経路で取れたか（export=常に最新 / gviz=キャッシュあり / pub=公開スナップショット）
-    global.KATE.sheets.fetchCsv(url, { onEndpoint: function (u, kind) { usedKind = kind; } }).then(function (text) {
+    var triedUrls = [];
+    global.KATE.sheets.fetchCsv(url, {
+      onEndpoint: function (u, kind) { usedKind = kind; },
+      onAttempt: function (u) { triedUrls.push(u); }
+    }).then(function (text) {
       var parsed = global.KATE.ingest.fromAOA(global.KATE.ingest.parseCSV(text));
       var format = parsed.format, recs = parsed.records;
       var prevSrc = state.sources[format];
@@ -1417,6 +1430,7 @@
       if (format === 'kaikei') state.sheetUrlKaikei = url; else state.sheetUrl = url;
       try { localStorage.setItem(format === 'kaikei' ? 'kate-sheet-url-kaikei' : 'kate-sheet-url', url); } catch (e) {}
       state.dataLoadedAt = new Date();   // データを取得した日時を記録
+      delete state.sheetErrors[format]; delete state.sheetErrors[slot];   // 復旧したので失敗表示を消す
       var A = applySources();
       var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
@@ -1434,7 +1448,14 @@
       }
     }).catch(function (err) {
       console.warn('sheet load failed', err);
+      // silent（起動時の自動読み込み）でも記録して画面に出す。黙って失敗すると
+      // サンプルデータのまま表示され、実データだと誤認されるため。
+      state.sheetErrors[slot] = {
+        message: err.message || '読み込みに失敗しました',
+        at: new Date(), urls: triedUrls.slice()
+      };
       if (!opts.silent) toast('⚠ ' + (err.message || '読み込みに失敗しました'), 'err');
+      renderAll();
     });
   }
   function unlinkSheet(slot) {
@@ -1460,6 +1481,33 @@
     state.sheetUrl = null; state.sheetUrlKaikei = null;
     try { localStorage.removeItem('kate-sheet-url'); localStorage.removeItem('kate-sheet-url-kaikei'); } catch (e) {}
     applySources();
+  }
+
+  // 連携中のシートが読み込めていないときの警告バナー（全ビュー共通）。
+  // 起動時の自動読み込みは silent なので、失敗すると従来は何も出ないまま
+  // サンプルデータが表示され、実データだと誤認される恐れがあった。
+  function sheetErrorBanner() {
+    var slots = Object.keys(state.sheetErrors || {});
+    if (!slots.length) return '';
+    var onSample = state.source === 'サンプルデータ';
+    var rows = slots.map(function (sl) {
+      var e = state.sheetErrors[sl];
+      var name = (slotMeta(sl) || {}).label || sl;
+      return '<li><b>' + esc(name) + '</b>：' + esc(e.message) +
+        (e.urls && e.urls.length
+          ? '<br><span class="note-inline">試した取得先：' + e.urls.map(function (u) {
+              return esc(u.replace(/^https:\/\/docs\.google\.com/, '').replace(/&?_ts=\d+/, ''));
+            }).join(' → ') + '</span>'
+          : '') + '</li>';
+    }).join('');
+    return '<div class="grid"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
+      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ スプレッドシートを読み込めませんでした' +
+      (onSample ? '（いまの表示は<u>サンプルデータ</u>です。お店の数字ではありません）' : '（表示中の数字は前回読み込んだ内容です）') + '</div>' +
+      '<ul style="margin:0 0 10px;padding-left:1.2em;font-size:14px;line-height:1.8">' + rows + '</ul>' +
+      '<div class="note-inline">スプレッドシートの共有を「リンクを知っている全員（閲覧者）」にするか、' +
+      '<code>ファイル → 共有 → ウェブに公開 → CSV</code> のURLを「データ」タブに貼り直すと解消することがあります。' +
+      'ネットワーク側でGoogleへの接続が遮断されている場合もあります。</div>' +
+      '</div></div></div>';
   }
 
   // ---- 管理ロックの解除をこの端末で記憶する --------------------------------
