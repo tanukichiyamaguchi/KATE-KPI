@@ -60,6 +60,28 @@ check('CSV直リンクはそのまま',
   'https://docs.google.com/spreadsheets/d/e/2PACX-abc/pub?output=csv');
 check('スプレッドシート以外のURLは null', sheets.toCsvUrl('https://example.com/x.csv'), null);
 
+// 候補は必ず「同じタブ」を指すこと。app.js は取れた候補の中から中身がいちばん
+// 新しいものを採用するため、候補に別のタブが混ざると、利用者が指定したタブを
+// 差し置いて別タブの内容が黙って採用されうる（取得は成功するのでエラーも出ない）。
+[
+  'https://docs.google.com/spreadsheets/d/ABC/edit#gid=42',
+  'https://docs.google.com/spreadsheets/d/ABC/edit',
+  'https://docs.google.com/spreadsheets/d/ABC/export?format=csv&gid=99',
+  'https://docs.google.com/spreadsheets/d/ABC/gviz/tq?tqx=out:csv&gid=7',
+  'https://docs.google.com/spreadsheets/d/ABC/gviz/tq?tqx=out:csv&sheet=Yoyaku',
+  'https://docs.google.com/spreadsheets/d/ABC/gviz/tq?tqx=out:csv&headers=1&range=A1:Z',
+  'https://docs.google.com/spreadsheets/d/ABC/pub?output=csv',
+  'https://docs.google.com/spreadsheets/d/e/2PACX-abc/pub?gid=7&single=true&output=csv'
+].forEach(function (u) {
+  var tabs = {};
+  sheets.csvEndpoints(u).forEach(function (c) {
+    var m = /[?&]gid=(\d+)/.exec(c), sh = /[?&]sheet=([^&]*)/.exec(c), rg = /[?&]range=([^&]*)/.exec(c);
+    tabs[(m ? 'gid:' + m[1] : 'gid:-') + '|' + (sh ? 'sheet:' + sh[1] : '') + '|' + (rg ? 'range:' + rg[1] : '')] = 1;
+  });
+  check('候補が別のタブを混ぜない: ' + u.replace(/^https:\/\/docs\.google\.com\/spreadsheets/, ''),
+    Object.keys(tabs).length, 1);
+});
+
 // ---- bust（キャッシュバスター）--------------------------------------------
 check('クエリ有りURLは &_ts= を追加', /[&]_ts=\d+$/.test(sheets.bust('https://x/y?a=1')), true);
 check('クエリ無しURLは ?_ts= を追加', /[?]_ts=\d+$/.test(sheets.bust('https://x/y')), true);
