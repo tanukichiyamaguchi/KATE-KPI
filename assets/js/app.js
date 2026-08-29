@@ -905,6 +905,7 @@
   // in state.sources; applySources() combines whatever is loaded. Both slots
   // filled → merged via ingest.mergeSources(); either alone → used as-is;
   // neither → the bundled sample data.
+  var slotJa = { yoyaku: '予約データ', kaikei: '会計明細' };
   function slotMeta(slot) {
     return slot === 'kaikei'
       ? { label: '会計明細', urlId: 'sheetUrlKaikei', linkId: 'sheetLinkBtnKaikei', unlinkId: 'sheetUnlinkBtnKaikei', dropId: 'dropKaikei', fileId: 'fileKaikei', pickId: 'pickKaikei', sheetUrl: state.sheetUrlKaikei }
@@ -962,7 +963,6 @@
     // 年商・予約状況 — ここから下は管理ロック解除済みのみ表示される領域なので、
     // 売上の日別内訳と今後の予約はオーナー（管理用の合言葉を入力した人）限定になる。
     var taxTagD = m.taxExcluded ? '（税抜）' : '';
-    var slotJa = { yoyaku: '予約データ', kaikei: '会計明細' };
 
     // ---- 年商（既定は 1/1〜12/31・任意の期間に絞り込み可）---------------------
     var annDays = A.store.dailyAll || [];
@@ -1682,9 +1682,48 @@
       '<div style="margin-top:12px"><button class="pill accent" type="button" onclick="location.hash=\'#data\'">合言葉を入力する</button></div>' +
       '</div></div></div>';
   }
+  // 夜間の同期がシート側で動かなかったことを、こちらから知らせる。
+  //
+  // ダッシュボードは取得できた内容をそのまま出すので、シートが更新されていなければ
+  // 「昨日と同じ数字」が黙って出続ける。取得は成功しているため失敗バナーも出ない。
+  // 判定は「直近に過ぎた23:00より前の内容しか入っていないか」。23時台のどこで
+  // 同期が終わるかはGoogle任せなので、90分の猶予を置いてから警告する。
+  var SYNC_HOUR = 23;                    // シート側の同期が走るべき時刻（時）
+  var SYNC_GRACE_MS = 90 * 60 * 1000;    // 23時台のどこで終わってもよいための猶予
+  function lastSyncDue(now) {
+    var d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), SYNC_HOUR, 0, 0, 0);
+    if (d > now) d.setDate(d.getDate() - 1);
+    return d;
+  }
+  function staleSyncSlots(now) {
+    var due = lastSyncDue(now);
+    if (now - due < SYNC_GRACE_MS) return [];   // まだ同期の途中かもしれない時間帯
+    return ['yoyaku', 'kaikei'].filter(function (sl) {
+      var s2 = state.sources[sl];
+      return s2 && s2.via === 'スプレッドシート連携' && s2.updatedAt && Number(s2.updatedAt) < +due;
+    });
+  }
+  function staleSyncBanner() {
+    var now = new Date(), slots = staleSyncSlots(now);
+    if (!slots.length) return '';
+    var rows = slots.map(function (sl) {
+      var s2 = state.sources[sl];
+      var ageH = Math.floor((now - Number(s2.updatedAt)) / 3600000);
+      return '<li><b>' + esc(slotJa[sl]) + '</b>：最後の同期は ' + esc(ymdhmJa(s2.updatedAt)) +
+        '（' + (ageH >= 48 ? Math.floor(ageH / 24) + '日前' : ageH + '時間前') + '）</li>';
+    }).join('');
+    return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
+      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ 昨夜のシート同期が行われていません（表示中の数字は同期された時点のものです）</div>' +
+      '<ul style="margin:0 0 10px;padding-left:1.2em;font-size:14px;line-height:1.8">' + rows + '</ul>' +
+      '<div class="note-inline">ダッシュボードは取得できた内容をそのまま表示しています。' +
+      '止まっているのは<b>スプレッドシート側の同期</b>です。スプレッドシートの' +
+      '<code>拡張機能 → Apps Script → 実行数</code>で、同期のエラーと実行時刻をご確認ください。' +
+      '同期の実行時刻を毎日23時台に設定し直すスクリプトを <code>tools/sync-at-2300.gs</code> に用意しています。</div>' +
+      '</div></div></div>';
+  }
   function renderSheetAlert() {
     var host = $('#sheetAlert');
-    if (host) host.innerHTML = sheetErrorBanner() + mergeAlertBanner() + notLinkedBanner();
+    if (host) host.innerHTML = sheetErrorBanner() + mergeAlertBanner() + staleSyncBanner() + notLinkedBanner();
   }
 
   // 再描画はビューのHTMLを丸ごと作り直すため、入力途中の値（貼り付けたURL・
