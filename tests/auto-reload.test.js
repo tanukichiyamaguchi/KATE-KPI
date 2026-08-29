@@ -677,6 +677,51 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   await p10.close(); await ctx10.close();
   SHARED_BLOB = null;
 
+  // ---- 夜間のシート同期が動かなかったことを、こちらから知らせる ---------------
+  // シートが更新されていなければ「昨日と同じ数字」が黙って出続ける。取得自体は
+  // 成功しているので失敗バナーも出ない。実運用で、この状態が何日も気づかれずに続いた。
+  const syncCase = async function (nowIso, stamp) {
+    const c = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+    const pg = await c.newPage();
+    const body = [
+      'ステータス,来店日,お名前,スタッフ名,予約時合計金額,会計時合計金額,データ更新日時',
+      '会計済み,2026/08/28,同期太郎,momo,7000,7000,' + stamp
+    ].join('\n');
+    await pg.route('https://docs.google.com/**', function (route) {
+      route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: body });
+    });
+    await c.addInitScript(function () {
+      try { localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/SYNCCHK/edit#gid=0'); } catch (e) {}
+    });
+    await pg.clock.install({ time: JST(nowIso) });
+    await pg.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+    await sleep(1800);
+    const txt = await pg.evaluate(function () {
+      var el = document.querySelector('#sheetAlert'); return el ? el.textContent.replace(/\s+/g, ' ') : '';
+    });
+    await pg.close(); await c.close();
+    return txt;
+  };
+
+  // 8/30 00:35 — 23時の同期が終わっているべき時刻を過ぎたのに、シートは 8/29 8:30 のまま
+  const stale = await syncCase('2026-08-30T00:35:00', '2026/08/29 8:30:00');
+  check('同期が飛んだら知らせる', stale.indexOf('昨夜のシート同期が行われていません') !== -1, true);
+  check('同期が飛んだら最後の同期時刻を出す', stale.indexOf('8月29日 08:30') !== -1, true);
+  check('原因がシート側だと明示する', stale.indexOf('スプレッドシート側の同期') !== -1, true);
+
+  // 同じ状態でも 00:06（23時台の同期がまだ終わっていないかもしれない時間帯）は出さない。
+  // 猶予を置かないと、毎晩23時台に必ず誤警告が出てしまう。
+  const tooEarly = await syncCase('2026-08-30T00:06:00', '2026/08/29 8:30:00');
+  check('同期の猶予中は警告しない', tooEarly.indexOf('昨夜のシート同期が行われていません'), -1);
+
+  // 正常な日（前夜23:10に同期済み）は、翌日の日中も警告しない
+  const healthy = await syncCase('2026-08-30T15:00:00', '2026/08/29 23:10:00');
+  check('前夜に同期できていれば警告しない', healthy.indexOf('昨夜のシート同期が行われていません'), -1);
+
+  // 同期が何日も止まっている場合も当然出る
+  const long = await syncCase('2026-08-30T15:00:00', '2026/08/06 1:00:00');
+  check('何日も止まっていれば日数で知らせる', long.indexOf('日前') !== -1, true);
+
   await browser.close(); server.close();
   console.log('\x1b[1mSUMMARY\x1b[0m  \x1b[32m' + pass + ' pass\x1b[0m · \x1b[31m' + fail + ' fail\x1b[0m');
   process.exit(fail ? 1 : 0);
