@@ -275,12 +275,11 @@
       });
     }
 
-    // KPI tile row (revenue KGI & effective-reservation count intentionally omitted)
+    // 上部のKPIタイル行は置かない。客単価は「客単価の推移」、店販顧客比率は
+    // 「店販（物販）実績」に同じ数字があり、顧客LTVは意味の近い「月次コホート LTV」の
+    // 隣に置いたほうが読み取りやすいため（オーナー要望・2026-08-30）。
     var rt = s.retail;
     var taxTag = A.meta.taxExcluded ? '（税抜）' : '';
-    html += statTile('yen', '予約ベース客単価' + taxTag + help('予約ベースの売上（会計済みの実績＋受付待ちの見込み）÷ 予約件数（来店＋受付待ち）。下の「実績客単価」は見込みを含まない、会計済みのみの客単価。金額は税抜（消費税10%）。'), F.int(s.avgSpendReservation), '¥', '実績客単価 ' + yen(s.avgSpendActual), 'sparkSpend');
-    html += statTile('ltv', '顧客LTV（現状）' + taxTag + help('来店顧客1人あたりの累計売上（実績のみ）。「予測」は現在の客単価が今後も続くと仮定し、1回〜5回到達率の合計（期待来店回数）を掛けて見積もった将来のLTV。金額は税抜。'), F.int(s.ltv.current), '¥', '<span class="chip up">↑ 予測 ' + yen(s.ltv.predicted) + '</span> 期待来店 ' + s.ltv.expectedVisits + '回', null);
-    html += statTile('retail', '店販顧客比率' + help('来店顧客のうち、店販（物販）を購入した人の割合。会計時の店販金額または商品名の記録から算出。'), pct(rt.customerRatio * 100, 1), '%', '店販購入 ' + rt.buyers + '人 ／ 来店顧客 ' + rt.visitCustomers + '人', null, 'retail-customer-ratio');
 
     // 売上サマリー（実績のみ・期間バケット）
     html += card({
@@ -299,6 +298,15 @@
       col: 'col-7', title: '月次 予約ベース売上' + taxTag + help('月ごとの売上を、会計済み（実績・濃色）と受付待ち（見込み・薄色）の内訳で積み上げ表示。見込みは受付待ちの予約金額（会計前）を反映したもの。金額は税抜。'), sub: '会計済み（実績）＋ 受付待ち（見込み）', tag: '¥',
       body: chartBox('cRevenue', 260)
     });
+    // 店舗全体の月次予約数（スタッフタブ「月次 予約数の比較」の店舗版）。
+    // スタッフ別の棒を足し合わせたものと一致する（engine の store.composition は
+    // st.composition と同一ロジックで、スタッフの絞り込みだけを外したもの）。
+    var lastMix = s.newMix.filter(function (m) { return m.new + m.repeat > 0; }).slice(-1)[0];
+    var mixNote = lastMix && (lastMix.new + lastMix.repeat) ? '直近月（' + monthShort(lastMix.m) + '）の再来比率 ' + pct(lastMix.repeat / (lastMix.new + lastMix.repeat) * 100, 0) : '月次の新規・再来来店数';
+    html += card({
+      col: 'col-12', title: '月次 予約数の比較' + help('月ごとの来店・予約を、その顧客にとって何回目にあたるかで内訳表示（新規／2回目／3回目／4回目以上）。会計済みの実績と受付待ちの見込みを合算した予約ベースで、回数別に1色で積み上げ。スタッフタブの「月次 予約数の比較」の店舗全体版で、スタッフ別の棒を足し合わせた合計と一致します。棒の上の数字は合計件数。'),
+      sub: mixNote + '　※予約ベース（会計済み＋受付待ちの合算）', tag: '件', body: chartBox('cNewMix', 250)
+    });
 
     // Funnel + cohort
     html += card({
@@ -311,11 +319,12 @@
       body: chartBox('cTCohortR', 230)
     });
     html += card({
-      col: 'col-6', title: '月次コホート LTV' + help('初回来店した月ごとに顧客をグループ化し、そのグループの現時点までの累計売上を平均したもの。新しい月ほど来店回数がまだ少ないため低く出て、時間とともに積み上がります（※印は集計途中の当月）。'), sub: '初回獲得月ごとの累計売上　※印は集計途中の当月', tag: '¥',
+      col: 'col-8', title: '月次コホート LTV' + help('初回来店した月ごとに顧客をグループ化し、そのグループの現時点までの累計売上を平均したもの。新しい月ほど来店回数がまだ少ないため低く出て、時間とともに積み上がります（※印は集計途中の当月）。'), sub: '初回獲得月ごとの累計売上　※印は集計途中の当月', tag: '¥',
       body: chartBox('cTCohortL', 220)
     });
+    html += statTile('ltv', '顧客LTV（現状）' + taxTag + help('来店顧客1人あたりの累計売上（実績のみ）。「予測」は現在の客単価が今後も続くと仮定し、1回〜5回到達率の合計（期待来店回数）を掛けて見積もった将来のLTV。金額は税抜。'), F.int(s.ltv.current), '¥', '<span class="chip up">↑ 予測 ' + yen(s.ltv.predicted) + '</span> 期待来店 ' + s.ltv.expectedVisits + '回', null);
     html += card({
-      col: 'col-6', title: '客単価の推移' + taxTag + help('月ごとの客単価の推移。「予約ベース客単価」＝予約ベース売上（会計済みの実績＋受付待ちの見込み）÷ 予約件数（来店＋受付待ち）。「実績客単価」＝会計済み売上 ÷ 来店件数で、見込みを含まない確定値。予約・来店の無い月は線を引きません。金額は税抜。'),
+      col: 'col-12', title: '客単価の推移' + taxTag + help('月ごとの客単価の推移。「予約ベース客単価」＝予約ベース売上（会計済みの実績＋受付待ちの見込み）÷ 予約件数（来店＋受付待ち）。「実績客単価」＝会計済み売上 ÷ 来店件数で、見込みを含まない確定値。予約・来店の無い月は線を引きません。金額は税抜。'),
       sub: '予約ベース客単価と実績客単価の月次推移', tag: '¥',
       body: chartBox('cSpendTrend', 230)
     });
@@ -338,18 +347,11 @@
         (rt.hasAmount && s.retailPeriods ? '<div style="margin-top:14px">' + retailPeriodTable(s.retailPeriods) + '</div>' : '') +
         (rt.hasAmount ? '' : '<div class="note-inline" style="margin-top:12px">金額・売上比率・単価は、スプレッドシートに <b>「会計時店販金額」</b> 列を追加すると自動表示されます。</div>')
     });
-    var lastMix = s.newMix.filter(function (m) { return m.new + m.repeat > 0; }).slice(-1)[0];
-    var mixNote = lastMix && (lastMix.new + lastMix.repeat) ? '直近月（' + monthShort(lastMix.m) + '）の再来比率 ' + pct(lastMix.repeat / (lastMix.new + lastMix.repeat) * 100, 0) : '月次の新規・再来来店数';
-    html += card({
-      col: 'col-6', title: '新規・再来' + help('月ごとの来店・予約を、その顧客にとって何回目にあたるかで内訳表示（新規／2回目／3回目／4回目以上）。会計済みの実績と受付待ちの見込みを合算した予約ベースで、回数別に1色で積み上げ。スタッフタブの「月次 予約数の比較」と同じ考え方。棒の上の数字は合計件数。'),
-      sub: mixNote + '　※予約ベース（会計済み＋受付待ちの合算）', tag: '件', body: chartBox('cNewMix', 210)
-    });
     html += card({ col: 'col-6', title: '来店回数の構成' + help('全期間を通じて、来店回数（1回目・2回目・3回目・4回目以上）ごとの来店件数と、その回数における平均客単価。'), sub: '回数別', body: '<div id="cVisitComp"></div>' });
 
     mount('overview', head + '<div class="grid">' + html + '</div>');
 
     // draw
-    tileSpark('sparkSpend', s.monthly.map(function (m) { return m.spend; }));
 
     draw('mRepeat', function (el) { C.meter(el, { label: 'リピート率（2回到達）', help: '来店顧客のうち、2回目の予約（来店・今後の予約含む）に到達した人の割合。キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。', value: s.repeatRate / 100, display: pct(s.repeatRate), target: 0.7, sub: frac(s.repeatNumer, s.repeatDenom, '人') + ' ・ 目安 70%' }); });
     draw('mNext', function (el) { C.meter(el, { label: '次回予約取得率', help: '来店（会計済み）のうち、その後に何らかの予約・来店（キャンセルは除く）があった割合。1回目〜複数回目まで、来店ごとに1件として集計。', value: s.nextReserveRate / 100, display: pct(s.nextReserveRate), sub: frac(s.nextReserveNumer, s.nextReserveDenom, '件') }); });
@@ -411,7 +413,7 @@
           { name: '3回目', color: cvar('--funnel-4'), values: s.newMix.map(function (m, i) { return m.v3 + comp[i].expV3; }) },
           { name: '4回目以上', color: cvar('--funnel-5'), values: s.newMix.map(function (m, i) { return m.v4 + comp[i].expV4; }) }
         ],
-        valueFmt: function (v) { return v + '件'; }, height: 210
+        valueFmt: function (v) { return v + '件'; }, height: 250
       });
     });
     flush();
