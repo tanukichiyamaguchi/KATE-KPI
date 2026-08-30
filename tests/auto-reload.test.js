@@ -133,15 +133,15 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     ['n', '2026-08-08T00:40:00+09:00'], ['n', '2026-08-08T01:10:00+09:00'],
     ['b', '2026-08-07T09:00:00+09:00'], ['b', '2026-08-07T23:15:00+09:00'], ['b', '2026-08-08T00:10:00+09:00'], ['b', '2026-08-07T22:59:00+09:00']
   ]);
-  check('next: 22:00 → 当日23:00', m2[0], '8/7 23:00');
+  check('next: 22:00 → 当日22:00（毎時0分・30分に見る）', m2[0], '8/7 22:00');
   check('next: 23:10 → 当日23:30', m2[1], '8/7 23:30');
   check('next: 23:40 → 翌日0:00', m2[2], '8/8 0:00');
   check('next: 0:40 → 当日1:00', m2[3], '8/8 1:00');
-  check('next: 1:10 → 当日1:30（窓は朝5時まで続く）', m2[4], '8/8 1:30');
-  check('boundary: 日中9:00 → 当日5:00', m2[5], '8/7 5:00');
+  check('next: 1:10 → 当日1:30', m2[4], '8/8 1:30');
+  check('boundary: 日中9:00 → 当日9:00（日中も30分おきに見る）', m2[5], '8/7 9:00');
   check('boundary: 23:15 → 当日23:00', m2[6], '8/7 23:00');
   check('boundary: 0:10 → 当日0:00', m2[7], '8/8 0:00');
-  check('boundary: 22:59 → 当日5:00', m2[8], '8/7 5:00');
+  check('boundary: 22:59 → 当日22:30', m2[8], '8/7 22:30');
 
   // ---- 発火タイミング ------------------------------------------------------
   // 各ジャンプ後に実時間を少し待つ: フェイククロックはタイマーだけを進め、
@@ -728,6 +728,64 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   // 何日も止まっている場合は日数で知らせる
   const long = await syncCase('2026-08-30T15:00:00', '2026/08/06 1:00:00');
   check('何日も止まっていれば日数で知らせる', long.indexOf('日前') !== -1, true);
+
+  // ---- 日中に一度も読みに行かない空白が無いこと -----------------------------
+  // 以前は発火時刻が 23:00〜1:00 の5点しか無く、1:00 を過ぎると次は翌日23:00。
+  // タブに戻ったときの取りこぼし判定も同じ境界を見ていたため、開きっぱなしの端末は
+  // 1:00〜23:00 の22時間、シートを一度も読みに行かなかった。シート側の同期が
+  // その時間帯（実測では深夜2時台）に走ると、翌日23時まで反映されない。
+  const ctxD = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+  const pD = await ctxD.newPage();
+  let hitsD = 0;
+  await pD.route('https://docs.google.com/**', function (route) {
+    hitsD++; route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV });
+  });
+  await ctxD.addInitScript(function () {
+    try { localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/DAYTIME/edit#gid=0'); } catch (e) {}
+  });
+  await pD.clock.install({ time: JST('2026-08-29T01:04:00') });
+  await pD.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+  await pD.clock.pauseAt(JST('2026-08-29T01:10:00'));
+  await waitFor(function () { return hitsD; }, 1 * PER_LOAD);
+  const afterBoot = hitsD;
+  // 深夜2時台にシート側が同期する時間帯 — ここで読みに行けなければ意味が無い
+  await pD.clock.fastForward(80 * 60 * 1000);        // → 2:30
+  await waitFor(function () { return hitsD; }, afterBoot + PER_LOAD);
+  check('深夜2時台にも読みに行く（シート同期の実時刻）', hitsD >= afterBoot + PER_LOAD, true);
+  const afterNight = hitsD;
+  // 日中も空白にしない
+  await pD.clock.fastForward(7 * 60 * 60 * 1000);    // → 9:30
+  await waitFor(function () { return hitsD; }, afterNight + PER_LOAD);
+  check('日中も読みに行く（22時間の空白が無い）', hitsD >= afterNight + PER_LOAD, true);
+  await pD.close(); await ctxD.close();
+
+  // ---- 端末がスリープしてタイマーが止まっても、復帰後に取り戻すこと -----------
+  // 長い setTimeout を1本張る方式では、OSのスリープ中はタイマーが進まないため、
+  // 予定時刻を何時間も過ぎてから発火する（＝その晩の反映が丸ごと落ちる）。
+  // 1分おきに実時刻を見る方式なら、復帰した直後に取り戻せる。
+  const ctxS = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+  const pS = await ctxS.newPage();
+  let hitsS = 0;
+  await pS.route('https://docs.google.com/**', function (route) {
+    hitsS++; route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV });
+  });
+  await ctxS.addInitScript(function () {
+    try { localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/SLEEPY/edit#gid=0'); } catch (e) {}
+  });
+  await pS.clock.install({ time: JST('2026-08-29T22:50:00') });
+  await pS.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+  await pS.clock.pauseAt(JST('2026-08-29T22:58:00'));
+  await waitFor(function () { return hitsS; }, 1 * PER_LOAD);
+  const beforeSleep = hitsS;
+  // スリープ相当: 実時刻だけを翌朝まで進める（タイマーは進めない）
+  await pS.clock.setSystemTime(JST('2026-08-30T07:20:00'));
+  await sleep(400);
+  check('スリープ中は当然発火しない', hitsS, beforeSleep);
+  // 復帰: 見張りが1回動けば、実時刻を見て取りこぼしに気づく
+  await pS.clock.fastForward(60 * 1000);
+  await waitFor(function () { return hitsS; }, beforeSleep + PER_LOAD);
+  check('スリープから復帰したら取り戻す', hitsS >= beforeSleep + PER_LOAD, true);
+  await pS.close(); await ctxS.close();
 
   await browser.close(); server.close();
   console.log('\x1b[1mSUMMARY\x1b[0m  \x1b[32m' + pass + ' pass\x1b[0m · \x1b[31m' + fail + ' fail\x1b[0m');
