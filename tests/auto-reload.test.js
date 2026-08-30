@@ -137,11 +137,11 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   check('next: 23:10 → 当日23:30', m2[1], '8/7 23:30');
   check('next: 23:40 → 翌日0:00', m2[2], '8/8 0:00');
   check('next: 0:40 → 当日1:00', m2[3], '8/8 1:00');
-  check('next: 1:10 → 当日23:00（窓の外は夜まで待つ）', m2[4], '8/8 23:00');
-  check('boundary: 日中9:00 → 当日1:00', m2[5], '8/7 1:00');
+  check('next: 1:10 → 当日1:30（窓は朝5時まで続く）', m2[4], '8/8 1:30');
+  check('boundary: 日中9:00 → 当日5:00', m2[5], '8/7 5:00');
   check('boundary: 23:15 → 当日23:00', m2[6], '8/7 23:00');
   check('boundary: 0:10 → 当日0:00', m2[7], '8/8 0:00');
-  check('boundary: 22:59 → 当日1:00', m2[8], '8/7 1:00');
+  check('boundary: 22:59 → 当日5:00', m2[8], '8/7 5:00');
 
   // ---- 発火タイミング ------------------------------------------------------
   // 各ジャンプ後に実時間を少し待つ: フェイククロックはタイマーだけを進め、
@@ -240,7 +240,7 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   // 「更新したのに日時が変わらない」という誤解が起きない。
   const hdrV2 = await headerStamp();
   check('更新後：ヘッダーの最終読込が進む', hdrV2.indexOf('最終読込 ') === 0, true);
-  check('更新後：シート側の同期時刻を併記する', hdrV2.indexOf('（シート同期 8月8日 23:30）') !== -1, true);
+  check('更新後：シートが最後に変わった時刻を併記する', hdrV2.indexOf('（シートは 8月8日 23:30 更新）') !== -1, true);
   await page.evaluate(function () { location.hash = '#overview'; });
   // 数値はカウントアップ演出で徐々に上がるため、確定値になるまで待ってから判定
   await page.waitForFunction(function () {
@@ -275,7 +275,7 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   // ---- ヘッダーに「確認」時刻が併記される（押したことが必ず見える）----------
   const hdr = await headerStamp();
   check('ヘッダーの読込時刻は日時つきで出る', /^最終読込 \d{1,2}月\d{1,2}日 \d{2}:\d{2}/.test(hdr), true);
-  check('ヘッダーにシート同期時刻を併記する', /（シート同期 \d{1,2}月\d{1,2}日 \d{2}:\d{2}）/.test(hdr), true);
+  check('ヘッダーにシートの更新時刻を併記する', /（シートは \d{1,2}月\d{1,2}日 \d{2}:\d{2} 更新）/.test(hdr), true);
 
   check('コンソールエラーなし', errors.length, 0);
 
@@ -493,7 +493,7 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     const u = route.request().url();
     route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: /\/export\?/.test(u) ? CSV_FRESH : CSV_STALE });
   });
-  check('古いキャッシュより新しい内容を採用する', a.hdr.indexOf('（シート同期 8月28日 23:30）') !== -1, true);
+  check('古いキャッシュより新しい内容を採用する', a.hdr.indexOf('（シートは 8月28日 23:30 更新）') !== -1, true);
   check('採用しなかった経路も診断に残す', a.rows.some(function (r) { return /経路ごとの取得結果/.test(r) && /2026年8月6日/.test(r); }), true);
   check('どちらを採用したかを診断に出す',
     a.rows.some(function (r) { return /CSV書き出し＝2026年8月28日（採用）/.test(r); }), true);
@@ -503,7 +503,7 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     const u = route.request().url();
     route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: /\/export\?/.test(u) ? CSV_STALE : CSV_FRESH });
   });
-  check('経路の優先順ではなく中身の新しさで選ぶ', b2.hdr.indexOf('（シート同期 8月28日 23:30）') !== -1, true);
+  check('経路の優先順ではなく中身の新しさで選ぶ', b2.hdr.indexOf('（シートは 8月28日 23:30 更新）') !== -1, true);
   check('gviz を採用したことが診断で分かる',
     b2.rows.some(function (r) { return /クエリ＝2026年8月28日（採用）/.test(r); }), true);
 
@@ -513,12 +513,13 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     if (/\/export\?/.test(u)) return route.abort('failed');
     route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV_FRESH });
   });
-  check('片方の経路が遮断されても最新が反映される', c3.hdr.indexOf('（シート同期 8月28日 23:30）') !== -1, true);
+  check('片方の経路が遮断されても最新が反映される', c3.hdr.indexOf('（シートは 8月28日 23:30 更新）') !== -1, true);
   check('遮断された経路は診断に「読めず」と出る', c3.rows.some(function (r) { return /読めず/.test(r); }), true);
-  // 片方が遮断されても内容は届いている。ここで警告を出すと「反映されていない」と
-  // 誤解させるため、全経路が駄目だったときだけ警告を出す。
-  check('片方が生きていれば警告バナーを出さない', c3.alert, '');
-  check('全経路が生きているときも警告を出さない', a.alert, '');
+  // 片方が遮断されても内容は届いている。ここで「読み込めませんでした」と出すと
+  // 「反映されていない」と誤解させるため、全経路が駄目だったときだけ出す。
+  // （シートの更新が古いこと自体を知らせる別のバナーはこの限りではない）
+  check('片方が生きていれば読み込み失敗の警告は出さない', c3.alert.indexOf('読み込めませんでした'), -1);
+  check('全経路が生きているときも読み込み失敗の警告は出さない', a.alert.indexOf('読み込めませんでした'), -1);
 
   // ---- 連携URLを取り違えても、もう一方の連携URLを壊さない -------------------
   // 2枚の連携URLが（タブ指定が効かないなどで）どちらも同じ形式の内容を返すと、
@@ -677,9 +678,13 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   await p10.close(); await ctx10.close();
   SHARED_BLOB = null;
 
-  // ---- 夜間のシート同期が動かなかったことを、こちらから知らせる ---------------
+  // ---- シートが1日以上更新されていないことを、こちらから知らせる ---------------
   // シートが更新されていなければ「昨日と同じ数字」が黙って出続ける。取得自体は
-  // 成功しているので失敗バナーも出ない。実運用で、この状態が何日も気づかれずに続いた。
+  // 成功しているので失敗バナーも出ない。実運用で、この状態が何日も気づかれなかった。
+  //
+  // 判定は「特定の時刻までに同期されたか」ではなく「26時間以上あいたか」で行う。
+  // 同期が何時に走るかは運用で変わる（実測では深夜2時台だった）ため、時刻を前提に
+  // すると、その時刻から実際の同期までの間、毎晩かならず誤警告が出てしまう。
   const syncCase = async function (nowIso, stamp) {
     const c = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
     const pg = await c.newPage();
@@ -702,23 +707,25 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     await pg.close(); await c.close();
     return txt;
   };
+  const STALE_MSG = 'スプレッドシートが1日以上更新されていません';
 
-  // 8/30 00:35 — 23時の同期が終わっているべき時刻を過ぎたのに、シートは 8/29 8:30 のまま
-  const stale = await syncCase('2026-08-30T00:35:00', '2026/08/29 8:30:00');
-  check('同期が飛んだら知らせる', stale.indexOf('昨夜のシート同期が行われていません') !== -1, true);
-  check('同期が飛んだら最後の同期時刻を出す', stale.indexOf('8月29日 08:30') !== -1, true);
+  // まる1日以上あいている（8/28 23:00 → 8/30 03:00 ＝ 28時間）
+  const stale = await syncCase('2026-08-30T03:00:00', '2026/08/28 23:00:00');
+  check('1日以上あいたら知らせる', stale.indexOf(STALE_MSG) !== -1, true);
+  check('シートの最終更新時刻を出す', stale.indexOf('8月28日 23:00') !== -1, true);
   check('原因がシート側だと明示する', stale.indexOf('スプレッドシート側の同期') !== -1, true);
 
-  // 同じ状態でも 00:06（23時台の同期がまだ終わっていないかもしれない時間帯）は出さない。
-  // 猶予を置かないと、毎晩23時台に必ず誤警告が出てしまう。
-  const tooEarly = await syncCase('2026-08-30T00:06:00', '2026/08/29 8:30:00');
-  check('同期の猶予中は警告しない', tooEarly.indexOf('昨夜のシート同期が行われていません'), -1);
+  // 回帰防止（実運用で誤警告を出した条件そのもの）:
+  // 深夜0:35時点で最終更新が前日8:30（16時間前）。同期はこのあと深夜2時台に走る。
+  // 「23:00までに同期されているはず」という前提で判定すると、ここで毎晩誤警告が出る。
+  const notYet = await syncCase('2026-08-30T00:35:00', '2026/08/29 8:30:00');
+  check('同期がまだの時間帯でも誤警告を出さない', notYet.indexOf(STALE_MSG), -1);
 
-  // 正常な日（前夜23:10に同期済み）は、翌日の日中も警告しない
-  const healthy = await syncCase('2026-08-30T15:00:00', '2026/08/29 23:10:00');
-  check('前夜に同期できていれば警告しない', healthy.indexOf('昨夜のシート同期が行われていません'), -1);
+  // 深夜2時台に同期が走った直後 — 当然出さない
+  const justSynced = await syncCase('2026-08-30T03:00:00', '2026/08/30 2:39:00');
+  check('同期直後は警告しない', justSynced.indexOf(STALE_MSG), -1);
 
-  // 同期が何日も止まっている場合も当然出る
+  // 何日も止まっている場合は日数で知らせる
   const long = await syncCase('2026-08-30T15:00:00', '2026/08/06 1:00:00');
   check('何日も止まっていれば日数で知らせる', long.indexOf('日前') !== -1, true);
 
