@@ -65,15 +65,21 @@
   //     （tools/sheet-update-stamp.gs をシートに設定すると書き込まれる）
   //  2. 無ければ、この画面がデータを読み込んだ時刻（最終読込）
   //  3. サンプル表示中は集計基準日
-  // 日付表示の主役は「最終読込」＝この画面がシートを読みに行って成功した時刻。
-  // 更新すれば必ず進むので、「更新したのに変わらない」という誤解が起きない。
-  // 「シート同期」＝シート側が「データ更新日時」列に記録した同期完了時刻
-  // （2枚連携時は古い方）。片方のシートの同期が止まるとここは止まったままになる。
-  // 以前はこちらを主表示にしていたため、実際には毎回最新を読めていても
-  // ヘッダーの日時が動かず「反映されていない」ように見えていた。
+  // 日付表示は2つの時刻を並べる。両者はまったく別のもので、混同されやすい。
+  //
+  //  ・最終読込   … この画面がスプレッドシートを読みに行って成功した時刻。
+  //                 ダッシュボード側の動作なので、開けば・更新すれば必ず進む。
+  //  ・シートは…更新 … スプレッドシートの「データ更新日時」列の値。この列は
+  //                 スプレッドシート側の Apps Script が書き込むもので、
+  //                 **ファイルの中身が最後に変わった時刻**を表す。
+  //                 ダッシュボードは読んで表示しているだけで、この時刻を
+  //                 決めることも進めることもできない。
+  //
+  // 以前は後者を「シート同期」と表示していたが、ダッシュボードが行う同期処理だと
+  // 誤解される言い方だったため改めた。
   function dataStamp() {
     if (state.dataLoadedAt) return ' <span class="lead-upd" title="この画面がスプレッドシート／ファイルを読み込んだ日時">最終読込 ' + ymdhmJa(state.dataLoadedAt) + ' 時点' +
-      (state.sheetUpdatedAt ? '（シート同期 ' + ymdhmJa(state.sheetUpdatedAt) + '）' : '') + '</span>';
+      (state.sheetUpdatedAt ? '（シートは ' + ymdhmJa(state.sheetUpdatedAt) + ' 更新）' : '') + '</span>';
     if (state.sheetUpdatedAt) return ' <span class="lead-upd" title="スプレッドシート側で記録された、データの同期（更新）が完了した日時">データ更新 ' + ymdhmJa(state.sheetUpdatedAt) + ' 時点</span>';
     var a = state.analytics && state.analytics.meta && state.analytics.meta.asOf;
     return a ? ' <span class="lead-upd">基準日 ' + ymdJa(a) + '</span>' : '';
@@ -1017,7 +1023,7 @@
     });
     // Google Sheets link — one row per slot
     html += card({
-      col: 'col-12', title: 'スプレッドシート連携' + help('URLを貼ると、開くたびに最新のシート内容を読み込みます。さらに<b>この画面を開いたままの端末</b>では、毎日23時〜翌1時のあいだ30分おき（23:00 / 23:30 / 0:00 / 0:30 / 1:00）に自動で再読み込みします。<br><br><b>重要</b>：このダッシュボードはサーバーを持たない仕組みのため、その時間帯に<b>誰もページを開いていなければ自動更新は行われません</b>（次に開いたときに最新を読み込みます）。毎晩必ず更新したい場合は、店頭の端末でこの画面を開いたままにしてください。実際に自動更新が動いたかは、下の「取得したデータの中身（診断）」で確認できます。'), sub: 'URLを貼るだけで自動反映（両方貼ると自動結合）・<b>この画面を開いている端末</b>のみ毎日23時〜翌1時に30分おきで自動更新',
+      col: 'col-12', title: 'スプレッドシート連携' + help('URLを貼ると、開くたびに最新のシート内容を読み込みます。さらに<b>この画面を開いたままの端末</b>では、毎日23時〜翌朝5時のあいだ30分おきに自動で再読み込みします（シート側の同期が深夜のどの時間に終わっても取りこぼさないため、窓を広くとっています）。<br><br><b>重要</b>：このダッシュボードはサーバーを持たない仕組みのため、その時間帯に<b>誰もページを開いていなければ自動更新は行われません</b>（次に開いたときに最新を読み込みます）。毎晩必ず更新したい場合は、店頭の端末でこの画面を開いたままにしてください。実際に自動更新が動いたかは、下の「取得したデータの中身（診断）」で確認できます。'), sub: 'URLを貼るだけで自動反映（両方貼ると自動結合）・<b>この画面を開いている端末</b>のみ毎日23時〜翌朝5時に30分おきで自動更新',
       body: (state.sheetUrl || state.sheetUrlKaikei
         ? '<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button type="button" class="pill accent" id="sheetRefreshNow">今すぐ更新</button></div>'
         : '') + ['yoyaku', 'kaikei'].map(function (slot) {
@@ -1151,14 +1157,14 @@
           // この画面を開いた端末が1台も無かったということ（下の注記を参照）。
           '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--hairline)">' +
           '<div class="datainfo">' +
-          '<div><span>夜間の自動更新</span><b>23:00 / 23:30 / 0:00 / 0:30 / 1:00</b></div>' +
+          '<div><span>夜間の自動更新</span><b>23:00〜翌5:00 の30分おき</b></div>' +
           '<div><span>前回の自動更新</span><b' + (state.autoReloadLast ? '' : ' style="color:var(--status-warning)"') + '>' +
             (state.autoReloadLast ? esc(ymdhmJa(state.autoReloadLast)) : 'まだ一度も動いていません') + '</b></div>' +
           (state.autoReloadNext ? '<div><span>次回の予定</span><b>' + esc(ymdhmJa(state.autoReloadNext)) + '</b></div>' : '') +
           '</div>' +
           '<div class="status-line" style="margin-top:10px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' +
           '<b>自動更新は、この画面を開いたままの端末でのみ動きます。</b>このダッシュボードはサーバーを持たない仕組みのため、' +
-          '23時〜翌1時に誰もページを開いていなければ自動更新は行われません（次に開いたときに最新を読み込みます）。' +
+          '23時〜翌朝5時に誰もページを開いていなければ自動更新は行われません（次に開いたときに最新を読み込みます）。' +
           '毎晩必ず更新したい場合は、店頭の端末でこの画面を開いたままにしておいてください。</div>' +
           '</div>'
       });
@@ -1688,19 +1694,16 @@
   // 「昨日と同じ数字」が黙って出続ける。取得は成功しているため失敗バナーも出ない。
   // 判定は「直近に過ぎた23:00より前の内容しか入っていないか」。23時台のどこで
   // 同期が終わるかはGoogle任せなので、90分の猶予を置いてから警告する。
-  var SYNC_HOUR = 23;                    // シート側の同期が走るべき時刻（時）
-  var SYNC_GRACE_MS = 90 * 60 * 1000;    // 23時台のどこで終わってもよいための猶予
-  function lastSyncDue(now) {
-    var d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), SYNC_HOUR, 0, 0, 0);
-    if (d > now) d.setDate(d.getDate() - 1);
-    return d;
-  }
+  // 判定は「まる1日ぶん抜けたか」で行う。何時に同期するかは運用で変わりうる
+  // （実測では深夜2時台に走っていた）ため、特定の時刻を前提にすると、その時刻を
+  // 過ぎてから実際の同期までの間、毎晩かならず誤警告が出てしまう。
+  // 26時間＝毎日1回の同期が1回飛んだことを、誤警告なしに検知できる最小のしきい値。
+  var SYNC_STALE_MS = 26 * 3600 * 1000;
   function staleSyncSlots(now) {
-    var due = lastSyncDue(now);
-    if (now - due < SYNC_GRACE_MS) return [];   // まだ同期の途中かもしれない時間帯
     return ['yoyaku', 'kaikei'].filter(function (sl) {
       var s2 = state.sources[sl];
-      return s2 && s2.via === 'スプレッドシート連携' && s2.updatedAt && Number(s2.updatedAt) < +due;
+      return s2 && s2.via === 'スプレッドシート連携' && s2.updatedAt &&
+        (now - Number(s2.updatedAt) > SYNC_STALE_MS);
     });
   }
   function staleSyncBanner() {
@@ -1709,11 +1712,11 @@
     var rows = slots.map(function (sl) {
       var s2 = state.sources[sl];
       var ageH = Math.floor((now - Number(s2.updatedAt)) / 3600000);
-      return '<li><b>' + esc(slotJa[sl]) + '</b>：最後の同期は ' + esc(ymdhmJa(s2.updatedAt)) +
+      return '<li><b>' + esc(slotJa[sl]) + '</b>：シートの最終更新は ' + esc(ymdhmJa(s2.updatedAt)) +
         '（' + (ageH >= 48 ? Math.floor(ageH / 24) + '日前' : ageH + '時間前') + '）</li>';
     }).join('');
     return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
-      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ 昨夜のシート同期が行われていません（表示中の数字は同期された時点のものです）</div>' +
+      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ スプレッドシートが1日以上更新されていません（表示中の数字はその時点のものです）</div>' +
       '<ul style="margin:0 0 10px;padding-left:1.2em;font-size:14px;line-height:1.8">' + rows + '</ul>' +
       '<div class="note-inline">ダッシュボードは取得できた内容をそのまま表示しています。' +
       '止まっているのは<b>スプレッドシート側の同期</b>です。スプレッドシートの' +
@@ -1770,15 +1773,22 @@
   }
 
   // ====================== 夜間の自動再読み込み ==============================
-  // スプレッドシート連携中は、毎日23時〜25時（翌1時）のあいだ30分おき
-  // （23:00 / 23:30 / 0:00 / 0:30 / 1:00・端末の現地時刻）に自動でシートを
+  // スプレッドシート連携中は、毎日23時〜翌朝5時のあいだ30分おき
+  // （23:00〜翌5:00の30分おき・端末の現地時刻）に自動でシートを
   // 再読み込みする。シート側の夜間同期（DailyCSVSync）がこの時間帯のどこで
   // 完了しても、30分以内にダッシュボードへ反映される。開いた瞬間に最新を
   // 取得する従来動作はそのままなので、閉じていた端末は次に開いたときに
   // 最新が入る。30分おきに読むため、1回の失敗（WiFi瞬断など）も次の回が拾う。
   // 非表示タブはブラウザがタイマーを止めるため、画面復帰時にも「直近の
   // 予定時刻より前の読み込みのままか」を確認して取りこぼしを拾う。
-  var RELOAD_TIMES = [[0, 0], [0, 30], [1, 0], [23, 0], [23, 30]];   // 1日の中の発火時刻（時刻順）
+  // 1日の中の発火時刻（時刻順）。23:00〜翌5:00を30分おきに見る。
+  // 窓を5時まで広げているのは、シート側の同期が何時に終わるかがこちらから決められない
+  // ため。実測では深夜2時台に走っており、以前の 23:00〜1:00 の窓では**完全に取り逃して
+  // いた**（開きっぱなしの端末でも、翌朝だれかが開くまで反映されない）。
+  var RELOAD_TIMES = [
+    [0, 0], [0, 30], [1, 0], [1, 30], [2, 0], [2, 30], [3, 0], [3, 30], [4, 0], [4, 30], [5, 0],
+    [23, 0], [23, 30]
+  ];
   function nextReloadAt(now) {
     for (var addDay = 0; addDay <= 1; addDay++) {
       for (var i = 0; i < RELOAD_TIMES.length; i++) {
@@ -1866,12 +1876,12 @@
 
   function updateChrome() {
     // ヘッダーの日付表示（dataStamp と同じ優先順）:
-    // この画面の読込時刻（＋シート側の同期時刻を併記）→ 同期時刻のみ → 基準日。
-    // 主役を「最終読込」にしているのは、シート側の「データ更新日時」列は片方の
-    // シートの同期が止まると凍結し、実際には毎回最新を読めていても日時が動かず
-    // 「反映されていない」ように見えてしまうため。
+    // この画面の読込時刻（＋シートが最後に変わった時刻を併記）→ 後者のみ → 基準日。
+    // 主役を「最終読込」にしているのは、シート側の「データ更新日時」列は
+    // スプレッドシートが更新されない限り動かず、実際には毎回最新を読めていても
+    // 日時が動かず「反映されていない」ように見えてしまうため。
     $('#asof').textContent = state.dataLoadedAt
-      ? '最終読込 ' + ymdhmJa(state.dataLoadedAt) + (state.sheetUpdatedAt ? '（シート同期 ' + ymdhmJa(state.sheetUpdatedAt) + '）' : '')
+      ? '最終読込 ' + ymdhmJa(state.dataLoadedAt) + (state.sheetUpdatedAt ? '（シートは ' + ymdhmJa(state.sheetUpdatedAt) + ' 更新）' : '')
       : state.sheetUpdatedAt ? 'データ更新 ' + ymdhmJa(state.sheetUpdatedAt)
       : (state.analytics.meta.asOf ? '基準日 ' + ymdJa(state.analytics.meta.asOf) : '');
     // サンプルデータ表示中はバッジ自体を非表示（実データ連携時のみ出所を表示）。
@@ -1939,7 +1949,7 @@
       var la = localStorage.getItem('kate-auto-last');
       if (la) state.autoReloadLast = new Date(+la);
     } catch (e) {}
-    scheduleNightlyReload();   // 連携中なら23時〜翌1時のあいだ30分おきに自動で再読み込み
+    scheduleNightlyReload();   // 連携中なら23時〜翌朝5時のあいだ30分おきに自動で再読み込み
 
     // 合言葉: if the repo ships an encrypted shared-link blob, load it. On a
     // device with nothing linked yet, re-render so the 合言葉 card and the
