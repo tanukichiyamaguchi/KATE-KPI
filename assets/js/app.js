@@ -1023,7 +1023,7 @@
     });
     // Google Sheets link — one row per slot
     html += card({
-      col: 'col-12', title: 'スプレッドシート連携' + help('URLを貼ると、開くたびに最新のシート内容を読み込みます。さらに<b>この画面を開いたままの端末</b>では、毎日23時〜翌朝5時のあいだ30分おきに自動で再読み込みします（シート側の同期が深夜のどの時間に終わっても取りこぼさないため、窓を広くとっています）。<br><br><b>重要</b>：このダッシュボードはサーバーを持たない仕組みのため、その時間帯に<b>誰もページを開いていなければ自動更新は行われません</b>（次に開いたときに最新を読み込みます）。毎晩必ず更新したい場合は、店頭の端末でこの画面を開いたままにしてください。実際に自動更新が動いたかは、下の「取得したデータの中身（診断）」で確認できます。'), sub: 'URLを貼るだけで自動反映（両方貼ると自動結合）・<b>この画面を開いている端末</b>のみ毎日23時〜翌朝5時に30分おきで自動更新',
+      col: 'col-12', title: 'スプレッドシート連携' + help('URLを貼ると、開くたびに最新のシート内容を読み込みます。さらに<b>この画面を開いたままの端末</b>では、<b>30分おき</b>に自動で再読み込みします（時間帯を問いません）。シート側の同期が何時に終わってもダッシュボードからは決められないため、時間帯を決め打ちせず常に見ています。<br><br><b>重要</b>：このダッシュボードはサーバーを持たない仕組みのため、その時間帯に<b>誰もページを開いていなければ自動更新は行われません</b>（次に開いたときに最新を読み込みます）。毎晩必ず更新したい場合は、店頭の端末でこの画面を開いたままにしてください。実際に自動更新が動いたかは、下の「取得したデータの中身（診断）」で確認できます。'), sub: 'URLを貼るだけで自動反映（両方貼ると自動結合）・<b>この画面を開いている端末</b>のみ30分おきに自動更新',
       body: (state.sheetUrl || state.sheetUrlKaikei
         ? '<div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button type="button" class="pill accent" id="sheetRefreshNow">今すぐ更新</button></div>'
         : '') + ['yoyaku', 'kaikei'].map(function (slot) {
@@ -1157,14 +1157,14 @@
           // この画面を開いた端末が1台も無かったということ（下の注記を参照）。
           '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--hairline)">' +
           '<div class="datainfo">' +
-          '<div><span>夜間の自動更新</span><b>23:00〜翌5:00 の30分おき</b></div>' +
+          '<div><span>自動更新の間隔</span><b>30分おき（終日）</b></div>' +
           '<div><span>前回の自動更新</span><b' + (state.autoReloadLast ? '' : ' style="color:var(--status-warning)"') + '>' +
             (state.autoReloadLast ? esc(ymdhmJa(state.autoReloadLast)) : 'まだ一度も動いていません') + '</b></div>' +
           (state.autoReloadNext ? '<div><span>次回の予定</span><b>' + esc(ymdhmJa(state.autoReloadNext)) + '</b></div>' : '') +
           '</div>' +
           '<div class="status-line" style="margin-top:10px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' +
           '<b>自動更新は、この画面を開いたままの端末でのみ動きます。</b>このダッシュボードはサーバーを持たない仕組みのため、' +
-          '23時〜翌朝5時に誰もページを開いていなければ自動更新は行われません（次に開いたときに最新を読み込みます）。' +
+          '誰もページを開いていなければ自動更新は行われません（次に開いたときに最新を読み込みます）。' +
           '毎晩必ず更新したい場合は、店頭の端末でこの画面を開いたままにしておいてください。</div>' +
           '</div>'
       });
@@ -1476,16 +1476,16 @@
       // /export が CORS で読めない環境でも gviz の内容が届き、逆に gviz が古い
       // スナップショットを返しても /export の新しい内容が勝つ。どちらか一方に
       // 賭けないことで、「シートは更新されているのに反映されない」を塞ぐ。
-      var cands = res.ok.map(function (r) {
+      var cands = res.ok.map(function (r, i) {
         try {
           var p = global.KATE.ingest.fromAOA(global.KATE.ingest.parseCSV(r.text));
           return {
-            r: r, parsed: p,
+            r: r, parsed: p, idx: i,
             stamp: p.sheetUpdatedAt ? +p.sheetUpdatedAt : 0,
             latest: latestRecordDate(p.records) || 0,
             rows: p.records.length
           };
-        } catch (e) { return { r: r, error: e }; }
+        } catch (e) { return { r: r, idx: i, error: e }; }
       });
       // 経路ごとの失敗理由を全部残す。1本分だけ出すと、たとえば「/export は共有設定、
       // gviz は接続遮断」のうち片方しか見えず、原因の切り分けを誤らせる。
@@ -1499,8 +1499,13 @@
         var first = cands[0] || res.failed[0];
         throw (first && (first.error || (first.r && first.r.error))) || new Error('取得に失敗しました。');
       }
-      // 新しさの順: シート側の同期スタンプ → データ内の最新日 → 件数
-      good.sort(function (a, b) { return (b.stamp - a.stamp) || (b.latest - a.latest) || (b.rows - a.rows); });
+      // 新しさの順: シート側の同期スタンプ → データ内の最新日 → 件数 → 候補順。
+      // 最後の候補順は同点時の保険。既存行の金額修正のように、スタンプ・最新日・行数が
+      // どれも変わらない更新では全経路が同点になりうる。そのとき /export（常に現在の
+      // 内容）が gviz（Google側キャッシュ）に負けないよう、明示的に順序で決める。
+      good.sort(function (a, b) {
+        return (b.stamp - a.stamp) || (b.latest - a.latest) || (b.rows - a.rows) || (a.idx - b.idx);
+      });
       var win = good[0], text = win.r.text, parsed = win.parsed;
       usedKind = win.r.kind;
       var format = parsed.format, recs = parsed.records;
@@ -1773,22 +1778,31 @@
   }
 
   // ====================== 夜間の自動再読み込み ==============================
-  // スプレッドシート連携中は、毎日23時〜翌朝5時のあいだ30分おき
-  // （23:00〜翌5:00の30分おき・端末の現地時刻）に自動でシートを
+  // スプレッドシート連携中は、終日30分おき
+  // （終日30分おき・端末の現地時刻）に自動でシートを
   // 再読み込みする。シート側の夜間同期（DailyCSVSync）がこの時間帯のどこで
   // 完了しても、30分以内にダッシュボードへ反映される。開いた瞬間に最新を
   // 取得する従来動作はそのままなので、閉じていた端末は次に開いたときに
   // 最新が入る。30分おきに読むため、1回の失敗（WiFi瞬断など）も次の回が拾う。
   // 非表示タブはブラウザがタイマーを止めるため、画面復帰時にも「直近の
   // 予定時刻より前の読み込みのままか」を確認して取りこぼしを拾う。
-  // 1日の中の発火時刻（時刻順）。23:00〜翌5:00を30分おきに見る。
-  // 窓を5時まで広げているのは、シート側の同期が何時に終わるかがこちらから決められない
-  // ため。実測では深夜2時台に走っており、以前の 23:00〜1:00 の窓では**完全に取り逃して
-  // いた**（開きっぱなしの端末でも、翌朝だれかが開くまで反映されない）。
-  var RELOAD_TIMES = [
-    [0, 0], [0, 30], [1, 0], [1, 30], [2, 0], [2, 30], [3, 0], [3, 30], [4, 0], [4, 30], [5, 0],
-    [23, 0], [23, 30]
-  ];
+  // 1日の中の発火時刻（時刻順）＝終日30分おき。
+  //
+  // 以前は「夜間だけ」の窓（23:00〜翌1:00）にしていたが、これには2つの穴があった。
+  //  ・窓の外（1:00〜23:00 の22時間）は、タイマーも発火せず、画面に戻ったときの
+  //    取りこぼし判定（直近の予定時刻より前の読み込みか）も成立しないため、
+  //    開きっぱなしの端末が**丸一日シートを一度も読まない**。実際に、シート側の
+  //    同期が深夜2時台に走っていたため、その内容は翌日23時まで反映されなかった。
+  //  ・窓の中で失敗すると、1:00の回の失敗は次が翌23:00＝22時間後になる。
+  // シート側の同期が何時に走るかはダッシュボードから決められない以上、時間帯を
+  // 決め打ちしないのが正しい。30分おきに見ておけば、いつ同期されても30分以内に
+  // 反映され、失敗しても30分後が拾い、スリープでタイマーがずれても次の境界が
+  // 最大30分先にあるので自己修復する。取得はCSV2本の軽い fetch なので負荷も小さい。
+  var RELOAD_TIMES = (function () {
+    var t = [];
+    for (var h = 0; h < 24; h++) { t.push([h, 0]); t.push([h, 30]); }
+    return t;
+  })();
   function nextReloadAt(now) {
     for (var addDay = 0; addDay <= 1; addDay++) {
       for (var i = 0; i < RELOAD_TIMES.length; i++) {
@@ -1812,18 +1826,36 @@
     if (state.sheetUrlKaikei) { linkSheet(state.sheetUrlKaikei, 'kaikei', opts || { silent: true }); did = true; }
     return did;
   }
+  // 更新の駆動は「1分おきに実時刻を見に行く見張り」にする。
+  //
+  // 以前は次の予定時刻までの長い setTimeout を1本張っていたが、これには
+  // 実運用で効いてくる弱点があった:
+  //  ・ブラウザのタイマーは単調時計に載っており、OSのスリープ中は進まない。
+  //    ノートPCを閉じていた時間ぶん、実時刻では何時間も遅れて発火する。
+  //  ・非表示タブのタイマーは間引かれ、タブが凍結されると発火自体が落ちる。
+  //  ・画面をずっと表示したままの端末では visibilitychange も発火しないため、
+  //    タイマーが落ちると復帰する手段が無くなる。
+  // 1分おきに「直近に過ぎた予定時刻より前の読み込みのままか」を実時刻で確かめる
+  // 方式なら、スリープから戻った直後・凍結が解けた直後にその場で取り戻せる。
+  // 失敗しても同じ境界を何度も叩かないよう、1つの境界につき1回だけ試す。
+  var WATCHDOG_MS = 60 * 1000;
+  var lastAttemptBoundary = 0;
   function scheduleNightlyReload() {
-    var next = nextReloadAt(new Date());
-    state.autoReloadNext = next;
-    setTimeout(function () {
+    state.autoReloadNext = nextReloadAt(new Date());
+    setInterval(function () {
+      var now = new Date();
+      state.autoReloadNext = nextReloadAt(now);
+      if (!state.sheetUrl && !state.sheetUrlKaikei) return;
+      var b = +lastReloadBoundary(now);
+      if (lastAttemptBoundary === b) return;                       // この境界は試し済み
+      if (state.dataLoadedAt && +state.dataLoadedAt >= b) return;  // すでに読めている
+      lastAttemptBoundary = b;
       // 実際に発火したことを記録（端末に残すので、翌日開いたときに前回実績が分かる）
-      state.autoReloadLast = new Date();
-      try { localStorage.setItem('kate-auto-last', String(+state.autoReloadLast)); } catch (e) {}
-      // 次回の予約は必ず入れる。ここで例外が漏れると鎖が切れ、そのタブでは
-      // 二度と自動更新が走らなくなる（開きっぱなしの端末ほど影響が長く残る）。
+      state.autoReloadLast = now;
+      try { localStorage.setItem('kate-auto-last', String(+now)); } catch (e) {}
+      // ここで例外が漏れても見張りは setInterval なので止まらない
       try { reloadLinkedSheets(); } catch (e) { console.warn('auto reload failed', e); }
-      scheduleNightlyReload();
-    }, next - new Date());
+    }, WATCHDOG_MS);
   }
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible') return;
@@ -1949,7 +1981,7 @@
       var la = localStorage.getItem('kate-auto-last');
       if (la) state.autoReloadLast = new Date(+la);
     } catch (e) {}
-    scheduleNightlyReload();   // 連携中なら23時〜翌朝5時のあいだ30分おきに自動で再読み込み
+    scheduleNightlyReload();   // 連携中なら30分おきに自動で再読み込み
 
     // 合言葉: if the repo ships an encrypted shared-link blob, load it. On a
     // device with nothing linked yet, re-render so the 合言葉 card and the
