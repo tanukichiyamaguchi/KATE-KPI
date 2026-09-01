@@ -1716,19 +1716,43 @@
   function staleSyncBanner() {
     var now = new Date(), slots = staleSyncSlots(now);
     if (!slots.length) return '';
+    // 切り分けに要る事実（取得経路・データ内の最新日・取得件数）をここに出す。
+    // これらは個人情報ではないので、管理ロックの内側に置く理由が無い。実際、
+    // 経路が分からないために「Google側で凍結する公開スナップURLで連携している」のか
+    // 「編集URLなのに古い内容が返っている」のかを画面から判別できなかった。
+    // URLそのものは絶対に出さない（シートIDが漏れる）。
+    var anyPub = false;
     var rows = slots.map(function (sl) {
-      var s2 = state.sources[sl];
+      var s2 = state.sources[sl], d2 = s2.diag || {};
       var ageH = Math.floor((now - Number(s2.updatedAt)) / 3600000);
+      if (d2.kind === 'pub') anyPub = true;
+      var facts = [];
+      if (d2.kind) facts.push('取得経路 ' + (KIND_JA[d2.kind] || d2.kind) +
+        (d2.kind === 'export' ? '（常に最新）' : d2.kind === 'gviz' ? '（キャッシュ有）' : '（公開スナップ・凍結あり）'));
+      if (d2.latest) facts.push('データ内の最新日 ' + ymdNumJa(d2.latest));
+      if (typeof d2.rows === 'number') facts.push('取得 ' + F.int(d2.rows) + '件');
       return '<li><b>' + esc(slotJa[sl]) + '</b>：シートの最終更新は ' + esc(ymdhmJa(s2.updatedAt)) +
-        '（' + (ageH >= 48 ? Math.floor(ageH / 24) + '日前' : ageH + '時間前') + '）</li>';
+        '（' + (ageH >= 48 ? Math.floor(ageH / 24) + '日前' : ageH + '時間前') + '）' +
+        (facts.length ? '<br><span class="note-inline">' + esc(facts.join('　／　')) + '</span>' : '') +
+        '</li>';
     }).join('');
     return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
       '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ スプレッドシートが1日以上更新されていません（表示中の数字はその時点のものです）</div>' +
       '<ul style="margin:0 0 10px;padding-left:1.2em;font-size:14px;line-height:1.8">' + rows + '</ul>' +
-      '<div class="note-inline">ダッシュボードは取得できた内容をそのまま表示しています。' +
-      '止まっているのは<b>スプレッドシート側の同期</b>です。スプレッドシートの' +
-      '<code>拡張機能 → Apps Script → 実行数</code>で、同期のエラーと実行時刻をご確認ください。' +
-      '同期の実行時刻を毎日23時台に設定し直すスクリプトを <code>tools/sync-at-2300.gs</code> に用意しています。</div>' +
+      (anyPub
+        // 「ウェブに公開」URLは、公開設定の自動再公開が外れるとGoogle側で内容が
+        // 公開時点に凍結する。何度読み込んでも同じ古い内容が返るため、
+        // シート側が更新されていても永久に反映されない。しかもこの形式のURLは
+        // ドキュメントIDを含まないため、別経路へのフォールバックが作れない。
+        ? '<div class="note-inline" style="color:var(--status-critical)"><b>連携が「ウェブに公開」URLです。</b>' +
+          'この形式は、公開設定の「自動的に再公開する」が外れていると<b>Google側で内容が公開時点に凍結</b>し、' +
+          'シートを更新しても永久に届きません（何度更新を押しても同じ内容が返ります）。' +
+          '「データ」タブで<b>通常の編集URL</b>（<code>/spreadsheets/d/…/edit</code>）に貼り替えてください。' +
+          '編集URLなら常に最新を読む経路が使えます。</div>'
+        : '<div class="note-inline">ダッシュボードは取得できた内容をそのまま表示しています。' +
+          '止まっているのは<b>スプレッドシート側の同期</b>です。スプレッドシートの' +
+          '<code>拡張機能 → Apps Script → 実行数</code>で、同期のエラーと実行時刻をご確認ください。' +
+          '同期の実行時刻を毎日23時台に設定し直すスクリプトを <code>tools/sync-at-2300.gs</code> に用意しています。</div>') +
       '</div></div></div>';
   }
   function renderSheetAlert() {
