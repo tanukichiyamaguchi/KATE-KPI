@@ -108,6 +108,27 @@ gt.rfm.segments.forEach(seg => {
   if (mine) check(seg.seg, mine.people, seg.people, 1);
 });
 
+h('■ 月次売上の新規・既存内訳');
+// 内訳の分け方は composition と同じ（何回目か）、金額の取り方は monthly.rev と同じ。
+// したがって内訳の合計は monthly.rev と一致しなければならない（浮動小数の丸め差は許容）。
+{
+  const rm = R.store.revenueMix || [], mo = R.store.monthly || [];
+  check('revenueMix の月数が monthly と一致', rm.length, mo.length, 0);
+  let worst = 0, worstM = '';
+  rm.forEach((x, i) => {
+    const sum = x.newActual + x.repeatActual + x.newExpected + x.repeatExpected;
+    const d = Math.abs(sum - mo[i].rev);
+    if (d > worst) { worst = d; worstM = x.m; }
+  });
+  check('内訳の合計が月次売上と一致（最大ズレ' + (worstM || '—') + '）', worst < 0.01, true, 0);
+  // 実績分だけを足すと、会計済み売上（revActual）と一致する
+  let worstA = 0;
+  rm.forEach((x, i) => { worstA = Math.max(worstA, Math.abs(x.newActual + x.repeatActual - mo[i].revActual)); });
+  check('実績の内訳が会計済み売上と一致', worstA < 0.01, true, 0);
+  check('新規・既存とも金額が入っている月がある',
+    rm.some(x => x.newActual > 0) && rm.some(x => x.repeatActual > 0), true, 0);
+}
+
 h('■ 配信キャッシュ');
 // index.html の資産URLに付けたバージョンが package.json とずれると、利用者の
 // 端末が古い app.js を使い続け、直したはずの不具合が「まだ直っていない」ように

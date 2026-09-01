@@ -836,6 +836,67 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   // 編集URLのときに凍結の話をすると誤誘導になる
   check('編集URL: 凍結の警告は出さない', edit.text.indexOf('公開時点に凍結'), -1);
 
+  // ---- 鮮度の判定は「内容が最後に変わった時刻」で行う -------------------------
+  // 以前はシート側の「データ更新日時」列だけで判定していたが、この列は
+  // スプレッドシートのApps Scriptが**最大10分遅れて**書き込む値なので、
+  // 実際にはデータが新しくてもこの列だけ古いことがある。実運用でこれにより
+  //  ・「1日以上更新されていません」の誤警告
+  //  ・開いた直後に更新を押しただけで「シート側の同期をご確認ください」の赤トースト
+  // が出て、正常動作が障害に見えた。
+  const ctxF = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+  const pF = await ctxF.newPage();
+  const OLD_STAMP = '2026/08/28 3:01:00';   // 3日以上前のスタンプ
+  let bodyF = [
+    'ステータス,来店日,お名前,スタッフ名,予約時合計金額,会計時合計金額,データ更新日時',
+    '会計済み,2026/08/28,鮮度太郎,momo,7000,7000,' + OLD_STAMP
+  ].join('\n');
+  await pF.route('https://docs.google.com/**', function (route) {
+    route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: bodyF });
+  });
+  await ctxF.addInitScript(function () {
+    try { localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/FRESHCHK/edit#gid=0'); } catch (e) {}
+  });
+  await pF.clock.install({ time: JST('2026-09-01T11:24:00') });
+  await pF.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+  await sleep(1800);
+  // 初めて観測した内容を「たったいま変わった」とみなすと、何日も止まっているシートを
+  // 初めて開いた端末で本物の停止を見逃す。初回はスタンプで判定する。
+  const first = await pF.evaluate(function () {
+    var el = document.querySelector('#sheetAlert'); return el ? el.textContent.replace(/\s+/g, ' ') : '';
+  });
+  check('初回観測はスタンプで判定する（停止を見逃さない）',
+    first.indexOf('1日以上更新されていません') !== -1, true);
+
+  // 内容が実際に変わったら、スタンプが古いままでも警告を出さない（誤警告の回帰防止）
+  bodyF = [
+    'ステータス,来店日,お名前,スタッフ名,予約時合計金額,会計時合計金額,データ更新日時',
+    '会計済み,2026/08/28,鮮度太郎,momo,7000,7000,' + OLD_STAMP,
+    '会計済み,2026/08/29,鮮度花子,aoi,9000,9000,'
+  ].join('\n');
+  await pF.evaluate(function () { location.hash = '#data'; });
+  await sleep(600);
+  await pF.fill('#ownerPassInput', OWNER_PASS);
+  await pF.click('#ownerPassBtn');
+  await pF.waitForSelector('#sheetRefreshNow', { state: 'attached', timeout: 5000 });
+  await pF.click('#sheetRefreshNow');
+  await sleep(1600);
+  const afterChange = await pF.evaluate(function () {
+    var el = document.querySelector('#sheetAlert'); return el ? el.textContent.replace(/\s+/g, ' ') : '';
+  });
+  check('内容が変われば、スタンプが古くても警告しない',
+    afterChange.indexOf('1日以上更新されていません'), -1);
+
+  // 直後にもう一度押す＝内容は当然同じ。ここで障害のように見せてはいけない。
+  await pF.click('#sheetRefreshNow');
+  await sleep(1600);
+  const sameToast = await pF.evaluate(function () {
+    var t = document.querySelector('.toast'); return t ? t.textContent.replace(/\s+/g, ' ') : '';
+  });
+  check('直後の再取得: 変化なしと伝える', sameToast.indexOf('変わっていません') !== -1, true);
+  check('直後の再取得: 障害のように見せない', sameToast.indexOf('シート側の同期をご確認ください'), -1);
+  check('直後の再取得: 取得は成功していると伝える', sameToast.indexOf('取得は成功しています') !== -1, true);
+  await pF.close(); await ctxF.close();
+
   await browser.close(); server.close();
   console.log('\x1b[1mSUMMARY\x1b[0m  \x1b[32m' + pass + ' pass\x1b[0m · \x1b[31m' + fail + ' fail\x1b[0m');
   process.exit(fail ? 1 : 0);
