@@ -787,6 +787,55 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   check('スリープから復帰したら取り戻す', hitsS >= beforeSleep + PER_LOAD, true);
   await pS.close(); await ctxS.close();
 
+  // ---- 古い内容を掴まされたとき、経路が画面から分かること -------------------
+  // 実運用で「シートは更新しているのに反映されない」となった際、取得経路が
+  // 管理ロックの内側（診断表）にしか出ておらず、画面の写真からは
+  //   ・Google側で凍結する「ウェブに公開」URLで連携しているのか
+  //   ・編集URLなのに古い内容が返っているのか
+  // を判別できなかった。切り分けに要る事実は個人情報ではないので警告に出す。
+  // ただしURLそのものは出さない（シートIDが漏れる）。
+  const staleWith = async function (sheetUrl, nowIso, stamp) {
+    const c = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
+    const pg = await c.newPage();
+    const body = [
+      'ステータス,来店日,お名前,スタッフ名,予約時合計金額,会計時合計金額,データ更新日時',
+      '会計済み,2026/08/28,凍結太郎,momo,7000,7000,' + stamp
+    ].join('\n');
+    await pg.route('https://docs.google.com/**', function (route) {
+      route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: body });
+    });
+    await c.addInitScript(function (u) {
+      try { localStorage.setItem('kate-sheet-url', u); } catch (e) {}
+    }, sheetUrl);
+    await pg.clock.install({ time: JST(nowIso) });
+    await pg.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
+    await sleep(1800);
+    const out = await pg.evaluate(function () {
+      var el = document.querySelector('#sheetAlert');
+      return { text: el ? el.textContent.replace(/\s+/g, ' ') : '', html: el ? el.innerHTML : '' };
+    });
+    await pg.close(); await c.close();
+    return out;
+  };
+
+  // 編集URL — 常に最新を読む経路が使えている
+  const edit = await staleWith('https://docs.google.com/spreadsheets/d/EDITURL/edit#gid=0',
+    '2026-09-01T11:24:00', '2026/08/31 3:01:00');
+  check('古い内容: 取得経路を警告に出す', edit.text.indexOf('取得経路 CSV書き出し（常に最新）') !== -1, true);
+  check('古い内容: データ内の最新日を出す', edit.text.indexOf('データ内の最新日 2026年8月28日') !== -1, true);
+  check('古い内容: 取得件数を出す', edit.text.indexOf('取得 1件') !== -1, true);
+  check('古い内容: シートIDは出さない', edit.html.indexOf('EDITURL'), -1);
+
+  // 「ウェブに公開」URL — Google側で凍結しうるので、貼り替えを強く促す
+  const pub = await staleWith('https://docs.google.com/spreadsheets/d/e/2PACX-FROZEN/pub?output=csv',
+    '2026-09-01T11:24:00', '2026/08/31 3:01:00');
+  check('公開URL: 経路を「公開スナップ」と出す', pub.text.indexOf('公開スナップ・凍結あり') !== -1, true);
+  check('公開URL: 凍結の可能性を明示する', pub.text.indexOf('公開時点に凍結') !== -1, true);
+  check('公開URL: 編集URLへの貼り替えを促す', pub.text.indexOf('通常の編集URL') !== -1, true);
+  check('公開URL: シートIDは出さない', pub.html.indexOf('2PACX-FROZEN'), -1);
+  // 編集URLのときに凍結の話をすると誤誘導になる
+  check('編集URL: 凍結の警告は出さない', edit.text.indexOf('公開時点に凍結'), -1);
+
   await browser.close(); server.close();
   console.log('\x1b[1mSUMMARY\x1b[0m  \x1b[32m' + pass + ' pass\x1b[0m · \x1b[31m' + fail + ' fail\x1b[0m');
   process.exit(fail ? 1 : 0);
