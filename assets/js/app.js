@@ -66,22 +66,17 @@
   //     （tools/sheet-update-stamp.gs をシートに設定すると書き込まれる）
   //  2. 無ければ、この画面がデータを読み込んだ時刻（最終読込）
   //  3. サンプル表示中は集計基準日
-  // 日付表示は2つの時刻を並べる。両者はまったく別のもので、混同されやすい。
+  // 日付表示は「最終読込」＝この画面がスプレッドシートを読みに行って成功した時刻の1つだけ。
   //
-  //  ・最終読込   … この画面がスプレッドシートを読みに行って成功した時刻。
-  //                 ダッシュボード側の動作なので、開けば・更新すれば必ず進む。
-  //  ・シートは…更新 … スプレッドシートの「データ更新日時」列の値。この列は
-  //                 スプレッドシート側の Apps Script が書き込むもので、
-  //                 **ファイルの中身が最後に変わった時刻**を表す。
-  //                 ダッシュボードは読んで表示しているだけで、この時刻を
-  //                 決めることも進めることもできない。
-  //
-  // 以前は後者を「シート同期」と表示していたが、ダッシュボードが行う同期処理だと
-  // 誤解される言い方だったため改めた。
+  // 以前はシート側の「データ更新日時」列の値も併記していたが、この列を書いているのは
+  // スプレッドシートの別スクリプトで、**データが正常に更新されていてもこの列だけ
+  // 止まることがある**（実際に32時間止まり、誤警告と混乱の原因になった）。
+  // 併記すると「シートが更新されていない」と読めてしまうため、ヘッダーからは外し、
+  // データタブの診断（そこには由来の説明もある）に残す。
   function dataStamp() {
     if (state.dataLoadedAt) return ' <span class="lead-upd" title="この画面がスプレッドシート／ファイルを読み込んだ日時">最終読込 ' + ymdhmJa(state.dataLoadedAt) + ' 時点' +
-      (state.sheetUpdatedAt ? '（シートは ' + ymdhmJa(state.sheetUpdatedAt) + ' 更新）' : '') + '</span>';
-    if (state.sheetUpdatedAt) return ' <span class="lead-upd" title="スプレッドシート側で記録された、データの同期（更新）が完了した日時">データ更新 ' + ymdhmJa(state.sheetUpdatedAt) + ' 時点</span>';
+'</span>';
+    if (state.sheetUpdatedAt) return ' <span class="lead-upd" title="スプレッドシート側のスクリプトが「データ更新日時」列に記録した時刻（この列だけ止まることがあります）">データ更新 ' + ymdhmJa(state.sheetUpdatedAt) + ' 時点</span>';
     var a = state.analytics && state.analytics.meta && state.analytics.meta.asOf;
     return a ? ' <span class="lead-upd">基準日 ' + ymdJa(a) + '</span>' : '';
   }
@@ -1244,7 +1239,7 @@
         '<div><span>来店顧客</span><b class="tnum">' + F.int(A.store.customers) + '人</b></div>' +
         '<div><span>対象期間</span><b>' + esc(ymRangeJa(m.periodStart, m.periodEnd)) + '</b></div>' +
         '<div><span>集計基準日</span><b>' + esc(ymdJa(m.asOf)) + '</b></div>' +
-        (state.sheetUpdatedAt ? '<div><span>データ更新</span><b>' + esc(ymdhmJa(state.sheetUpdatedAt)) + '</b></div>' : '') +
+        (state.sheetUpdatedAt ? '<div><span>データ更新日時（シート側の記録）' + help('スプレッドシートの「データ更新日時」列の値です。この列を書いているのはスプレッドシート側の別スクリプト（<code>tools/sheet-update-stamp.gs</code>）なので、<b>データが正常に更新されていても、この列だけ止まることがあります</b>。データの鮮度の判断には使っていません（判断は「取得した内容が最後に変わった時刻」で行っています）。') + '</span><b>' + esc(ymdhmJa(state.sheetUpdatedAt)) + '</b></div>' : '') +
         srcRows +
         (state.dataLoadedAt ? '<div><span>最終読込</span><b>' + esc(ymdhmJa(state.dataLoadedAt)) + '</b></div>' : '') + '</div>' +
         staleWarns +
@@ -1750,17 +1745,23 @@
   // 過ぎてから実際の同期までの間、毎晩かならず誤警告が出てしまう。
   // 26時間＝毎日1回の同期が1回飛んだことを、誤警告なしに検知できる最小のしきい値。
   var SYNC_STALE_MS = 26 * 3600 * 1000;
-  // 鮮度は「取得内容が最後に変わった時刻」で判断する。シート側の「データ更新日時」列は
-  // スプレッドシートのApps Scriptが最大10分遅れて書き込む値なので、これ単独で判定すると
-  // 実際にはデータが新しいのに「1日以上更新されていません」と誤警告する（実際に起きた）。
-  // 内容の変化を1度も観測していない端末（開いたばかり）では、スタンプで代用する。
+  // 鮮度は「取得内容が最後に変わった時刻」だけで判断する。
+  //
+  // シート側の「データ更新日時」列は使わない。この列を書いているのはスプレッドシートの
+  // 別スクリプト（tools/sheet-update-stamp.gs）で、**それだけが止まることがある**。
+  // 実際に、データは正常に更新されているのにこの列が32時間止まり、「1日以上更新されて
+  // いません」と誤警告した。データの鮮度とスタンプの鮮度は別物である。
+  //
+  // 判定材料は自分で観測した事実だけにする: 前回取得した内容のハッシュを端末に残し、
+  // それが26時間以上変わらなければ警告する。まだ一度も変化を観測していない端末
+  // （初めて開いた端末）では判断材料が無いので**警告しない**。翌日以降その端末が
+  // 開けば、前回のハッシュと比較できるので本物の停止は必ず検知できる。
   function staleSyncSlots(now) {
     return ['yoyaku', 'kaikei'].filter(function (sl) {
       var s2 = state.sources[sl];
       if (!s2 || s2.via !== 'スプレッドシート連携') return false;
       var changed = state.contentChangedAt[sl];
-      if (changed) return (now - changed) > SYNC_STALE_MS;
-      return !!s2.updatedAt && (now - Number(s2.updatedAt) > SYNC_STALE_MS);
+      return !!changed && (now - changed) > SYNC_STALE_MS;
     });
   }
   function staleSyncBanner() {
@@ -1774,20 +1775,21 @@
     var anyPub = false;
     var rows = slots.map(function (sl) {
       var s2 = state.sources[sl], d2 = s2.diag || {};
-      var ageH = Math.floor((now - Number(s2.updatedAt)) / 3600000);
+      var changedAt = state.contentChangedAt[sl];
+      var ageH = Math.floor((now - changedAt) / 3600000);
       if (d2.kind === 'pub') anyPub = true;
       var facts = [];
       if (d2.kind) facts.push('取得経路 ' + (KIND_JA[d2.kind] || d2.kind) +
         (d2.kind === 'export' ? '（常に最新）' : d2.kind === 'gviz' ? '（キャッシュ有）' : '（公開スナップ・凍結あり）'));
       if (d2.latest) facts.push('データ内の最新日 ' + ymdNumJa(d2.latest));
       if (typeof d2.rows === 'number') facts.push('取得 ' + F.int(d2.rows) + '件');
-      return '<li><b>' + esc(slotJa[sl]) + '</b>：シートの最終更新は ' + esc(ymdhmJa(s2.updatedAt)) +
+      return '<li><b>' + esc(slotJa[sl]) + '</b>：内容が最後に変わったのは ' + esc(ymdhmJa(new Date(changedAt))) +
         '（' + (ageH >= 48 ? Math.floor(ageH / 24) + '日前' : ageH + '時間前') + '）' +
         (facts.length ? '<br><span class="note-inline">' + esc(facts.join('　／　')) + '</span>' : '') +
         '</li>';
     }).join('');
     return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
-      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ スプレッドシートが1日以上更新されていません（表示中の数字はその時点のものです）</div>' +
+      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ シートの内容が1日以上変わっていません（表示中の数字はその時点のものです）</div>' +
       '<ul style="margin:0 0 10px;padding-left:1.2em;font-size:14px;line-height:1.8">' + rows + '</ul>' +
       (anyPub
         // 「ウェブに公開」URLは、公開設定の自動再公開が外れるとGoogle側で内容が
@@ -1983,13 +1985,11 @@
   }
 
   function updateChrome() {
-    // ヘッダーの日付表示（dataStamp と同じ優先順）:
-    // この画面の読込時刻（＋シートが最後に変わった時刻を併記）→ 後者のみ → 基準日。
-    // 主役を「最終読込」にしているのは、シート側の「データ更新日時」列は
-    // スプレッドシートが更新されない限り動かず、実際には毎回最新を読めていても
-    // 日時が動かず「反映されていない」ように見えてしまうため。
+    // ヘッダーの日付表示: この画面の読込時刻 → （実データ未取得なら）シート側の記録 → 基準日。
+    // 「最終読込」だけを主役にしているのは、シート側の「データ更新日時」列が
+    // 別スクリプト由来で単独で止まりうるため（併記すると誤解を招く。上の dataStamp 参照）。
     $('#asof').textContent = state.dataLoadedAt
-      ? '最終読込 ' + ymdhmJa(state.dataLoadedAt) + (state.sheetUpdatedAt ? '（シートは ' + ymdhmJa(state.sheetUpdatedAt) + ' 更新）' : '')
+      ? '最終読込 ' + ymdhmJa(state.dataLoadedAt)
       : state.sheetUpdatedAt ? 'データ更新 ' + ymdhmJa(state.sheetUpdatedAt)
       : (state.analytics.meta.asOf ? '基準日 ' + ymdJa(state.analytics.meta.asOf) : '');
     // サンプルデータ表示中はバッジ自体を非表示（実データ連携時のみ出所を表示）。

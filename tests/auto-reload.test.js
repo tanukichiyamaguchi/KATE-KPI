@@ -235,12 +235,12 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   CSV_BODY = CSV_V2;                      // シートが更新された
   await page.click('#sheetRefreshNow');
   await sleep(1500);
-  // ヘッダーの主役は「最終読込」＝読みに行って成功した時刻（押せば必ず進む）。
-  // シート側の同期時刻は併記。シート側が止まっても読込時刻は動くため、
-  // 「更新したのに日時が変わらない」という誤解が起きない。
+  // ヘッダーは「最終読込」＝読みに行って成功した時刻だけを出す。
+  // シート側の「データ更新日時」列は別スクリプト由来で単独で止まりうるため、
+  // 併記すると「シートが更新されていない」と誤読される（実際に混乱を招いた）。
   const hdrV2 = await headerStamp();
   check('更新後：ヘッダーの最終読込が進む', hdrV2.indexOf('最終読込 ') === 0, true);
-  check('更新後：シートが最後に変わった時刻を併記する', hdrV2.indexOf('（シートは 8月8日 23:30 更新）') !== -1, true);
+  check('更新後：シート側の記録はヘッダーに併記しない', hdrV2.indexOf('シートは'), -1);
   await page.evaluate(function () { location.hash = '#overview'; });
   // 数値はカウントアップ演出で徐々に上がるため、確定値になるまで待ってから判定
   await page.waitForFunction(function () {
@@ -274,8 +274,7 @@ const JST = function (s) { return new Date(s + '+09:00'); };
 
   // ---- ヘッダーに「確認」時刻が併記される（押したことが必ず見える）----------
   const hdr = await headerStamp();
-  check('ヘッダーの読込時刻は日時つきで出る', /^最終読込 \d{1,2}月\d{1,2}日 \d{2}:\d{2}/.test(hdr), true);
-  check('ヘッダーにシートの更新時刻を併記する', /（シートは \d{1,2}月\d{1,2}日 \d{2}:\d{2} 更新）/.test(hdr), true);
+  check('ヘッダーの読込時刻は日時つきで出る', /^最終読込 \d{1,2}月\d{1,2}日 \d{2}:\d{2}$/.test(hdr.trim()), true);
 
   check('コンソールエラーなし', errors.length, 0);
 
@@ -493,7 +492,8 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     const u = route.request().url();
     route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: /\/export\?/.test(u) ? CSV_FRESH : CSV_STALE });
   });
-  check('古いキャッシュより新しい内容を採用する', a.hdr.indexOf('（シートは 8月28日 23:30 更新）') !== -1, true);
+  check('古いキャッシュより新しい内容を採用する',
+    a.rows.some(function (r) { return /件/.test(r) && /2026年8月28日/.test(r); }), true);
   check('採用しなかった経路も診断に残す', a.rows.some(function (r) { return /経路ごとの取得結果/.test(r) && /2026年8月6日/.test(r); }), true);
   check('どちらを採用したかを診断に出す',
     a.rows.some(function (r) { return /CSV書き出し＝2026年8月28日（採用）/.test(r); }), true);
@@ -503,7 +503,8 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     const u = route.request().url();
     route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: /\/export\?/.test(u) ? CSV_STALE : CSV_FRESH });
   });
-  check('経路の優先順ではなく中身の新しさで選ぶ', b2.hdr.indexOf('（シートは 8月28日 23:30 更新）') !== -1, true);
+  check('経路の優先順ではなく中身の新しさで選ぶ',
+    b2.rows.some(function (r) { return /件/.test(r) && /2026年8月28日/.test(r); }), true);
   check('gviz を採用したことが診断で分かる',
     b2.rows.some(function (r) { return /クエリ＝2026年8月28日（採用）/.test(r); }), true);
 
@@ -513,7 +514,8 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     if (/\/export\?/.test(u)) return route.abort('failed');
     route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV_FRESH });
   });
-  check('片方の経路が遮断されても最新が反映される', c3.hdr.indexOf('（シートは 8月28日 23:30 更新）') !== -1, true);
+  check('片方の経路が遮断されても最新が反映される',
+    c3.rows.some(function (r) { return /件/.test(r) && /2026年8月28日/.test(r); }), true);
   check('遮断された経路は診断に「読めず」と出る', c3.rows.some(function (r) { return /読めず/.test(r); }), true);
   // 片方が遮断されても内容は届いている。ここで「読み込めませんでした」と出すと
   // 「反映されていない」と誤解させるため、全経路が駄目だったときだけ出す。
@@ -685,12 +687,17 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   // 判定は「特定の時刻までに同期されたか」ではなく「26時間以上あいたか」で行う。
   // 同期が何時に走るかは運用で変わる（実測では深夜2時台だった）ため、時刻を前提に
   // すると、その時刻から実際の同期までの間、毎晩かならず誤警告が出てしまう。
-  const syncCase = async function (nowIso, stamp) {
+  // 鮮度は「自分で観測した内容の変化」で判断する。テストも同じ道筋を通す:
+  //  1回目の読み込みで内容のハッシュが端末に残る → その「最後に変わった時刻」を
+  //  過去に書き換える → 再読込すると同じ内容なので時刻はそのまま → 経過時間で判定。
+  // シート側の「データ更新日時」列は判定に使わない（別スクリプト由来で単独で
+  // 止まりうるため。実際に、データは正常なのにこの列だけ32時間止まって誤警告した）。
+  const syncCase = async function (nowIso, agoHours) {
     const c = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
     const pg = await c.newPage();
     const body = [
       'ステータス,来店日,お名前,スタッフ名,予約時合計金額,会計時合計金額,データ更新日時',
-      '会計済み,2026/08/28,同期太郎,momo,7000,7000,' + stamp
+      '会計済み,2026/08/28,同期太郎,momo,7000,7000,2026/08/28 3:01:00'
     ].join('\n');
     await pg.route('https://docs.google.com/**', function (route) {
       route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: body });
@@ -700,34 +707,42 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     });
     await pg.clock.install({ time: JST(nowIso) });
     await pg.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
-    await sleep(1800);
+    await sleep(1500);
+    if (agoHours !== null) {
+      // 「内容が最後に変わったのは agoHours 時間前」に書き換えて、同じ内容で読み直す
+      await pg.evaluate(function (h) {
+        try { localStorage.setItem('kate-changed-yoyaku', String(Date.now() - h * 3600 * 1000)); } catch (e) {}
+      }, agoHours);
+      await pg.reload({ waitUntil: 'networkidle' });
+      await sleep(1500);
+    }
     const txt = await pg.evaluate(function () {
       var el = document.querySelector('#sheetAlert'); return el ? el.textContent.replace(/\s+/g, ' ') : '';
     });
     await pg.close(); await c.close();
     return txt;
   };
-  const STALE_MSG = 'スプレッドシートが1日以上更新されていません';
+  const STALE_MSG = 'シートの内容が1日以上変わっていません';
 
-  // まる1日以上あいている（8/28 23:00 → 8/30 03:00 ＝ 28時間）
-  const stale = await syncCase('2026-08-30T03:00:00', '2026/08/28 23:00:00');
-  check('1日以上あいたら知らせる', stale.indexOf(STALE_MSG) !== -1, true);
-  check('シートの最終更新時刻を出す', stale.indexOf('8月28日 23:00') !== -1, true);
+  // 内容が28時間変わっていない → 知らせる
+  const stale = await syncCase('2026-08-30T03:00:00', 28);
+  check('1日以上変化が無ければ知らせる', stale.indexOf(STALE_MSG) !== -1, true);
+  check('内容が最後に変わった時刻を出す', /内容が最後に変わったのは \d/.test(stale), true);
   check('原因がシート側だと明示する', stale.indexOf('スプレッドシート側の同期') !== -1, true);
 
   // 回帰防止（実運用で誤警告を出した条件そのもの）:
-  // 深夜0:35時点で最終更新が前日8:30（16時間前）。同期はこのあと深夜2時台に走る。
-  // 「23:00までに同期されているはず」という前提で判定すると、ここで毎晩誤警告が出る。
-  const notYet = await syncCase('2026-08-30T00:35:00', '2026/08/29 8:30:00');
-  check('同期がまだの時間帯でも誤警告を出さない', notYet.indexOf(STALE_MSG), -1);
+  // シート側の「データ更新日時」列は 8/28 3:01 で止まっているが、内容は16時間前に
+  // 変わっている。スタンプで判定すると誤警告、内容で判定すれば出ない。
+  const notYet = await syncCase('2026-08-30T00:35:00', 16);
+  check('スタンプが古くても内容が新しければ誤警告しない', notYet.indexOf(STALE_MSG), -1);
 
-  // 深夜2時台に同期が走った直後 — 当然出さない
-  const justSynced = await syncCase('2026-08-30T03:00:00', '2026/08/30 2:39:00');
-  check('同期直後は警告しない', justSynced.indexOf(STALE_MSG), -1);
+  // まだ一度も変化を観測していない端末では、判断材料が無いので警告しない
+  const firstEver = await syncCase('2026-08-30T03:00:00', null);
+  check('初回は判断材料が無いので警告しない', firstEver.indexOf(STALE_MSG), -1);
 
-  // 何日も止まっている場合は日数で知らせる
-  const long = await syncCase('2026-08-30T15:00:00', '2026/08/06 1:00:00');
-  check('何日も止まっていれば日数で知らせる', long.indexOf('日前') !== -1, true);
+  // 何日も変わっていなければ日数で知らせる
+  const long = await syncCase('2026-08-30T15:00:00', 24 * 20);
+  check('何日も変わっていなければ日数で知らせる', long.indexOf('日前') !== -1, true);
 
   // ---- 日中に一度も読みに行かない空白が無いこと -----------------------------
   // 以前は発火時刻が 23:00〜1:00 の5点しか無く、1:00 を過ぎると次は翌日23:00。
@@ -809,7 +824,13 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     }, sheetUrl);
     await pg.clock.install({ time: JST(nowIso) });
     await pg.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
-    await sleep(1800);
+    await sleep(1500);
+    // 「内容が30時間前から変わっていない」状態にしてから、同じ内容で読み直す
+    await pg.evaluate(function () {
+      try { localStorage.setItem('kate-changed-yoyaku', String(Date.now() - 30 * 3600 * 1000)); } catch (e) {}
+    });
+    await pg.reload({ waitUntil: 'networkidle' });
+    await sleep(1500);
     const out = await pg.evaluate(function () {
       var el = document.querySelector('#sheetAlert');
       return { text: el ? el.textContent.replace(/\s+/g, ' ') : '', html: el ? el.innerHTML : '' };
@@ -859,13 +880,14 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   await pF.clock.install({ time: JST('2026-09-01T11:24:00') });
   await pF.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
   await sleep(1800);
-  // 初めて観測した内容を「たったいま変わった」とみなすと、何日も止まっているシートを
-  // 初めて開いた端末で本物の停止を見逃す。初回はスタンプで判定する。
+  // まだ一度も内容の変化を観測していない端末では、鮮度を判断する材料が無い。
+  // ここでシート側スタンプに頼ると、データは正常なのにスタンプだけ止まっている
+  // ケースで誤警告する（実際に起きた）。判断材料が無いときは黙る。
   const first = await pF.evaluate(function () {
     var el = document.querySelector('#sheetAlert'); return el ? el.textContent.replace(/\s+/g, ' ') : '';
   });
-  check('初回観測はスタンプで判定する（停止を見逃さない）',
-    first.indexOf('1日以上更新されていません') !== -1, true);
+  check('初回は判断材料が無いので警告しない（スタンプに頼らない）',
+    first.indexOf('1日以上変わっていません'), -1);
 
   // 内容が実際に変わったら、スタンプが古いままでも警告を出さない（誤警告の回帰防止）
   bodyF = [
@@ -884,7 +906,7 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     var el = document.querySelector('#sheetAlert'); return el ? el.textContent.replace(/\s+/g, ' ') : '';
   });
   check('内容が変われば、スタンプが古くても警告しない',
-    afterChange.indexOf('1日以上更新されていません'), -1);
+    afterChange.indexOf('1日以上変わっていません'), -1);
 
   // 直後にもう一度押す＝内容は当然同じ。ここで障害のように見せてはいけない。
   await pF.click('#sheetRefreshNow');
