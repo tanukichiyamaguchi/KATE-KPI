@@ -23,6 +23,7 @@
     dataLoadedAt: null,   // この画面が実データを読み込んだ日時（連携/アップロード時に記録）
     autoReloadLast: null, // 夜間の自動更新が実際に発火した日時（ページを開いていた時のみ）
     autoReloadNext: null, // 次回の発火予定日時
+    contentChangedAt: {}, // スロット別「取得内容が最後に変わった時刻」（端末に保存・再読込をまたぐ）
     sheetErrors: {},      // スロット別の読み込み失敗 { yoyaku|kaikei: {message, at, stage, kinds} }。
                           // 起動時の自動読み込みは silent なので、失敗しても従来は画面に
                           // 何も出ず、サンプルデータのまま「反映されない」ように見えていた。
@@ -298,6 +299,14 @@
       col: 'col-7', title: '月次 予約ベース売上' + taxTag + help('月ごとの売上を、会計済み（実績・濃色）と受付待ち（見込み・薄色）の内訳で積み上げ表示。見込みは受付待ちの予約金額（会計前）を反映したもの。金額は税抜。'), sub: '会計済み（実績）＋ 受付待ち（見込み）', tag: '¥',
       body: chartBox('cRevenue', 260)
     });
+    // 月次売上の新規／既存内訳。金額の取り方は「月次 予約ベース売上」と完全に同じで、
+    // 内訳の分け方は「月次 予約数の比較」と完全に同じ（何回目の来店/予約か）。
+    // したがって、この2本の棒の合計は上の「月次 予約ベース売上」の棒と一致する。
+    html += card({
+      col: 'col-12', title: '月次 売上（新規・既存別）' + taxTag + help('上の「月次 予約ベース売上」を、その顧客にとって<b>初回（新規）</b>か<b>2回目以降（既存）</b>かで分けたもの。会計済みの実績と受付待ちの見込みを合算した予約ベースで、合計は上のグラフと一致します。新規獲得と既存維持のどちらが売上を支えているかが月ごとに見えます。金額は税抜。'),
+      sub: '新規（初回）と既存（2回目以降）の内訳　※予約ベース（会計済み＋受付待ちの合算）', tag: '¥',
+      body: chartBox('cRevMix', 250)
+    });
     // 店舗全体の月次予約数（スタッフタブ「月次 予約数の比較」の店舗版）。
     // スタッフ別の棒を足し合わせたものと一致する（engine の store.composition は
     // st.composition と同一ロジックで、スタッフの絞り込みだけを外したもの）。
@@ -399,6 +408,17 @@
       C.hbars(el, {
         items: s.visitCountBreakdown.map(function (b, i) { return { label: b.label, value: b.count, sub: '客単価 ' + yen(b.spend), color: cvar(['--funnel-2', '--funnel-3', '--funnel-4', '--funnel-5'][i]) }; }),
         valueFmt: function (v) { return v + '件'; }
+      });
+    });
+    draw('cRevMix', function (el) {
+      var rm = s.revenueMix || [];
+      C.columns(el, {
+        groups: rm.map(function (m) { return monthShort(m.m); }), stacked: true,
+        series: [
+          { name: '新規', color: cvar('--funnel-2'), values: rm.map(function (m) { return m.newActual + m.newExpected; }) },
+          { name: '既存', color: cvar('--funnel-4'), values: rm.map(function (m) { return m.repeatActual + m.repeatExpected; }) }
+        ],
+        valueFmt: function (v) { return yen(v); }, totalFmt: yenCompact, yFmt: F.compact, height: 250
       });
     });
     draw('cNewMix', function (el) {
@@ -1524,6 +1544,23 @@
       var prevSrc = state.sources[format];
       var hash = strHash(text);
       var unchanged = !!(prevSrc && prevSrc.hash && prevSrc.hash === hash);
+      // 「内容が最後に変わった時刻」を記録する。鮮度の判断はこちらを主役にする。
+      // シート側の「データ更新日時」列は、スプレッドシートのApps Scriptが最大10分
+      // 遅れて書き込む値なので、実際にはデータが新しくてもこの列だけ古いことがある
+      // （実際にそれで「1日以上更新されていません」と誤って警告した）。
+      //
+      // 重要: 「初めて観測した内容」を変化とみなしてはいけない。そうすると、何日も
+      // 止まっているシートを初めて開いた端末で「たったいま変わった」ことになり、
+      // 本物の停止を見逃す。前回のハッシュを端末に残し、**違っていたときだけ**
+      // 変化とみなす。前回のハッシュを知らない端末では、シート側スタンプで代用する。
+      var prevHash = null;
+      try { prevHash = localStorage.getItem('kate-hash-' + format); } catch (e) {}
+      if (prevHash && prevHash !== hash) {
+        state.contentChangedAt[format] = Date.now();
+        try { localStorage.setItem('kate-changed-' + format, String(state.contentChangedAt[format])); } catch (e) {}
+      }
+      try { localStorage.setItem('kate-hash-' + format, hash); } catch (e) {}
+      var prevFetchedAt = prevSrc && prevSrc.diag ? prevSrc.diag.fetchedAt : null;
       state.sources[format] = {
         records: recs, fileName: null, via: 'スプレッドシート連携', updatedAt: parsed.sheetUpdatedAt || null, hash: hash,
         // 診断用: 実際に取得できた中身そのもの。「更新しても変わらない」ときに、
@@ -1551,9 +1588,16 @@
         // 「更新したのに変わらない」の原因がダッシュボードではなくシート側にある
         // ことをその場で伝える（黙って成功トーストを出すと誤解を招く）。
         if (unchanged) {
-          toast('シートの内容は前回から変わっていません（' + slotMeta(format).label +
-            (parsed.sheetUpdatedAt ? '・シートの更新 ' + ymdhmJa(parsed.sheetUpdatedAt) : '') +
-            '）。シート側の同期をご確認ください', 'err');
+          // 直前の取得と同じ内容なのは、その間にシートが書き換わっていなければ当然。
+          // 以前はこれを無条件に赤で「シート側の同期をご確認ください」と出していたため、
+          // 「開いた直後に更新を押した」だけで障害のように見えていた。
+          // 本当に問題なのは「長期間ずっと同じ」場合だけなので、そこだけ警告色にする。
+          var since = state.contentChangedAt[format];
+          var staleLong = since && (Date.now() - since > SYNC_STALE_MS);
+          toast(staleLong
+            ? '⚠ ' + slotMeta(format).label + 'の内容は ' + ymdhmJa(new Date(since)) + ' から変わっていません。シート側の同期をご確認ください'
+            : slotMeta(format).label + 'の内容は' + (prevFetchedAt ? ymdhmJa(prevFetchedAt) + 'の取得' : '前回') + 'から変わっていません（取得は成功しています）',
+            staleLong ? 'err' : 'ok');
         } else {
           toast('✓ スプレッドシートから ' + F.int(recs.length) + '件を読み込みました' + reroute + warn, warn ? 'err' : 'ok');
         }
@@ -1706,11 +1750,17 @@
   // 過ぎてから実際の同期までの間、毎晩かならず誤警告が出てしまう。
   // 26時間＝毎日1回の同期が1回飛んだことを、誤警告なしに検知できる最小のしきい値。
   var SYNC_STALE_MS = 26 * 3600 * 1000;
+  // 鮮度は「取得内容が最後に変わった時刻」で判断する。シート側の「データ更新日時」列は
+  // スプレッドシートのApps Scriptが最大10分遅れて書き込む値なので、これ単独で判定すると
+  // 実際にはデータが新しいのに「1日以上更新されていません」と誤警告する（実際に起きた）。
+  // 内容の変化を1度も観測していない端末（開いたばかり）では、スタンプで代用する。
   function staleSyncSlots(now) {
     return ['yoyaku', 'kaikei'].filter(function (sl) {
       var s2 = state.sources[sl];
-      return s2 && s2.via === 'スプレッドシート連携' && s2.updatedAt &&
-        (now - Number(s2.updatedAt) > SYNC_STALE_MS);
+      if (!s2 || s2.via !== 'スプレッドシート連携') return false;
+      var changed = state.contentChangedAt[sl];
+      if (changed) return (now - changed) > SYNC_STALE_MS;
+      return !!s2.updatedAt && (now - Number(s2.updatedAt) > SYNC_STALE_MS);
     });
   }
   function staleSyncBanner() {
@@ -2007,6 +2057,13 @@
       var la = localStorage.getItem('kate-auto-last');
       if (la) state.autoReloadLast = new Date(+la);
     } catch (e) {}
+    // 「内容が最後に変わった時刻」を端末から復元する（再読込をまたいで鮮度を判断するため）
+    ['yoyaku', 'kaikei'].forEach(function (sl) {
+      try {
+        var v = localStorage.getItem('kate-changed-' + sl);
+        if (v && isFinite(+v)) state.contentChangedAt[sl] = +v;
+      } catch (e) {}
+    });
     scheduleNightlyReload();   // 連携中なら30分おきに自動で再読み込み
 
     // 合言葉: if the repo ships an encrypted shared-link blob, load it. On a

@@ -492,6 +492,20 @@
       return { m: mo, new: vc[1], v2: vc[2], v3: vc[3], v4: vc[4], expNew: pc[1], expV2: pc[2], expV3: pc[3], expV4: pc[4] };
     });
 
+    // ---- 月次の売上を「新規／既存」に分ける（予約ベース）-----------------------
+    // 内訳の定義は composition と完全に同じ（何回目の来店/予約か＝_ord が1なら新規）。
+    // 金額の取り方は monthly.rev と完全に同じ（会計済み→会計金額、受付待ち→予約金額）。
+    // したがって newActual+repeatActual+newExpected+repeatExpected は monthly.rev と一致する。
+    var revenueMix = months.map(function (mo) {
+      var na = 0, ra = 0, ne = 0, re = 0;
+      rows.filter(function (r) { return r.ym === mo; }).forEach(function (r) {
+        var isNew = Math.min(4, Math.max(1, r._ord || 1)) === 1;
+        if (r.isVisited) { if (isNew) na += r.kaikei; else ra += r.kaikei; }
+        else if (r.isFuture) { if (isNew) ne += r.yoyaku; else re += r.yoyaku; }
+      });
+      return { m: mo, newActual: na, repeatActual: ra, newExpected: ne, repeatExpected: re };
+    });
+
     // ---- 期間バケット売上（実績のみ・元要望準拠） -------------------------------
     // 直近3ヶ月＝今月（基準日の月）を含まない確定3ヶ月。売上は会計済みのΣのみ。
     // monthly = Σ売上 ÷ 来店のあった月数（新任スタッフがバケット内の一部月しか
@@ -928,7 +942,7 @@
         maturity: { applied: !hasFuture, days: REPEAT_MATURITY_DAYS, matureCustomers: matureN, totalCustomers: baseN },
         funnel: funnel, churn: churn, cancel: cancel, route: route, retail: retail,
         ltv: { current: Math.round(ltv.current), predicted: Math.round(ltv.predicted), expectedVisits: round(ltv.expectedVisits, 2), observedVisits: round(ltv.observedVisits, 2) },
-        monthly: monthly, cohort: cohort, visitCountBreakdown: visitCountBreakdown, newMix: newMix, composition: composition, serviceRetailMonthly: serviceRetailMonthly,
+        monthly: monthly, cohort: cohort, visitCountBreakdown: visitCountBreakdown, newMix: newMix, composition: composition, revenueMix: revenueMix, serviceRetailMonthly: serviceRetailMonthly,
         revPeriods: revPeriods, retailPeriods: retailPeriods,
         dailyRevenue: dailyRevenue, upcomingReservations: upcomingReservations, dailyAll: dailyAll
       },
