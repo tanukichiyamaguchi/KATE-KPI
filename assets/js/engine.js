@@ -268,9 +268,10 @@
     // counting a rebooking after a cancellation but not the cancellation itself),
     // not a time-elapsed guess — a brand-new customer with no 2nd reservation yet
     // correctly counts as "not yet reached 2", the same as any other customer.
-    // 到達人数(バー)は予約ベース(Fres): 受付待ちの予約も「到達」に数える。
-    // 段の数はデータに応じて決める（オーナー要望・2026-09-05）: 1回〜「一番多く来ている人の
-    // 回数」まで。ただし表示が長くなりすぎないよう FUNNEL_MAX_STAGES で打ち切り、
+    // 到達人数(バー)は予約ベース(Fres): 基準日より後の受付待ちの予約も「到達」に数える
+    // （基準日以前の未処理＝滞留は来店しなかった扱いで数えない。asOf の定義を参照）。
+    // 段の数はデータに応じて決める（オーナー要望・2026-09-05）: 1回〜「予約ベースで一番多く
+    // 到達している人の回数（maxFres）」まで。ただし表示が長くなりすぎないよう FUNNEL_MAX_STAGES で打ち切り、
     // 打ち切った最後の段は「N回以上」の意味になる（各段の到達は元々「n回以上」なので、
     // 最後の段の人数はそのまま「N回以上到達」の人数）。
     //
@@ -295,7 +296,8 @@
         n: n, people: people, reach: baseN ? people / baseN : 0,
         // open: この段が打ち切りの最後で、実際にはもっと多く来ている人がいる（「N回以上」）
         open: n === FUNNEL_MAX_STAGES && maxFres > FUNNEL_MAX_STAGES,
-        contDen: last ? null : people, contNum: last ? null : next,
+        // 誰も到達していない段（people=0）は継続率を定義しない（0人÷0人を出さない）
+        contDen: (last || !people) ? null : people, contNum: (last || !people) ? null : next,
         cont: (last || !people) ? null : next / people
       };
     });

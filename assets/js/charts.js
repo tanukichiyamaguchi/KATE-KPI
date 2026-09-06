@@ -522,6 +522,8 @@
       var bar = el('div', 'kate-funnel-bar');
       bar.style.background = cssVar(ramp[Math.min(i, 4)], seriesColor(0));
       bar.style.setProperty('--w', (s.value / max * 100) + '%');
+      // 1人だけの段でも棒が消えないよう最小幅を持たせる（0人は幅0のまま）
+      if (s.value > 0) bar.style.minWidth = '4px';
       bar.style.width = noAnim() ? (s.value / max * 100) + '%' : '0%';
       track.appendChild(bar); row.appendChild(track);
       wrap.appendChild(row);
@@ -531,11 +533,14 @@
         // 予約ベース）を優先。無ければバー比にフォールバック。分母・分子があれば併記する。
         // 段が6つ以上でも色は5段階の濃淡を使い切ったあと一番濃い色で揃える（clamp）。
         var cont = (s.cont != null) ? s.cont
-          : (s.value ? opts.stages[i + 1].value / s.value : 0);
+          : (s.value ? opts.stages[i + 1].value / s.value : null);
         var conv = el('div', 'kate-funnel-conv');
         var frac = (s.contNum != null && s.contDen != null)
           ? ' <em class="kate-funnel-frac">' + fmtInt(s.contNum) + '人 ÷ ' + fmtInt(s.contDen) + '人</em>' : '';
-        conv.innerHTML = '<span class="kate-arrow">↓</span> 継続 <b>' + fmtPct(cont, 0) + '</b> · 離脱 ' + fmtPct(1 - cont, 0) + frac;
+        // この段に誰もいなければ継続率は定義できない（「0% · 離脱 100%」と出さない）
+        conv.innerHTML = cont == null
+          ? '<span class="kate-arrow">↓</span> 継続 <b>—</b> <em class="kate-funnel-frac">（この段に到達した方がいません）</em>'
+          : '<span class="kate-arrow">↓</span> 継続 <b>' + fmtPct(cont, 0) + '</b> · 離脱 ' + fmtPct(1 - cont, 0) + frac;
         wrap.appendChild(conv);
       }
     });

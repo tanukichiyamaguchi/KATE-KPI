@@ -644,7 +644,7 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
   border-radius: 12px; box-shadow: var(--shadow-2); font-size: 13px; letter-spacing: -0.1px; line-height: 1.55;
   opacity: 0; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease; pointer-events: none;
 }
-.help-pop.show { opacity: 1; transform: translateY(0); }
+.help-pop.show { opacity: 1; transform: translateY(0); pointer-events: auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 .view { display: none; } .view.active { display: block; animation: viewIn .35s var(--ease); }
 @keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

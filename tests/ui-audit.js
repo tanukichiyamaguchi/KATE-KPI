@@ -58,7 +58,9 @@ const WIDTHS = [320, 375, 390, 414, 1280];
   const failures = [];
 
   for (const width of WIDTHS) {
-    const page = await browser.newPage({ viewport: { width: width, height: 900 } });
+    // スマホ幅は実機に近い高さ（640px）にする。説明ポップオーバーが画面下に
+    // はみ出す不具合は、高さが十分だと再現しないため。
+    const page = await browser.newPage({ viewport: { width: width, height: width < 600 ? 640 : 900 } });
     // Charts honor prefers-reduced-motion → render instantly, so measurements
     // are deterministic instead of racing entry animations.
     await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -177,6 +179,30 @@ const WIDTHS = [320, 375, 390, 414, 1280];
         }
         return out;
       });
+      // 6) 説明ポップオーバー（?）: このタブの ? を順に開き、(a) <b> などのタグが
+      //    文字として見えていない、(b) 画面の中に収まっている（下にはみ出すと
+      //    スクロールで閉じてしまい末尾が読めない）ことを確認する。
+      const icoCount = await page.evaluate(function () { return document.querySelectorAll('.help-ico').length; });
+      for (let hi = 0; hi < icoCount; hi++) {
+        const res = await page.evaluate(function (idx) {
+          var btn = document.querySelectorAll('.help-ico')[idx];
+          if (!btn || !btn.offsetParent) return null;
+          btn.scrollIntoView({ block: 'center' });
+          btn.click();
+          var pop = document.querySelector('.help-pop.show');
+          var head = String(btn.dataset.help || '').slice(0, 24);
+          if (!pop) return { type: 'help-pop-missing', text: head };
+          var r = pop.getBoundingClientRect(), t = pop.textContent || '';
+          var out = null;
+          if (/<\/?(b|br|code|i)>/.test(t)) out = { type: 'help-literal-tag', text: head };
+          else if (r.top < 0 || r.bottom > window.innerHeight + 1 || r.left < 0 || r.right > window.innerWidth + 1) {
+            out = { type: 'help-pop-offscreen', text: Math.round(r.top) + '..' + Math.round(r.bottom) + 'px / vh' + window.innerHeight + ' ' + head };
+          }
+          btn.click();   // 閉じる
+          return out;
+        }, hi);
+        if (res) found.push(res);
+      }
       // dedupe identical findings within a tab so one bad column doesn't
       // produce 120 rows of noise
       var seen = {};
@@ -200,6 +226,6 @@ const WIDTHS = [320, 375, 390, 414, 1280];
     console.log('\n\x1b[1mUI AUDIT SUMMARY\x1b[0m  \x1b[31m' + failures.length + ' fail\x1b[0m');
     process.exit(1);
   }
-  console.log('\n\x1b[1mUI AUDIT SUMMARY\x1b[0m  \x1b[32mPASS\x1b[0m (' + WIDTHS.length + ' widths × ' + TABS.length + ' tabs: no vertical text, no clipped cells, no clipped chart labels, no console errors)');
+  console.log('\n\x1b[1mUI AUDIT SUMMARY\x1b[0m  \x1b[32mPASS\x1b[0m (' + WIDTHS.length + ' widths × ' + TABS.length + ' tabs: no vertical text, no clipped cells, no clipped chart labels, help popovers on-screen without literal tags, no console errors)');
   process.exit(0);
 })().catch(function (e) { console.error('UI AUDIT: unexpected error', e); server.close(); process.exit(1); });

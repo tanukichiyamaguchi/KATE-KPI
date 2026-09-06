@@ -144,15 +144,26 @@
   // so it can stop the click before it reaches things like the RFM table's
   // sortable <th> (which has its own click handler for sorting).
   function help(text) { return '<button type="button" class="help-ico" data-help="' + esc(text) + '" aria-label="説明を見る">?</button>'; }
+  // 説明文の中では <b> <br> <code> だけを飾りとして使える。それ以外はすべて
+  // 文字として表示する（説明文は作者が書いた定数だが、念のため許可制にしておく）。
+  function helpHtml(text) { return esc(text).replace(/&lt;(\/?)(b|code|br)&gt;/g, '<$1$2>'); }
   var helpPopEl = null, helpPopFor = null, helpPopOpenedAt = 0;
   function hideHelpPop() { if (helpPopEl) helpPopEl.classList.remove('show'); if (helpPopFor) helpPopFor.classList.remove('active'); helpPopFor = null; }
   function showHelpPop(btn) {
     if (!helpPopEl) { helpPopEl = document.createElement('div'); helpPopEl.className = 'help-pop'; helpPopEl.setAttribute('role', 'status'); document.body.appendChild(helpPopEl); }
-    helpPopEl.textContent = btn.dataset.help;
+    helpPopEl.innerHTML = helpHtml(btn.dataset.help);
     var r = btn.getBoundingClientRect();
     var left = Math.max(8, Math.min(window.innerWidth - 268, r.left + r.width / 2 - 130));
     helpPopEl.style.left = left + 'px';
-    helpPopEl.style.top = (r.bottom + 8) + 'px';
+    // 画面の中に収める: 基本は ? の下。下に入りきらなければ ? の上、上にも入らなければ
+    // 画面内に押し込む（長い説明文がスマホで下にはみ出し、スクロールすると閉じてしまって
+    // 末尾が読めない問題の対策）。それでも収まらない長さは max-height で中をスクロール。
+    var gap = 8, vh = window.innerHeight;
+    helpPopEl.style.maxHeight = (vh - gap * 2) + 'px';
+    var h = helpPopEl.offsetHeight;
+    var top = r.bottom + gap;
+    if (top + h > vh - gap) top = (r.top - gap - h >= gap) ? r.top - gap - h : Math.max(gap, vh - gap - h);
+    helpPopEl.style.top = top + 'px';
     helpPopEl.classList.add('show');
     if (helpPopFor) helpPopFor.classList.remove('active');
     helpPopFor = btn; btn.classList.add('active');
@@ -315,7 +326,7 @@
     // Funnel + cohort
     var fLast = s.funnel[s.funnel.length - 1] || { n: 1 };
     html += card({
-      col: 'col-5', title: 'リテンション ファネル' + help('各段の到達人数は<b>予約ベース</b>：受付待ちの予約も「到達」に数えます。ただし<b>実際に来店しなかった予約（キャンセル・無断キャンセル）は到達に数えません</b>。キャンセル後に別の予約を取り直していれば、その予約で到達とみなします。段の間の<b>継続率＝次の段の到達人数 ÷ その段の到達人数</b>で、棒の減り方そのものです。段の数はデータに応じて増え、一番多く来ている方の回数まで表示します（' + FUNNEL_CAP + '回を超える場合は「' + FUNNEL_CAP + '回以上」にまとめます）。なお定着カードの「固定化率」は分母が「実際に2回来店した人」なので、ここの2回→3回の継続率とは一致しません。'),
+      col: 'col-5', title: 'リテンション ファネル' + help('各段の到達人数は<b>予約ベース</b>：集計基準日より後の受付待ちの予約も「到達」に数えます。ただし<b>実際に来店しなかった予約（キャンセル・無断キャンセル、基準日を過ぎても未処理のもの）は到達に数えません</b>。キャンセル後に別の予約を取り直していれば、その予約で到達とみなします。段の間の<b>継続率＝次の段の到達人数 ÷ その段の到達人数</b>で、棒の減り方そのものです。段の数はデータに応じて増え、予約ベースで一番多く到達している方の回数まで表示します（' + FUNNEL_CAP + '回を超える場合は「' + FUNNEL_CAP + '回以上」にまとめます）。なお定着カードの「固定化率」は分母が「実際に2回来店した人」なので、ここの2回→3回の継続率とは一致しません。'),
       sub: '来店顧客 ' + s.customers + '人が母数（1回 → ' + fLast.n + '回' + (fLast.open ? '以上' : '') + ' 到達）',
       body: '<div id="cFunnel"></div>'
     });
@@ -397,7 +408,11 @@
     });
     draw('cFunnel', function (el) {
       C.funnel(el, {
-        stages: s.funnel.map(function (f, i) { return { label: f.n + '回' + (f.open ? '以上' : ''), value: f.people, sub: pct(f.reach * 100, 0) + ' 到達', cont: f.cont, contNum: f.contNum, contDen: f.contDen }; })
+        stages: s.funnel.map(function (f, i) {
+          // 1人だけの深い段は 0.3% などになり「0% 到達」と出て人数と矛盾して見えるので「1%未満」にする
+          var reachTxt = (f.reach > 0 && f.reach < 0.005) ? '1%未満' : pct(f.reach * 100, 0);
+          return { label: f.n + '回' + (f.open ? '以上' : ''), value: f.people, sub: reachTxt + ' 到達', cont: f.cont, contNum: f.contNum, contDen: f.contDen };
+        })
       });
     });
     draw('cVisitComp', function (el) {

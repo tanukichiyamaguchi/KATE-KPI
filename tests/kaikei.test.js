@@ -713,10 +713,10 @@ h('■ Fixture U: キャンセルは分子から外し、取り直せば分子�
 }
 
 // ============================================================================
-// Fixture V — ファネルの到達バーは予約ベース(Fres>=n)、段間の継続率/離脱率の
-// 母数は実来店(Fvis>=n)＝オーナー確定の固定化率と同じ考え方。まだ来店前
-// （n回目が受付待ち）の顧客が離脱率を押し上げないための補正で、n=2 の継続率が
-// 固定化率と一致することを固定する。
+// Fixture V — ファネルの到達バーは予約ベース(Fres>=n)、段間の継続率も同じ
+// 予約ベース（次の段の到達 ÷ この段の到達）で、棒の減り方とそのまま一致する
+// ことを固定する（オーナー確定・2026-09-05）。固定化率（分母 Fvis>=2）は別の
+// 指標として従来どおり残る。
 // ============================================================================
 // A: 実来店3回 → Fvis=3, Fres=3
 // B: 実来店2回＋3回目受付待ち → Fvis=2, Fres=3
@@ -724,7 +724,7 @@ h('■ Fixture U: キャンセルは分子から外し、取り直せば分子�
 // D: 実来店1回＋2回目受付待ち(来店前) → Fvis=1, Fres=2
 // n=2段: 到達people(Fres>=2)=4人(A,B,C,D)、継続母数(Fvis>=2)=3人(A,B,C)、
 //   継続分子(Fvis>=2 かつ Fres>=3)=2人(A,B) → 継続 2/3 ≒ 66.7%。
-h('■ Fixture V: ファネル継続率は実来店が母数・到達バーは予約ベース');
+h('■ Fixture V: ファネルの到達バーも継続率も予約ベース（棒の減り方と一致）');
 {
   const rows = [
     rec({ custKey: 'A', date: '2026-05-01', kaikeiTotal: 6000 }),
@@ -750,7 +750,7 @@ h('■ Fixture V: ファネル継続率は実来店が母数・到達バーは�
   check('継続率 = 次段の到達 ÷ この段の到達（棒の減り方と一致）', n2.cont, R.store.funnel[2].people / n2.people, 1e-9);
   check('固定化率は従来どおり実来店ベース（A,B / A,B,C = 66.7%）', R.store.fixationRate, 200 / 3, 0.05);
   // 段の数はデータに応じて決まる（この fixture の最大は A の3回）
-  check('段の数 = 一番多く来ている人の回数（3）', R.store.funnel.length, 3);
+  check('段の数 = 予約ベースで一番多く到達している人の回数（3）', R.store.funnel.length, 3);
   check('最後の段は打ち切りではない', !!R.store.funnel[2].open, false);
   check('最後の段の継続率は null（0%ではなく「無い」）', R.store.funnel[2].cont === null, true);
   check('最後の段の分母・分子も無い', R.store.funnel[2].contDen === null && R.store.funnel[2].contNum === null, true);
@@ -772,6 +772,95 @@ h('■ Fixture V: ファネル継続率は実来店が母数・到達バーは�
   check('10段目は「10回以上」（open=true）', R.store.funnel[9].open, true);
   check('10段目の到達人数は10回以上来た人（Z）', R.store.funnel[9].people, 1);
   check('9段目は打ち切りではない', !!R.store.funnel[8].open, false);
+  // 予測LTVの期待来店回数は段が増えても「1〜5回の到達率の合計」に固定する。
+  // reach: 1回=1.0、2回以降=0.5（Zだけ）→ 5段まで=3.0、10段すべてなら 5.5 になってしまう。
+  check('期待来店回数は段が増えても1〜5回の合計に固定（3.0、10段合計5.5ではない）', R.store.ltv.expectedVisits, 3.0, 0.005);
+}
+
+// ============================================================================
+// Fixture V3 — 段数の境界と「段数は予約ベース（Fres）で決まる」ことの固定。
+// ============================================================================
+h('■ Fixture V3: 段数の境界（ちょうど10回）と Fres 駆動');
+{
+  // P: ちょうど10回来店 → 10段・打ち切りではない（open=false）。
+  const rows = [];
+  for (let i = 0; i < 10; i++) rows.push(rec({ custKey: 'P', date: '2026-0' + (1 + Math.floor(i / 4)) + '-' + String(1 + (i % 4) * 7).padStart(2, '0'), kaikeiTotal: 5000 }));
+  rows.push(rec({ custKey: 'Q', date: '2026-05-01', kaikeiTotal: 5000 }));
+  const R = engine.compute(rows, { asOf: '2026-07-03' });
+  check('ちょうど10回なら10段', R.store.funnel.length, 10);
+  check('ちょうど10回の10段目は「10回以上」ではない（open=false）', !!R.store.funnel[9].open, false);
+  check('10段目の到達人数（P）', R.store.funnel[9].people, 1);
+
+  // S: 来店1回＋今後の受付待ち3件 → Fvis=1・Fres=4。T: 来店2回 → Fvis=2。
+  // 段数は maxFres(=4) で決まる（maxFvis(=2) ではない）。
+  const rows2 = [
+    rec({ custKey: 'S', date: '2026-05-01', kaikeiTotal: 5000 }),
+    rec({ custKey: 'S', status: '受付待ち', date: '2026-07-10', yoyakuTotal: 5000 }),
+    rec({ custKey: 'S', status: '受付待ち', date: '2026-08-10', yoyakuTotal: 5000 }),
+    rec({ custKey: 'S', status: '受付待ち', date: '2026-09-10', yoyakuTotal: 5000 }),
+    rec({ custKey: 'T', date: '2026-05-02', kaikeiTotal: 5000 }),
+    rec({ custKey: 'T', date: '2026-06-02', kaikeiTotal: 5000 })
+  ];
+  const R2 = engine.compute(rows2, { asOf: '2026-07-03' });
+  check('段数は予約ベースの最大（S の Fres=4）で決まる', R2.store.funnel.length, 4);
+  check('4段目の到達は S（今後の予約で到達）', R2.store.funnel[3].people, 1);
+  check('2段目の到達は S,T', R2.store.funnel[1].people, 2);
+}
+
+// ============================================================================
+// Fixture V4 — 「実際に来店しなかった予約は到達に数えない」（オーナー・2026-09-05）
+//   キャンセル・無断キャンセルは段に数えず、キャンセル後に取り直せば数える。
+// ============================================================================
+h('■ Fixture V4: キャンセル・無断キャンセルは到達に数えない');
+{
+  const rows = [
+    // U: 来店2回 ＋ 3回目が無断キャンセル → Fres=2（3回には到達していない）
+    rec({ custKey: 'U', date: '2026-05-01', kaikeiTotal: 5000 }),
+    rec({ custKey: 'U', date: '2026-05-20', kaikeiTotal: 5000 }),
+    rec({ custKey: 'U', status: '無断キャンセル', date: '2026-06-10', yoyakuTotal: 5000 }),
+    // V: 来店2回 ＋ お客様キャンセル ＋ 取り直し（受付待ち） → Fres=3（取り直した予約で到達）
+    rec({ custKey: 'V', date: '2026-05-02', kaikeiTotal: 5000 }),
+    rec({ custKey: 'V', date: '2026-05-22', kaikeiTotal: 5000 }),
+    rec({ custKey: 'V', status: 'お客様キャンセル', date: '2026-06-12', yoyakuTotal: 5000 }),
+    rec({ custKey: 'V', status: '受付待ち', date: '2026-07-15', yoyakuTotal: 5000 }),
+    // W: 来店2回 ＋ サロンキャンセル（取り直しなし） → Fres=2
+    rec({ custKey: 'W', date: '2026-05-03', kaikeiTotal: 5000 }),
+    rec({ custKey: 'W', date: '2026-05-23', kaikeiTotal: 5000 }),
+    rec({ custKey: 'W', status: 'サロンキャンセル', date: '2026-06-13', yoyakuTotal: 5000 }),
+    // X: 来店3回 ＋ 4回目が無断キャンセル → Fres=3（4回には到達していない）
+    rec({ custKey: 'X', date: '2026-04-01', kaikeiTotal: 5000 }),
+    rec({ custKey: 'X', date: '2026-04-21', kaikeiTotal: 5000 }),
+    rec({ custKey: 'X', date: '2026-05-11', kaikeiTotal: 5000 }),
+    rec({ custKey: 'X', status: '無断キャンセル', date: '2026-06-01', yoyakuTotal: 5000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-03' });
+  const f = R.store.funnel;
+  check('段数は3（X の無断キャンセルは4回目に数えない）', f.length, 3);
+  check('2回 到達 = U,V,W,X', f[1].people, 4);
+  check('3回 到達 = V（取り直し）と X のみ。U,W のキャンセルは数えない', f[2].people, 2);
+  check('2→3 継続率 = 2/4', f[1].cont, 0.5);
+  // 1人ずつ切り出して段数で確認（U: 無断キャンセルは数えず2段、V: 取り直しで3段）
+  const onlyU = engine.compute(rows.filter(function (r) { return r.custKey === 'U'; }), { asOf: '2026-07-03' });
+  const onlyV = engine.compute(rows.filter(function (r) { return r.custKey === 'V'; }), { asOf: '2026-07-03' });
+  check('無断キャンセルは到達に数えない（U だけなら2段）', onlyU.store.funnel.length, 2);
+  check('取り直した予約は到達に数える（V だけなら3段）', onlyV.store.funnel.length, 3);
+}
+
+// Fixture V3 — 誰も到達していない段では継続率を定義しない（0人÷0人を出さない）。
+// 来店客が1人だけ（2回目なし）: 1段目は 0/1 = 0%、2段目は「無い」。
+// 来店客が0人（受付待ちのみ）: 1段目から分母も分子も無い。
+{
+  h('■ Fixture V3: 人がいない段の継続率');
+  const R1 = engine.compute([rec({ custKey: 'A', date: '2026-05-01', kaikeiTotal: 5000 })], { asOf: '2026-07-03' });
+  check('来店1人・2回目なし: 段は最低2つ', R1.store.funnel.length, 2);
+  check('1段目の継続率は 0/1 = 0（null ではない）', R1.store.funnel[0].cont, 0);
+  check('1段目の分母=1・分子=0', R1.store.funnel[0].contDen === 1 && R1.store.funnel[0].contNum === 0, true);
+  check('2段目（最終段）は継続率なし', R1.store.funnel[1].cont === null && R1.store.funnel[1].contDen === null, true);
+  const R0 = engine.compute([rec({ status: '受付待ち', custKey: 'F', date: '2026-07-10', yoyakuTotal: 5000 })], { asOf: '2026-07-03' });
+  check('来店0人: 1段目の人数は0', R0.store.funnel[0].people, 0);
+  check('来店0人: 1段目の継続率・分母・分子はすべて無い（0人÷0人を出さない）',
+    R0.store.funnel[0].cont === null && R0.store.funnel[0].contDen === null && R0.store.funnel[0].contNum === null, true);
+  check('来店0人でもリピート率は0で落ちない', R0.store.repeatRate, 0);
 }
 
 // ============================================================================
