@@ -313,9 +313,10 @@
     });
 
     // Funnel + cohort
+    var fLast = s.funnel[s.funnel.length - 1] || { n: 1 };
     html += card({
-      col: 'col-5', title: 'リテンション ファネル' + help('各バーの到達人数は予約ベース：受付待ちの予約も「到達」に数え、キャンセルのみで次の予約が無い場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数える。段の間の継続率／離脱率は「実際にその回数まで来店した人」が母数（固定化率と同じ考え方で、2回目→3回目の継続率が固定化率と一致する）。'),
-      sub: '来店顧客 ' + s.customers + '人が母数（1回 → 5回 到達）',
+      col: 'col-5', title: 'リテンション ファネル' + help('各段の到達人数は<b>予約ベース</b>：受付待ちの予約も「到達」に数えます。ただし<b>実際に来店しなかった予約（キャンセル・無断キャンセル）は到達に数えません</b>。キャンセル後に別の予約を取り直していれば、その予約で到達とみなします。段の間の<b>継続率＝次の段の到達人数 ÷ その段の到達人数</b>で、棒の減り方そのものです。段の数はデータに応じて増え、一番多く来ている方の回数まで表示します（' + FUNNEL_CAP + '回を超える場合は「' + FUNNEL_CAP + '回以上」にまとめます）。なお定着カードの「固定化率」は分母が「実際に2回来店した人」なので、ここの2回→3回の継続率とは一致しません。'),
+      sub: '来店顧客 ' + s.customers + '人が母数（1回 → ' + fLast.n + '回' + (fLast.open ? '以上' : '') + ' 到達）',
       body: '<div id="cFunnel"></div>'
     });
     html += card({
@@ -396,7 +397,7 @@
     });
     draw('cFunnel', function (el) {
       C.funnel(el, {
-        stages: s.funnel.map(function (f, i) { return { label: f.n + '回', value: f.people, sub: pct(f.reach * 100, 0) + ' 到達', cont: f.cont, contNum: f.contNum, contDen: f.contDen }; })
+        stages: s.funnel.map(function (f, i) { return { label: f.n + '回' + (f.open ? '以上' : ''), value: f.people, sub: pct(f.reach * 100, 0) + ' 到達', cont: f.cont, contNum: f.contNum, contDen: f.contDen }; })
       });
     });
     draw('cVisitComp', function (el) {
@@ -929,6 +930,7 @@
   // filled → merged via ingest.mergeSources(); either alone → used as-is;
   // neither → the bundled sample data.
   var slotJa = { yoyaku: '予約データ', kaikei: '会計明細' };
+  var FUNNEL_CAP = 10;   // ファネルの段数の上限（engine の FUNNEL_MAX_STAGES と揃える）
   function slotMeta(slot) {
     return slot === 'kaikei'
       ? { label: '会計明細', urlId: 'sheetUrlKaikei', linkId: 'sheetLinkBtnKaikei', unlinkId: 'sheetUnlinkBtnKaikei', dropId: 'dropKaikei', fileId: 'fileKaikei', pickId: 'pickKaikei', sheetUrl: state.sheetUrlKaikei }

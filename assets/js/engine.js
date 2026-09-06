@@ -269,20 +269,37 @@
     // not a time-elapsed guess — a brand-new customer with no 2nd reservation yet
     // correctly counts as "not yet reached 2", the same as any other customer.
     // 到達人数(バー)は予約ベース(Fres): 受付待ちの予約も「到達」に数える。
-    // 段間の継続率/離脱率の母数は「実際にn回来店した人(Fvis>=n)」（オーナー確定の
-    // 固定化率と同じ考え方）。まだ来店前（n回目が受付待ち）の顧客は、構造上まだ
-    // (n+1)回目を予約しようがないため母数に含めない。分子は予約ベースのまま
-    // (n+1)回目の予約を数える。n=2 の継続率が固定化率と一致する。
-    var funnel = [1, 2, 3, 4, 5].map(function (n) {
+    // 段の数はデータに応じて決める（オーナー要望・2026-09-05）: 1回〜「一番多く来ている人の
+    // 回数」まで。ただし表示が長くなりすぎないよう FUNNEL_MAX_STAGES で打ち切り、
+    // 打ち切った最後の段は「N回以上」の意味になる（各段の到達は元々「n回以上」なので、
+    // 最後の段の人数はそのまま「N回以上到達」の人数）。
+    //
+    // 継続率は棒と同じ「予約ベース」で揃える: 次の段の到達人数 ÷ この段の到達人数。
+    // 以前は継続率だけ実来店ベース（分母 Fvis>=n）にしていたため、棒が 80→34 と
+    // 減っているのに「継続 97%」と出る、読めば矛盾に見える状態だった。
+    // 「実際に来店しなかった（キャンセル・無断）予約は到達に数えない」は Fres の定義
+    // そのもの（キャンセルは除外、キャンセル後に取り直せば数える）なので、そのまま。
+    var FUNNEL_MAX_STAGES = 10;
+    var maxFres = visitedCusts.reduce(function (m, c) { return Math.max(m, c.Fres || 0); }, 0);
+    // 最低2段（1回・2回）は必ず作る。誰も2回目に到達していないデータでも
+    // 「2回: 0人」は意味のある情報であり、リピート率（funnel[1]）の計算も
+    // この段を前提にしている（1段しか無いと funnel[1] が無くて落ちる）。
+    var stageCount = Math.max(2, Math.min(FUNNEL_MAX_STAGES, maxFres));
+    var funnel = [];
+    for (var fn = 1; fn <= stageCount; fn++) funnel.push(fn);
+    funnel = funnel.map(function (n) {
       var people = visitedCusts.filter(function (c) { return c.Fres >= n; }).length;
-      var contDen = visitedCusts.filter(function (c) { return c.Fvis >= n; }).length;
-      var contNum = visitedCusts.filter(function (c) { return c.Fvis >= n && c.Fres >= n + 1; }).length;
+      var next = visitedCusts.filter(function (c) { return c.Fres >= n + 1; }).length;
+      var last = n === stageCount;   // 最後の段には「次の段」が無いので継続率は定義しない
       return {
         n: n, people: people, reach: baseN ? people / baseN : 0,
-        contDen: contDen, contNum: contNum, cont: contDen ? contNum / contDen : null
+        // open: この段が打ち切りの最後で、実際にはもっと多く来ている人がいる（「N回以上」）
+        open: n === FUNNEL_MAX_STAGES && maxFres > FUNNEL_MAX_STAGES,
+        contDen: last ? null : people, contNum: last ? null : next,
+        cont: (last || !people) ? null : next / people
       };
     });
-    var repeatRate = baseN ? funnel[1].people / baseN : 0;
+    var repeatRate = baseN && funnel[1] ? funnel[1].people / baseN : 0;
     // 固定化率: 「2回目の来店を済ませた顧客のうち、3回目の予約に到達した割合」
     // （オーナー確定の定義・2026-08-13）。分母＝Fvis>=2（実際に2回来店した人）、
     // 分子＝そのうち Fres>=3（3回目の予約あり。受付待ちを含み、キャンセルは数えず、
@@ -362,7 +379,10 @@
 
     // ---- LTV ----------------------------------------------------------------
     var avgSpendActual = actualVisits ? revenueActual / actualVisits : 0;
-    var expectedVisits = funnel.reduce(function (s, f) { return s + f.reach; }, 0);
+    // 予測LTVの「期待来店回数」は従来どおり 1〜5回 の到達率の合計に固定する。
+    // ファネルの段数を増やしてもここが黙って変わらないようにするため（画面の説明文も
+    // 「1回〜5回到達率の合計」と明記している）。
+    var expectedVisits = funnel.slice(0, 5).reduce(function (s, f) { return s + f.reach; }, 0);
     var ltv = {
       current: baseN ? revenueActual / baseN : 0,
       observedVisits: baseN ? actualVisits / baseN : 0,
@@ -936,7 +956,7 @@
         nextReserveRate: round(nextReserveRate * 100, 1), visitCycleMedianDays: visitCycleMedianDays,
         // 分母・分子（UI 明示用）: リピート率 = 2回予約到達 ÷ 来店客、固定化率 =
         // 実来店2回目&3回予約 ÷ 実来店2回目、次回予約取得率 = 次回確保来店 ÷ 来店。
-        repeatNumer: funnel[1].people, repeatDenom: baseN,
+        repeatNumer: funnel[1] ? funnel[1].people : 0, repeatDenom: baseN,
         fixNumer: fix3Reserve, fixDenom: fix2Visit,
         nextReserveNumer: nextReserveCount, nextReserveDenom: actualVisits,
         maturity: { applied: !hasFuture, days: REPEAT_MATURITY_DAYS, matureCustomers: matureN, totalCustomers: baseN },

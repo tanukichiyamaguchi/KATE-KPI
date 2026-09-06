@@ -741,11 +741,37 @@ h('■ Fixture V: ファネル継続率は実来店が母数・到達バーは�
   const R = engine.compute(rows, { asOf: '2026-07-03' });
   const n2 = R.store.funnel[1];   // 2回段
   check('2回 到達人数（予約ベース Fres>=2: A,B,C,D）', n2.people, 4);
-  check('2→3 継続母数（実来店 Fvis>=2: A,B,C・来店前Dは除外）', n2.contDen, 3);
-  check('2→3 継続分子（Fvis>=2 かつ Fres>=3: A,B）', n2.contNum, 2);
-  check('2→3 継続率 = 2/3 ≒ 66.7%', n2.cont, 2 / 3, 1e-9);
-  // 2→3の継続率は固定化率と同じ値になる（同じ定義・同じ母集団）
-  check('2→3継続率と固定化率が一致する', Math.round(n2.cont * 1000), Math.round(R.store.fixationRate * 10));
+  // 継続率は棒と同じ予約ベース: 次の段の到達 ÷ この段の到達（オーナー確定・2026-09-05）。
+  // 以前は分母だけ実来店ベース（Fvis>=2）にしていたため、棒の減り方と継続率が食い違って
+  // 見えていた。固定化率（分母 Fvis>=2）とは別物として扱う。
+  check('2→3 継続母数 = 2回到達人数（予約ベース: A,B,C,D）', n2.contDen, 4);
+  check('2→3 継続分子 = 3回到達人数（Fres>=3: A,B）', n2.contNum, 2);
+  check('2→3 継続率 = 2/4 = 50%', n2.cont, 0.5, 1e-9);
+  check('継続率 = 次段の到達 ÷ この段の到達（棒の減り方と一致）', n2.cont, R.store.funnel[2].people / n2.people, 1e-9);
+  check('固定化率は従来どおり実来店ベース（A,B / A,B,C = 66.7%）', R.store.fixationRate, 200 / 3, 0.05);
+  // 段の数はデータに応じて決まる（この fixture の最大は A の3回）
+  check('段の数 = 一番多く来ている人の回数（3）', R.store.funnel.length, 3);
+  check('最後の段は打ち切りではない', !!R.store.funnel[2].open, false);
+  check('最後の段の継続率は null（0%ではなく「無い」）', R.store.funnel[2].cont === null, true);
+  check('最後の段の分母・分子も無い', R.store.funnel[2].contDen === null && R.store.funnel[2].contNum === null, true);
+  // 期待来店回数（予測LTV）は段が増減しても 1〜5回の到達率の合計に固定
+  check('期待来店回数 = 1〜5回到達率の合計', R.store.ltv.expectedVisits,
+    Math.round(R.store.funnel.slice(0, 5).reduce((a, f) => a + f.reach, 0) * 100) / 100, 1e-9);
+}
+
+// ============================================================================
+// Fixture V2 — ファネルの段数の上限（10段）と「N回以上」の打ち切り。
+// 12回来ている人が1人いても、段は10までで、10段目は「10回以上」（open=true）。
+{
+  h('■ Fixture V2: ファネルの段数上限と「N回以上」');
+  const rows = [];
+  for (let i = 0; i < 12; i++) rows.push(rec({ custKey: 'Z', date: '2026-0' + (1 + Math.floor(i / 4)) + '-' + String(1 + (i % 4) * 7).padStart(2, '0'), kaikeiTotal: 5000 }));
+  rows.push(rec({ custKey: 'Y', date: '2026-05-01', kaikeiTotal: 5000 }));
+  const R = engine.compute(rows, { asOf: '2026-07-03' });
+  check('段の数は上限の10で打ち切る', R.store.funnel.length, 10);
+  check('10段目は「10回以上」（open=true）', R.store.funnel[9].open, true);
+  check('10段目の到達人数は10回以上来た人（Z）', R.store.funnel[9].people, 1);
+  check('9段目は打ち切りではない', !!R.store.funnel[8].open, false);
 }
 
 // ============================================================================

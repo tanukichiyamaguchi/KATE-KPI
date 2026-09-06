@@ -527,8 +527,9 @@
       wrap.appendChild(row);
       if (!noAnim()) requestAnimationFrame(function () { setTimeout(function () { bar.style.width = (s.value / max * 100) + '%'; }, 120 + i * 110); });
       if (i < opts.stages.length - 1) {
-        // 継続率は stage.cont（実来店ベースで母数補正済み）を優先。無ければ従来どおり
-        // バー比（次段/現段）にフォールバック。分母・分子があれば併記する。
+        // 継続率は stage.cont（engine 側で「次段の到達 ÷ この段の到達」＝棒と同じ
+        // 予約ベース）を優先。無ければバー比にフォールバック。分母・分子があれば併記する。
+        // 段が6つ以上でも色は5段階の濃淡を使い切ったあと一番濃い色で揃える（clamp）。
         var cont = (s.cont != null) ? s.cont
           : (s.value ? opts.stages[i + 1].value / s.value : 0);
         var conv = el('div', 'kate-funnel-conv');
