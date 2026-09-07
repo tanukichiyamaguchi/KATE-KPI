@@ -12,9 +12,6 @@
 (function (global) {
   'use strict';
   var NS = 'http://www.w3.org/2000/svg';
-  // 文字の大きさは2種類だけ: 軸・目盛り（AXIS_FS）と、棒の上の値（LABEL_FS）。
-  // 11px 未満は使わない（スマホで読めない）。
-  var AXIS_FS = 12, LABEL_FS = 11.5;
   var prefReduce = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var instant = false;                          // set during resize/theme redraws
   function noAnim() { return prefReduce || instant; }
@@ -61,52 +58,6 @@
     for (var i = 0; i < NICE_STEPS.length; i++) { if (norm <= NICE_STEPS[i]) { step = NICE_STEPS[i]; break; } }
     return step * mag;
   }
-  // 目盛りは「切りのいい刻み」から決める: 刻み = {1,2,2.5,5}×10^k のうち、
-  // 最大値×1.14 を 3〜5 分割できるもの。軸の最大はその刻みの倍数に切り上げる。
-  // 以前は最大値だけを丸めて 4 等分していたため、37.5万 / 75万 / 112.5万 のような
-  // 半端な目盛りになっていた。
-  function niceTicks(v, yMax) {
-    if (yMax) {
-      var n = 4, out = [];
-      for (var i = 0; i <= n; i++) out.push(yMax * i / n);
-      return { max: yMax, step: yMax / n, ticks: out };
-    }
-    if (!(v > 0)) v = 1;
-    var target = v * 1.08;   // 値ラベルの分だけ（padT が別にある）
-    // 刻みの候補を小さい方から試し、目盛りが 5 本以内に収まる最初のものを採る。
-    // （最大値だけ丸める方式だと 106万 → 150万 のように上 3 割が空くことがある）
-    var mag = Math.pow(10, Math.floor(Math.log10(target)) - 1);
-    var STEPS = [1, 2, 2.5, 5, 10, 20, 25, 50, 100];
-    var step = STEPS[STEPS.length - 1] * mag;
-    for (var k = 0; k < STEPS.length; k++) { if (Math.ceil(target / (STEPS[k] * mag) - 1e-9) <= 5) { step = STEPS[k] * mag; break; } }
-    var max = Math.ceil(target / step - 1e-9) * step;
-    var ticks = [];
-    for (var t = 0; t <= max + step / 2; t += step) ticks.push(Math.round(t * 1e6) / 1e6);
-    return { max: max, step: step, ticks: ticks };
-  }
-  // 軸の目盛り文字（数字は等幅）
-  function tickText(x, y, anchor, txt) {
-    var lab = svgEl('text', { x: x, y: y, 'text-anchor': anchor, fill: ink.secondary(), 'font-size': AXIS_FS, 'font-weight': 500 });
-    lab.setAttribute('font-variant-numeric', 'tabular-nums');
-    lab.textContent = txt; return lab;
-  }
-  // 横罫（内側は薄い罫、ゼロ線は少し濃いベースライン）
-  function hLine(svg, x1, x2, y, isBase) {
-    var yy = Math.round(y) + 0.5;
-    svg.appendChild(svgEl('line', { x1: x1, x2: x2, y1: yy, y2: yy, stroke: isBase ? ink.axis() : ink.grid(), 'stroke-width': 1, 'shape-rendering': 'crispEdges' }));
-  }
-  var clipSeq = 0;
-  // 棒を「上だけ角丸・下は直角」にするためのクリップ。角丸の rect を下に rx ぶん
-  // 伸ばして描き、この矩形で切る（アニメーション中も静的なクリップで足りる）
-  function topRoundClip(svg, x, y, w, h) {
-    var id = 'kcp' + (++clipSeq);
-    var defs = svgEl('defs'); var cp = svgEl('clipPath', { id: id });
-    cp.appendChild(svgEl('rect', { x: x - 1, y: y, width: w + 2, height: Math.max(0, h) }));
-    defs.appendChild(cp); svg.appendChild(defs);
-    return 'url(#' + id + ')';
-  }
-  // スマホ幅ではチャートを少し低くする（縦スクロールの長さを抑える）
-  function chartH(w, h) { return w < 420 ? Math.round(h * 0.84) : h; }
   function ease(t) { return 1 - Math.pow(1 - t, 3); } // easeOutCubic
   function animateAttr(node, attr, from, to, dur, delay, fmt) {
     if (noAnim()) { node.setAttribute(attr, fmt ? fmt(to) : to); return; }
@@ -151,9 +102,7 @@
     items.forEach(function (it) {
       var s = el('span', 'kate-legend-item');
       var dot = el('i', 'kate-legend-dot'); dot.style.background = it.color;
-      if (it.dashed || it.line) dot.classList.add('is-line');
-      if (it.dashed) dot.classList.add('is-dashed');
-      if (it.colors) { dot.classList.add('is-ramp'); dot.style.background = 'linear-gradient(90deg,' + it.colors.map(function (c, i, a) { var p0 = (i / a.length * 100).toFixed(1) + '%', p1 = ((i + 1) / a.length * 100).toFixed(1) + '%'; return c + ' ' + p0 + ',' + c + ' ' + p1; }).join(',') + ')'; }
+      if (it.dashed) dot.classList.add('is-line');
       s.appendChild(dot); s.appendChild(document.createTextNode(it.label));
       lg.appendChild(s);
     });
@@ -161,43 +110,39 @@
     return lg;
   }
 
-  // hex 色を alpha でカード面に重ねた結果の相対輝度から、白か墨かを選ぶ
-  function inkOnFill(hex, alpha) {
-    function rgb(c) { var m = /^#?([0-9a-f]{6})$/i.exec(String(c || '').trim()); return m ? [0, 2, 4].map(function (i) { return parseInt(m[1].slice(i, i + 2), 16); }) : null; }
-    var f = rgb(hex), b = rgb(ink.surface()) || [255, 255, 255];
-    if (!f) return '#fff';
-    var mix = f.map(function (v, i) { return v * alpha + b[i] * (1 - alpha); });
-    var lin = mix.map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
-    var L = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
-    return L > 0.35 ? '#0b0f1a' : '#fff';
-  }
   var ink = { primary: function () { return cssVar('--text-primary', '#0b0b0b'); }, secondary: function () { return cssVar('--text-secondary', '#52514e'); }, muted: function () { return cssVar('--text-muted', '#898781'); }, grid: function () { return cssVar('--gridline', '#e1e0d9'); }, surface: function () { return cssVar('--surface-1', '#fff'); }, axis: function () { return cssVar('--axis', '#c3c2b7'); } };
 
   // ============================ LINE + AREA =================================
   // opts: { series:[{name,color?,values:[],dashed?}], xLabels:[], yFmt, valueFmt, height, yMax?, area? }
   function lineArea(container, opts) {
-    var w = width(container), h = chartH(w, opts.height || 260);
+    var w = width(container), h = opts.height || 260;
     var padL = opts.padL || 38, padR = opts.padR || 16, padT = 16, padB = 34;
     var svg = mount(container, w, h);
     var series = opts.series, xs = opts.xLabels;
     var n = xs.length;
-    var tk = niceTicks(Math.max.apply(null, series.reduce(function (a, s) { return a.concat(s.values.filter(function (v) { return v != null && isFinite(v); })); }, [0])), opts.yMax);
-    var maxV = tk.max;
+    var maxV = opts.yMax || niceMax(Math.max.apply(null, series.reduce(function (a, s) { return a.concat(s.values); }, [1])));
     var plotW = w - padL - padR, plotH = h - padT - padB;
     var xat = function (i) { return padL + (n <= 1 ? plotW / 2 : plotW * i / (n - 1)); };
     var yat = function (v) { return padT + plotH - (v / maxV) * plotH; };
 
-    // 罫線と目盛り: 刻みは切りのいい値、0 以外はすべてラベル付き。0 はベースラインで示す
-    tk.ticks.forEach(function (yv, g) {
-      var y = yat(yv);
-      hLine(svg, padL, w - padR, y, g === 0);
-      if (g === 0) return;
-      svg.appendChild(tickText(padL - 8, y + 4, 'end', (opts.yFmt || fmtCompact)(yv)));
-    });
+    // gridlines + y ticks — the top (max) and bottom (0) tick labels are
+    // dropped: they were the widest numbers on the axis and, on a narrow
+    // mobile viewport, ate into the plot area for little benefit (the bars/
+    // lines themselves already communicate the extremes). Gridlines at every
+    // tick stay, for the visual reference.
+    var ticks = 4;
+    for (var g = 0; g <= ticks; g++) {
+      var yv = maxV * g / ticks, y = yat(yv);
+      svg.appendChild(svgEl('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: ink.grid(), 'stroke-width': 1 }));
+      if (g === 0 || g === ticks) continue;
+      var lab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': 11 });
+      lab.setAttribute('font-variant-numeric', 'tabular-nums');
+      lab.textContent = (opts.yFmt || fmtCompact)(yv); svg.appendChild(lab);
+    }
     // x labels
     xs.forEach(function (lx, i) {
       if (n > 8 && i % 2 !== 0 && i !== n - 1) return;
-      var t = svgEl('text', { x: xat(i), y: h - 12, 'text-anchor': 'middle', fill: ink.secondary(), 'font-size': AXIS_FS, 'font-weight': 500 });
+      var t = svgEl('text', { x: xat(i), y: h - 12, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11 });
       t.textContent = lx; svg.appendChild(t);
     });
 
@@ -225,7 +170,7 @@
       // build the line, lifting the pen across gaps
       var d = '', pen = false;
       pts.forEach(function (p) { if (!p) { pen = false; return; } d += (pen ? 'L' : 'M') + p[0] + ',' + p[1]; pen = true; });
-      var path = svgEl('path', { d: d, fill: 'none', stroke: color, 'stroke-width': series.length > 1 ? 2.2 : 2.6, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
+      var path = svgEl('path', { d: d, fill: 'none', stroke: color, 'stroke-width': 2.4, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
       if (s.dashed) path.setAttribute('stroke-dasharray', '5 5');
       svg.appendChild(path);
       if (!noAnim() && !hasGap) {
@@ -234,23 +179,22 @@
         if (!s.dashed) { path.getBoundingClientRect(); path.style.transition = 'stroke-dashoffset 900ms cubic-bezier(.22,.61,.36,1) ' + (si * 90) + 'ms'; path.style.strokeDashoffset = 0; }
       }
       // dots at each real point (helps read sparse / gapped series)
-      // 各点は「面のリング付き」の点にして、線が重なっても点が見分けられるようにする
-      shown.forEach(function (p) { svg.appendChild(svgEl('circle', { cx: p[0], cy: p[1], r: 3.2, fill: color, stroke: ink.surface(), 'stroke-width': 1.5 })); });
+      shown.forEach(function (p) { svg.appendChild(svgEl('circle', { cx: p[0], cy: p[1], r: 2.6, fill: color })); });
       // end marker + label
       var last = shown[shown.length - 1];
-      var ring = svgEl('circle', { cx: last[0], cy: last[1], r: 5, fill: color, stroke: ink.surface(), 'stroke-width': 2 });
+      var ring = svgEl('circle', { cx: last[0], cy: last[1], r: 4.5, fill: color, stroke: ink.surface(), 'stroke-width': 2 });
       svg.appendChild(ring);
       if (s.endLabel !== false && !s.dashed) {
         // y is the text BASELINE: clamp so the glyphs never poke above the SVG
         // when the series ends at/near the axis maximum (e.g. a 100% month on
         // a yMax:100 chart put the label's top edge at a negative y).
         var ly = Math.max(last[1] - 10, 12);
-        var lbl = svgEl('text', { x: last[0], y: ly, 'text-anchor': 'end', fill: ink.primary(), 'font-size': 12, 'font-weight': 700, opacity: 0 });
+        var lbl = svgEl('text', { x: last[0], y: ly, 'text-anchor': 'end', fill: ink.secondary(), 'font-size': 11, 'font-weight': 600, opacity: 0 });
         lbl.textContent = s.name; svg.appendChild(lbl);
         // 系列の終端が近い（別の月で終わる／値が接近する）と、終端ラベル同士が
         // 重なって判読不能になる。重なる場合はラベルを出さない（凡例で名前は追える）。
-        var lw = lbl.getComputedTextLength ? lbl.getComputedTextLength() : String(s.name).length * 12;
-        var box = { x1: last[0] - lw, x2: last[0], y1: ly - 12, y2: ly + 3 };
+        var lw = lbl.getComputedTextLength ? lbl.getComputedTextLength() : String(s.name).length * 11;
+        var box = { x1: last[0] - lw, x2: last[0], y1: ly - 11, y2: ly + 3 };
         var hits = endLabelBoxes.some(function (b) { return box.x1 < b.x2 && box.x2 > b.x1 && box.y1 < b.y2 && box.y2 > b.y1; });
         if (hits) svg.removeChild(lbl);
         else { endLabelBoxes.push(box); animateAttr(lbl, 'opacity', 0, 1, 400, 900); }
@@ -286,7 +230,7 @@
     hit.addEventListener('mouseleave', clearFocus);
     hit.addEventListener('touchend', clearFocus);
     hit.addEventListener('touchcancel', clearFocus);
-    if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si), dashed: s.dashed, line: true }; }));
+    if (series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: s.color || seriesColor(si), dashed: s.dashed }; }));
   }
 
   // A value label floating on/above a bar (stacked total, per-bar value, or
@@ -304,17 +248,14 @@
   // maxWidth, it's compressed via SVG textLength (not wrapped) so it never
   // overflows the bar it sits above — used for per-bar/per-cluster totals,
   // which get cramped on narrow mobile bars once there are 2+ series.
-  // 値ラベルは1種類の大きさ（LABEL_FS・太字・本文色）。棒幅に収まらないときは
-  // 字を横に潰さず（潰すと読めない）、ラベルを出さない。数値はツールチップと
-  // 表で必ず追える。少しだけ超える場合（+40%まで）は隣と重ならないので許容する。
   function fitValueLabel(svg, x, y, text, maxWidth, fontSize) {
-    var t = svgEl('text', { x: x, y: y, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': fontSize || LABEL_FS, 'font-weight': 700 });
+    var t = svgEl('text', { x: x, y: y, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': fontSize, 'font-weight': 700 });
     t.setAttribute('font-variant-numeric', 'tabular-nums');
     t.textContent = stripUnit(text);
     svg.appendChild(t);
     if (maxWidth > 0 && t.getComputedTextLength) {
       var natural = t.getComputedTextLength();
-      if (natural > maxWidth * 1.4) { svg.removeChild(t); return null; }
+      if (natural > maxWidth) { t.setAttribute('textLength', maxWidth); t.setAttribute('lengthAdjust', 'spacingAndGlyphs'); }
     }
     return t;
   }
@@ -322,76 +263,65 @@
   // ============================ COLUMNS (grouped / stacked) =================
   // opts: { groups:[label], series:[{name,color?,values:[]}], stacked?, height, valueFmt, totalFmt?, yFmt }
   function columns(container, opts) {
-    var w = width(container), h = chartH(w, opts.height || 260);
+    var w = width(container), h = opts.height || 260;
     var padL = opts.padL || 36, padR = 14, padT = opts.stacked ? 26 : 22, padB = 34;
     var svg = mount(container, w, h);
     var groups = opts.groups, series = opts.series, ng = groups.length;
     var plotW = w - padL - padR, plotH = h - padT - padB;
     var totals = groups.map(function (_, gi) { return series.reduce(function (a, s) { return a + Math.max(0, s.values[gi]); }, 0); });
-    var tk = niceTicks(opts.stacked ? Math.max.apply(null, totals.concat([0])) : Math.max.apply(null, series.reduce(function (a, s) { return a.concat(s.values); }, [0])), opts.yMax);
-    var maxV = tk.max;
+    var maxV = opts.yMax || niceMax(opts.stacked ? Math.max.apply(null, totals) : Math.max.apply(null, series.reduce(function (a, s) { return a.concat(s.values); }, [1])));
     var yat = function (v) { return padT + plotH - (v / maxV) * plotH; };
     var band = plotW / ng;
     var GAP = 2;
 
-    tk.ticks.forEach(function (yv, g) {
-      var y = yat(yv);
-      hLine(svg, padL, w - padR, y, g === 0);
-      if (g === 0) return;
-      svg.appendChild(tickText(padL - 8, y + 4, 'end', (opts.yFmt || fmtCompact)(yv)));
-    });
+    // Top (max) and bottom (0) tick labels omitted — see lineArea for why.
+    for (var g = 0; g <= 4; g++) {
+      var yv = maxV * g / 4, y = yat(yv);
+      svg.appendChild(svgEl('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: ink.grid(), 'stroke-width': 1 }));
+      if (g === 0 || g === 4) continue;
+      var lab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': 11 });
+      lab.setAttribute('font-variant-numeric', 'tabular-nums'); lab.textContent = (opts.yFmt || fmtCompact)(yv); svg.appendChild(lab);
+    }
 
     groups.forEach(function (glabel, gi) {
       var cx = padL + band * gi + band / 2;
-      var t = svgEl('text', { x: cx, y: h - 12, 'text-anchor': 'middle', fill: ink.secondary(), 'font-size': AXIS_FS, 'font-weight': 500 });
+      var t = svgEl('text', { x: cx, y: h - 12, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11 });
       t.textContent = glabel; svg.appendChild(t);
-      var groupBars = [];   // この列の棒（幅いっぱいの当たり判定から最寄りの棒へ転送する）
       if (opts.stacked) {
-        var barW = Math.min(30, band * 0.62), x = cx - barW / 2, acc = 0;
-        var stackRows = stackTipRows(series, gi, opts);
+        var barW = Math.min(24, band * 0.62), x = cx - barW / 2, acc = 0;
         series.forEach(function (s, si) {
           var v = Math.max(0, s.values[gi]); if (v <= 0) return;
           var y0 = yat(acc), y1 = yat(acc + v); acc += v;
+          var rectH = Math.max(0, y0 - y1);
           var isTop = (function () { for (var k = si + 1; k < series.length; k++) if (series[k].values[gi] > 0) return false; return true; })();
-          var isBottom = (function () { for (var k = 0; k < si; k++) if (series[k].values[gi] > 0) return false; return true; })();
-          // 積み上げの境目に 2px の面色の隙間を空ける（上の段の下端を 2px 削る）
-          var yBot = isBottom ? y0 : y0 - 2;
-          var rectH = Math.max(0, yBot - y1);
-          var rx = isTop ? Math.min(4, barW / 3) : 0;
-          var rect = svgEl('rect', { x: x, y: y1, width: barW, height: 0, fill: s.color || seriesColor(si), rx: rx });
-          if (rx) rect.setAttribute('clip-path', topRoundClip(svg, x, y1, barW, rectH));
+          var rect = svgEl('rect', { x: x, y: y1, width: barW, height: 0, fill: s.color || seriesColor(si), rx: isTop ? 4 : 0 });
           if (s.opacity != null) rect.setAttribute('fill-opacity', s.opacity);
           rect.style.cursor = 'default'; svg.appendChild(rect);
-          animateAttr(rect, 'height', 0, rectH + rx, 700, gi * 40 + si * 30);
-          animateAttr(rect, 'y', yBot, y1, 700, gi * 40 + si * 30);
-          bindBarTip(rect, svg, w, glabel, s, si, v, opts, undefined, stackRows, padT);
-          groupBars.push(rect);
+          animateAttr(rect, 'height', 0, rectH, 700, gi * 40 + si * 30);
+          animateAttr(rect, 'y', y0, y1, 700, gi * 40 + si * 30);
+          bindBarTip(rect, svg, w, glabel, s, si, v, opts);
         });
         if (acc > 0) {
-          fitValueLabel(svg, cx, yat(acc) - 7, (opts.totalFmt || opts.valueFmt || fmtCompact)(acc), band - 4, LABEL_FS);
+          fitValueLabel(svg, cx, yat(acc) - 7, (opts.totalFmt || opts.valueFmt || fmtCompact)(acc), barW + 6, 10.5);
         }
       } else {
-        var innerW = band * 0.72, bw = Math.min(30, innerW / series.length - GAP);
+        var innerW = band * 0.7, bw = Math.min(24, innerW / series.length - GAP);
+        // すべての棒に数値ラベルを表示する（狭い棒でも fitValueLabel が棒幅に
+        // 収まるよう自動圧縮するため、はみ出さない）。
         var showBarLabels = bw >= 5;
         series.forEach(function (s, si) {
           var v = Math.max(0, s.values[gi]);
           var x = cx - innerW / 2 + si * (bw + GAP), y1 = yat(v), rectH = padT + plotH - y1;
-          var rx = Math.min(4, bw / 3);
-          var rect = svgEl('rect', { x: x, y: padT + plotH, width: bw, height: 0, fill: s.color || seriesColor(si), rx: rx });
-          // 下端はベースラインで直角に切る（カプセル形にしない）
-          rect.setAttribute('clip-path', topRoundClip(svg, x, padT, bw, plotH));
+          var rect = svgEl('rect', { x: x, y: padT + plotH, width: bw, height: 0, fill: s.color || seriesColor(si), rx: Math.min(4, bw / 2) });
           svg.appendChild(rect);
-          animateAttr(rect, 'height', 0, rectH + rx, 700, gi * 40 + si * 40);
+          animateAttr(rect, 'height', 0, rectH, 700, gi * 40 + si * 40);
           animateAttr(rect, 'y', padT + plotH, y1, 700, gi * 40 + si * 40);
-          bindBarTip(rect, svg, w, glabel, s, si, v, opts, undefined, null, padT);
-          groupBars.push(rect);
+          bindBarTip(rect, svg, w, glabel, s, si, v, opts);
           if (showBarLabels && v > 0) {
-            // 1系列なら列の幅いっぱい、複数系列なら隣の棒と重ならない幅まで
-            fitValueLabel(svg, x + bw / 2, y1 - 6, (opts.totalFmt || opts.valueFmt || fmtCompact)(v), series.length === 1 ? band - 4 : bw + GAP + 2, LABEL_FS);
+            fitValueLabel(svg, x + bw / 2, y1 - 5, (opts.totalFmt || opts.valueFmt || fmtCompact)(v), bw, 9);
           }
         });
       }
-      hitBand(svg, padL + band * gi, padT, band, plotH, groupBars);
     });
     enableDragReveal(svg);
     // 見込み(opacity付き)の重畳シリーズは、実績シリーズと同色で凡例上は見分けが
@@ -412,7 +342,7 @@
   //         sub-index-minor, length = groups.length*clusterSize),
   //         yMax?, valueFmt?, yFmt?, height? }
   function columnClusters(container, opts) {
-    var w = width(container), h = chartH(w, opts.height || 260);
+    var w = width(container), h = opts.height || 260;
     var padL = opts.padL || 36, padR = 14, padT = 26, padB = 44;
     var svg = mount(container, w, h);
     var groups = opts.groups, series = opts.series, clusterSize = opts.clusterSize || 1;
@@ -420,24 +350,25 @@
     var plotW = w - padL - padR, plotH = h - padT - padB;
     var totals = [];
     for (var bi0 = 0; bi0 < nBars; bi0++) totals.push(series.reduce(function (a, s) { return a + Math.max(0, s.values[bi0] || 0); }, 0));
-    var tk = niceTicks(Math.max.apply(null, totals.concat([0])), opts.yMax);
-    var maxV = tk.max;
+    var maxV = opts.yMax || niceMax(Math.max.apply(null, totals.concat([1])));
     var yat = function (v) { return padT + plotH - (v / maxV) * plotH; };
     var clusterBand = plotW / nClusters, innerGap = 4;
 
-    tk.ticks.forEach(function (yv, g) {
-      var y = yat(yv);
-      hLine(svg, padL, w - padR, y, g === 0);
-      if (g === 0) return;
-      svg.appendChild(tickText(padL - 8, y + 4, 'end', (opts.yFmt || fmtCompact)(yv)));
-    });
+    // Top (max) and bottom (0) tick labels omitted — see lineArea for why.
+    for (var g = 0; g <= 4; g++) {
+      var yv = maxV * g / 4, y = yat(yv);
+      svg.appendChild(svgEl('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: ink.grid(), 'stroke-width': 1 }));
+      if (g === 0 || g === 4) continue;
+      var lab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': 11 });
+      lab.setAttribute('font-variant-numeric', 'tabular-nums'); lab.textContent = (opts.yFmt || fmtCompact)(yv); svg.appendChild(lab);
+    }
 
-    var barW = Math.max(6, Math.min(26, (clusterBand * 0.74 - innerGap * (clusterSize - 1)) / clusterSize));
+    var barW = Math.max(6, Math.min(22, (clusterBand * 0.72 - innerGap * (clusterSize - 1)) / clusterSize));
     // Per-bar text labels need real room to stay legible; below that, skip the
     // text and rely on the color tick (still readable at any width) plus the
     // tooltip. Prevents adjacent labels merging into unreadable text on narrow
     // (mobile) screens.
-    var showSubLabels = !!opts.subLabels && (clusterBand / clusterSize) >= 18;
+    var showSubLabels = !!opts.subLabels && (clusterBand / clusterSize) >= 24;
     // Per-bar totals: 全ての棒に数値を表示する（fitValueLabel が棒幅に収まるよう
     // 圧縮するため、狭い棒でもはみ出さない）。ごく僅かな幅のみ描画を省く。
     var showTotals = (clusterBand / clusterSize) >= 10;
@@ -445,104 +376,52 @@
     groups.forEach(function (glabel, ci) {
       var clusterCx = padL + clusterBand * ci + clusterBand / 2;
       var groupInnerW = barW * clusterSize + innerGap * (clusterSize - 1);
-      var t = svgEl('text', { x: clusterCx, y: h - (showSubLabels ? 25 : 12), 'text-anchor': 'middle', fill: ink.secondary(), 'font-size': AXIS_FS, 'font-weight': 600 });
+      var t = svgEl('text', { x: clusterCx, y: h - (showSubLabels ? 25 : 12), 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11, 'font-weight': 600 });
       t.textContent = glabel; svg.appendChild(t);
       for (var k = 0; k < clusterSize; k++) {
         var bi = ci * clusterSize + k;
         var bx = clusterCx - groupInnerW / 2 + k * (barW + innerGap);
         if (showSubLabels) {
-          var slab = svgEl('text', { x: bx + barW / 2, y: h - 11, 'text-anchor': 'middle', fill: ink.secondary(), 'font-size': 10.5, 'font-weight': 500 });
+          var slab = svgEl('text', { x: bx + barW / 2, y: h - 11, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 9.5 });
           slab.textContent = opts.subLabels[bi]; svg.appendChild(slab);
         }
         if (opts.subColors) {
-          svg.appendChild(svgEl('rect', { x: bx, y: padT + plotH + 4, width: barW, height: 3, rx: 1.5, fill: opts.subColors[bi] }));
+          svg.appendChild(svgEl('rect', { x: bx, y: padT + plotH + 3, width: barW, height: 2.5, rx: 1.25, fill: opts.subColors[bi] }));
         }
-        var acc = 0, bars = [];
-        var rowsHtml = stackTipRows(series, bi, opts, function (s, si) { return colorFor(s, si, bi); });
+        var acc = 0;
         series.forEach(function (s, si) {
           var v = Math.max(0, s.values[bi] || 0); if (v <= 0) return;
           var y0 = yat(acc), y1 = yat(acc + v); acc += v;
+          var rectH = Math.max(0, y0 - y1);
           var isTop = (function () { for (var kk = si + 1; kk < series.length; kk++) if ((series[kk].values[bi] || 0) > 0) return false; return true; })();
-          var isBottom = (function () { for (var kk = 0; kk < si; kk++) if ((series[kk].values[bi] || 0) > 0) return false; return true; })();
-          var yBot = isBottom ? y0 : y0 - 2, rectH = Math.max(0, yBot - y1);
           var color = colorFor(s, si, bi);
-          var rx = isTop ? Math.min(3, barW / 3) : 0;
-          var rect = svgEl('rect', { x: bx, y: y1, width: barW, height: 0, fill: color, rx: rx });
-          if (rx) rect.setAttribute('clip-path', topRoundClip(svg, bx, y1, barW, rectH));
+          var rect = svgEl('rect', { x: bx, y: y1, width: barW, height: 0, fill: color, rx: isTop ? 3 : 0 });
           if (s.opacity != null) rect.setAttribute('fill-opacity', s.opacity);
           rect.style.cursor = 'default'; svg.appendChild(rect);
-          animateAttr(rect, 'height', 0, rectH + rx, 700, ci * 40 + si * 20);
-          animateAttr(rect, 'y', yBot, y1, 700, ci * 40 + si * 20);
-          bindBarTip(rect, svg, w, glabel + (opts.subLabels ? ' ・ ' + opts.subLabels[bi] : ''), s, si, v, opts, color, rowsHtml, padT);
-          bars.push(rect);
+          animateAttr(rect, 'height', 0, rectH, 700, ci * 40 + si * 20);
+          animateAttr(rect, 'y', y0, y1, 700, ci * 40 + si * 20);
+          bindBarTip(rect, svg, w, glabel + (opts.subLabels ? ' ・ ' + opts.subLabels[bi] : ''), s, si, v, opts, color);
         });
-        hitBand(svg, bx - innerGap / 2, padT, barW + innerGap, plotH, bars);
         if (showTotals && acc > 0) {
-          fitValueLabel(svg, bx + barW / 2, yat(acc) - 6, (opts.totalFmt || opts.valueFmt || fmtCompact)(acc), barW + innerGap + 2, LABEL_FS);
+          fitValueLabel(svg, bx + barW / 2, yat(acc) - 6, (opts.totalFmt || opts.valueFmt || fmtCompact)(acc), barW + 4, 9.5);
         }
       }
     });
     enableDragReveal(svg);
-    if (opts.legendItems && opts.legendItems.length) legend(container, opts.legendItems);
-    else if (!opts.hideLegend && series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: (typeof s.color === 'function' ? s.color(0) : s.color) || seriesColor(si) }; }));
+    if (!opts.hideLegend && series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: (typeof s.color === 'function' ? s.color(0) : s.color) || seriesColor(si) }; }));
   }
 
-  // 積み上げ棒のツールチップ行: その列のすべての段＋合計（1段だけなら合計は出さない）
-  function stackTipRows(series, gi, opts, colorAt) {
-    var rows = [], total = 0, cnt = 0;
-    series.forEach(function (s, si) {
-      var v = Math.max(0, (s.values[gi] || 0)); if (v <= 0) return;
-      total += v; cnt++;
-      var c = colorAt ? colorAt(s, si) : (s.color || seriesColor(si));
-      rows.push('<div class="kate-tip-row"><i style="background:' + c + '"></i><span>' + esc(s.name) + '</span><b>' + (opts.valueFmt || fmtCompact)(v) + '</b></div>');
-    });
-    if (cnt >= 2) rows.push('<div class="kate-tip-row kate-tip-total"><i></i><span>合計</span><b>' + (opts.totalFmt || opts.valueFmt || fmtCompact)(total) + '</b></div>');
-    return rows.join('');
-  }
-  function bindBarTip(rect, svg, w, glabel, s, si, v, opts, color, rowsHtml, padT) {
+  function bindBarTip(rect, svg, w, glabel, s, si, v, opts, color) {
     color = color || s.color || seriesColor(si);
-    var html = '<div class="kate-tip-title">' + esc(glabel) + '</div>' +
-      (rowsHtml || '<div class="kate-tip-row"><i style="background:' + color + '"></i><span>' + esc(s.name) + '</span><b>' + (opts.valueFmt || fmtCompact)(v) + '</b></div>');
-    function anchorY() { var box = svg.getBoundingClientRect(); return padT != null ? box.top + padT - 6 : box.top + rect.getBBox().y; }
     function show(clientX) {
-      rect.style.filter = 'brightness(1.08)';
-      // 棒の上の値ラベルを隠さないよう、プロットの上端に出す
-      showTip(html, clientX, anchorY());
+      rect.style.filter = 'brightness(1.06)';
+      var box = svg.getBoundingClientRect();
+      showTip('<div class="kate-tip-title">' + esc(glabel) + '</div><div class="kate-tip-row"><i style="background:' + color + '"></i><span>' + esc(s.name) + '</span><b>' + (opts.valueFmt || fmtCompact)(v) + '</b></div>', clientX, box.top + rect.getBBox().y);
     }
     rect.__showTip = show;
-    rect.__clearHi = function () { rect.style.filter = ''; };
     rect.addEventListener('mouseenter', function (ev) { show(ev.clientX); });
-    rect.addEventListener('mousemove', function (ev) { showTip(tooltip().innerHTML, ev.clientX, anchorY()); });
+    rect.addEventListener('mousemove', function (ev) { var box = svg.getBoundingClientRect(); showTip(tooltip().innerHTML, ev.clientX, box.top + rect.getBBox().y); });
     rect.addEventListener('mouseleave', function () { rect.style.filter = ''; hideTip(); });
-  }
-  // 列の幅いっぱいの透明な当たり判定。細い棒（スマホで 8〜12px）でも、その列の
-  // どこを触っても最寄りの棒のツールチップが出る。elementFromPoint で解決する
-  // タッチのなぞり（enableDragReveal）にも同じ __showTip で乗る。
-  function hitBand(svg, x, y, w, h, bars) {
-    if (!bars || !bars.length) return;
-    var band = svgEl('rect', { x: x, y: y, width: Math.max(1, w), height: Math.max(1, h), fill: 'transparent' });
-    var cur = null;
-    function nearest(clientX) {
-      var best = null, bd = Infinity;
-      bars.forEach(function (b) {
-        var bb = b.getBoundingClientRect(), cx = (bb.left + bb.right) / 2;
-        var d = Math.abs(clientX - cx);
-        if (d < bd) { bd = d; best = b; }
-      });
-      return best;
-    }
-    function show(clientX) {
-      var b = nearest(clientX);
-      if (b !== cur && cur && cur.__clearHi) cur.__clearHi();
-      cur = b;
-      if (b && b.__showTip) b.__showTip(clientX);
-    }
-    band.__showTip = show;
-    band.__clearHi = function () { if (cur && cur.__clearHi) cur.__clearHi(); cur = null; };
-    band.addEventListener('mouseenter', function (ev) { show(ev.clientX); });
-    band.addEventListener('mousemove', function (ev) { show(ev.clientX); });
-    band.addEventListener('mouseleave', function () { band.__clearHi(); hideTip(); });
-    svg.appendChild(band);
   }
   // Touch devices don't fire mouseenter/mouseleave while a single continuous
   // touch drags across neighboring elements (the touch target stays pinned to
@@ -614,7 +493,7 @@
     if (opts.centerValue != null) {
       var cv = svgEl('text', { x: cx, y: cy + 2, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': Math.round(size * 0.16), 'font-weight': 700 });
       cv.textContent = opts.centerValue; svg.appendChild(cv);
-      if (opts.centerLabel) { var cl = svgEl('text', { x: cx, y: cy + size * 0.13, 'text-anchor': 'middle', fill: ink.secondary(), 'font-size': AXIS_FS, 'font-weight': 500 }); cl.textContent = opts.centerLabel; svg.appendChild(cl); }
+      if (opts.centerLabel) { var cl = svgEl('text', { x: cx, y: cy + size * 0.13, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11 }); cl.textContent = opts.centerLabel; svg.appendChild(cl); }
     }
     enableDragReveal(svg);
     legend(container, segs.map(function (s, i) { return { label: s.label + ' · ' + fmtPct(s.value / total, 0), color: s.color || seriesColor(i) }; }));
@@ -661,7 +540,7 @@
         // この段に誰もいなければ継続率は定義できない（「0% · 離脱 100%」と出さない）
         conv.innerHTML = cont == null
           ? '<span class="kate-arrow">↓</span> 継続 <b>—</b> <em class="kate-funnel-frac">（この段に到達した方がいません）</em>'
-          : '<span class="kate-arrow">↓</span> 継続 <b>' + fmtPct(cont, 0) + '</b><span class="kate-funnel-churn"> · 離脱 ' + fmtPct(1 - cont, 0) + '</span>' + frac;
+          : '<span class="kate-arrow">↓</span> 継続 <b>' + fmtPct(cont, 0) + '</b> · 離脱 ' + fmtPct(1 - cont, 0) + frac;
         wrap.appendChild(conv);
       }
     });
@@ -672,21 +551,13 @@
   // opts: { matrix:[[]], rowLabels, colLabels, height, hueVar, cellLabel }
   function heatmap(container, opts) {
     var m = opts.matrix, rows = m.length, cols = m[0].length;
-    var w = width(container), cell = Math.min(84, (w - 44) / cols), h = cell * rows + 46;
+    var w = width(container), cell = Math.min(64, (w - 44) / cols), h = cell * rows + 46;
     var svg = mount(container, w, h);
     var padL = 40, padT = 22;
-    // 狭いセルでは列ラベルが重なるので、数字だけにして 1 つおきに出す
-    var tightCols = cell < 30;
-    var colLabelAt = function (c) {
-      var cl = String(opts.colLabels[c]);
-      if (!tightCols) return cl;
-      if (c % 2 === 1) return '';
-      var m = /^(\d+)/.exec(cl); return m ? m[1] : cl;
-    };
     var max = Math.max.apply(null, m.reduce(function (a, r) { return a.concat(r); }, [0])) || 1;
     var base = opts.hue || cssVar('--series-1', '#2a78d6');
-    opts.colLabels.forEach(function (cl, c) { var lbl = colLabelAt(c); if (!lbl) return; var t = svgEl('text', { x: padL + c * cell + cell / 2, y: padT - 8, 'text-anchor': 'middle', fill: ink.secondary(), 'font-size': AXIS_FS, 'font-weight': 500 }); t.textContent = lbl; svg.appendChild(t); });
-    opts.rowLabels.forEach(function (rl, r) { var t = svgEl('text', { x: padL - 8, y: padT + r * cell + cell / 2 + 4, 'text-anchor': 'end', fill: ink.secondary(), 'font-size': AXIS_FS, 'font-weight': 500 }); t.textContent = rl; svg.appendChild(t); });
+    opts.colLabels.forEach(function (cl, c) { var t = svgEl('text', { x: padL + c * cell + cell / 2, y: padT - 8, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11 }); t.textContent = cl; svg.appendChild(t); });
+    opts.rowLabels.forEach(function (rl, r) { var t = svgEl('text', { x: padL - 8, y: padT + r * cell + cell / 2 + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': 11 }); t.textContent = rl; svg.appendChild(t); });
     for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) {
       (function (r, c) {
         var v = m[r][c], intensity = v / max;
@@ -694,9 +565,7 @@
         var rect = svgEl('rect', { x: x + 1.5, y: y + 1.5, width: cell - 3, height: cell - 3, rx: 6, fill: base, 'fill-opacity': v === 0 ? 0.05 : (0.14 + intensity * 0.82) });
         svg.appendChild(rect);
         if (!noAnim()) { rect.style.opacity = 0; rect.getBoundingClientRect(); rect.style.transition = 'opacity .5s ease ' + ((r + c) * 45) + 'ms'; rect.style.opacity = 1; }
-        // セルの文字色は「塗りを面に重ねた結果の明るさ」で決める（濃さの割合で決めると、
-        // ダークでは薄い青の上に白が乗って読めなかった）
-        if (v > 0) { var t = svgEl('text', { x: x + cell / 2, y: y + cell / 2 + 4, 'text-anchor': 'middle', fill: inkOnFill(base, v === 0 ? 0.05 : (0.14 + intensity * 0.82)), 'font-size': tightCols ? 11 : 12.5, 'font-weight': 700 }); t.textContent = v; svg.appendChild(t); }
+        if (v > 0) { var t = svgEl('text', { x: x + cell / 2, y: y + cell / 2 + 4, 'text-anchor': 'middle', fill: intensity > 0.55 ? '#fff' : ink.secondary(), 'font-size': 12, 'font-weight': 600 }); t.textContent = v; svg.appendChild(t); }
         function show(clientX) { rect.setAttribute('stroke', base); rect.setAttribute('stroke-width', 2); var box = svg.getBoundingClientRect(); showTip('<div class="kate-tip-row"><span>' + esc(opts.rowLabels[r]) + ' × ' + esc(opts.colLabels[c]) + '</span><b>' + v + esc(opts.unit || '人') + '</b></div>', clientX, box.top + y); }
         rect.__showTip = show;
         rect.__clearHi = function () { rect.removeAttribute('stroke'); };
@@ -754,7 +623,7 @@
     });
     enableDragReveal(svg);
   }
-  function axisLabel(x, y, t, anchor) { var e = svgEl('text', { x: x, y: y, 'text-anchor': anchor, fill: ink.secondary(), 'font-size': AXIS_FS, 'font-weight': 500 }); e.textContent = t || ''; return e; }
+  function axisLabel(x, y, t, anchor) { var e = svgEl('text', { x: x, y: y, 'text-anchor': anchor, fill: ink.muted(), 'font-size': 11 }); e.textContent = t || ''; return e; }
 
   // ============================ GAUGE / RADIAL METER =====================
   // opts:{ value (0..1), label, sub, height, color }
@@ -771,7 +640,7 @@
     if (!noAnim()) { var L = arcP.getTotalLength(); arcP.style.strokeDasharray = L; arcP.style.strokeDashoffset = L; arcP.getBoundingClientRect(); arcP.style.transition = 'stroke-dashoffset 1s cubic-bezier(.22,.61,.36,1)'; arcP.style.strokeDashoffset = 0; }
     var val = svgEl('text', { x: cx, y: cy - R * 0.32, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': Math.round(R * 0.42), 'font-weight': 700 });
     val.textContent = opts.display != null ? opts.display : fmtPct(frac, 0); svg.appendChild(val);
-    if (opts.label) { var lb = svgEl('text', { x: cx, y: cy - R * 0.05, 'text-anchor': 'middle', fill: ink.secondary(), 'font-size': AXIS_FS, 'font-weight': 500 }); lb.textContent = opts.label; svg.appendChild(lb); }
+    if (opts.label) { var lb = svgEl('text', { x: cx, y: cy - R * 0.05, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': 11 }); lb.textContent = opts.label; svg.appendChild(lb); }
   }
   function arcStroke(cx, cy, R, a0, a1) { var x0 = cx + R * Math.cos(a0), y0 = cy + R * Math.sin(a0), x1 = cx + R * Math.cos(a1), y1 = cy + R * Math.sin(a1); var large = Math.abs(a1 - a0) > Math.PI ? 1 : 0; var sweep = a1 > a0 ? 1 : 0; return 'M' + x0 + ',' + y0 + 'A' + R + ',' + R + ' 0 ' + large + ' ' + sweep + ' ' + x1 + ',' + y1; }
 
@@ -810,12 +679,6 @@
     var track = el('div', 'meter-track');
     var fill = el('div', 'meter-fill');
     if (opts.color) fill.style.background = opts.color;
-    else if (opts.target != null) {
-      // 目安に対する達成度で色を変える（sub に目安の数字があるので色だけの符号にはならない）:
-      // 達成＝緑、あと 10pt 以内＝アクセント、それ以上離れている＝橙
-      var gap = opts.target - opts.value;
-      fill.style.background = gap <= 0 ? cssVar('--status-good') : gap <= 0.15 ? cssVar('--accent') : cssVar('--warn');
-    }
     track.appendChild(fill);
     if (opts.target != null) { var tick = el('i', 'meter-tick'); tick.style.left = (Math.max(0, Math.min(1, opts.target)) * 100) + '%'; track.appendChild(tick); }
     wrap.appendChild(track);
