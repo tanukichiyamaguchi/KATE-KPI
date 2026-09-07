@@ -95,25 +95,10 @@
   // instead of collapsing every staff into one shared blue ramp.
   var STAFF_RAMP = { 'momo': ['--funnel-2', '--funnel-3', '--funnel-4', '--funnel-5'], 'aoi': ['--funnel-o2', '--funnel-o3', '--funnel-o4', '--funnel-o5'] };
   function staffTierColor(name, tier) { return cvar((STAFF_RAMP[name] || STAFF_RAMP.momo)[tier]); }
-  // セグメント色: 9区分がそれぞれ別の色になるように割り当てる（以前は 高ロイヤル と
-  // 離脱 が同じ紫だった）。離脱は「色を失った」ニュートラルで表す。
   var SEG_COLOR = {
-    '最優良顧客': '--series-1', '高ロイヤル顧客': '--series-4', '優良顧客': '--series-5', '安全顧客': '--series-3',
-    '要注意顧客': '--series-2', '新規顧客': '--series-6', '離反間近顧客': '--series-8', '休眠顧客': '--series-7', '離脱顧客': '--ink-faint'
+    '最優良顧客': '--series-1', '高ロイヤル顧客': '--series-4', '優良顧客': '--series-5', '安全顧客': '--series-2',
+    '要注意顧客': '--series-3', '新規顧客': '--series-6', '離反間近顧客': '--series-8', '休眠顧客': '--series-7', '離脱顧客': '--series-4'
   };
-  // セグメントの状態は色の点だけでなく短い言葉でも示す（色だけの符号にしない）
-  var SEG_STATE = {
-    '最優良顧客': ['good', '良好'], '高ロイヤル顧客': ['good', '良好'], '優良顧客': ['good', '良好'], '安全顧客': ['good', '良好'],
-    '要注意顧客': ['warn', '要フォロー'], '新規顧客': ['new', '新規'], '離反間近顧客': ['bad', '離反リスク'], '休眠顧客': ['bad', '離反リスク'], '離脱顧客': ['lost', '離脱']
-  };
-  // 塗り色の上に置く文字色を明度で決める（白 or 墨）。橙の上の白は読めないため。
-  function inkOn(hex) {
-    var m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
-    if (!m) return '#fff';
-    var c = [0, 2, 4].map(function (i) { var v = parseInt(m[1].slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
-    var L = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-    return L > 0.4 ? '#0b0f1a' : '#fff';
-  }
   var SEG_STATUS = {
     '最優良顧客': '--status-good', '高ロイヤル顧客': '--status-good', '優良顧客': '--status-good', '安全顧客': '--status-good',
     '要注意顧客': '--status-warning', '新規顧客': '--accent', '離反間近顧客': '--status-serious', '休眠顧客': '--status-serious', '離脱顧客': '--status-critical'
@@ -287,8 +272,7 @@
 
     // 新しい端末への案内: 共有設定（暗号化済みシートURL）が同梱されているのに
     // まだ何も連携していない = サンプルデータを見ている状態。合言葉の入力へ誘導。
-    // 上部の #sheetAlert に同じ案内（notLinkedBanner）が出ているときは重ねて出さない。
-    if (state.sharedBlob && state.source === 'サンプルデータ' && !notLinkedBanner()) {
+    if (state.sharedBlob && state.source === 'サンプルデータ') {
       html += card({
         col: 'col-12',
         body: '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">' +
@@ -325,7 +309,7 @@
     // 内訳の分け方は「月次 予約数の比較」と完全に同じ（何回目の来店/予約か）。
     // したがって、この2本の棒の合計は上の「月次 予約ベース売上」の棒と一致する。
     html += card({
-      col: 'col-6', title: '月次 売上（新規・既存別）' + taxTag + help('上の「月次 予約ベース売上」を、その顧客にとって<b>初回（新規）</b>か<b>2回目以降（既存）</b>かで分けたもの。会計済みの実績と受付待ちの見込みを合算した予約ベースで、合計は上のグラフと一致します。新規獲得と既存維持のどちらが売上を支えているかが月ごとに見えます。金額は税抜。'),
+      col: 'col-12', title: '月次 売上（新規・既存別）' + taxTag + help('上の「月次 予約ベース売上」を、その顧客にとって<b>初回（新規）</b>か<b>2回目以降（既存）</b>かで分けたもの。会計済みの実績と受付待ちの見込みを合算した予約ベースで、合計は上のグラフと一致します。新規獲得と既存維持のどちらが売上を支えているかが月ごとに見えます。金額は税抜。'),
       sub: '新規（初回）と既存（2回目以降）の内訳　※予約ベース（会計済み＋受付待ちの合算）', tag: '¥',
       body: chartBox('cRevMix', 250)
     });
@@ -335,14 +319,14 @@
     var lastMix = s.newMix.filter(function (m) { return m.new + m.repeat > 0; }).slice(-1)[0];
     var mixNote = lastMix && (lastMix.new + lastMix.repeat) ? '直近月（' + monthShort(lastMix.m) + '）の再来比率 ' + pct(lastMix.repeat / (lastMix.new + lastMix.repeat) * 100, 0) : '月次の新規・再来来店数';
     html += card({
-      col: 'col-6', title: '月次 予約数の比較' + help('月ごとの来店・予約を、その顧客にとって何回目にあたるかで内訳表示（新規／2回目／3回目／4回目以上）。会計済みの実績と受付待ちの見込みを合算した予約ベースで、回数別に1色で積み上げ。スタッフタブの「月次 予約数の比較」の店舗全体版で、スタッフ別の棒を足し合わせた合計と一致します。棒の上の数字は合計件数。'),
+      col: 'col-12', title: '月次 予約数の比較' + help('月ごとの来店・予約を、その顧客にとって何回目にあたるかで内訳表示（新規／2回目／3回目／4回目以上）。会計済みの実績と受付待ちの見込みを合算した予約ベースで、回数別に1色で積み上げ。スタッフタブの「月次 予約数の比較」の店舗全体版で、スタッフ別の棒を足し合わせた合計と一致します。棒の上の数字は合計件数。'),
       sub: mixNote + '　※予約ベース（会計済み＋受付待ちの合算）', tag: '件', body: chartBox('cNewMix', 250)
     });
 
     // Funnel + cohort
     var fLast = s.funnel[s.funnel.length - 1] || { n: 1 };
     html += card({
-      id: 'cardFunnel', col: 'col-5', title: 'リテンション ファネル' + help('各段の到達人数は<b>予約ベース</b>：集計基準日より後の受付待ちの予約も「到達」に数えます。ただし<b>実際に来店しなかった予約（キャンセル・無断キャンセル、基準日を過ぎても未処理のもの）は到達に数えません</b>。キャンセル後に別の予約を取り直していれば、その予約で到達とみなします。段の間の<b>継続率＝次の段の到達人数 ÷ その段の到達人数</b>で、棒の減り方そのものです。段の数はデータに応じて増え、予約ベースで一番多く到達している方の回数まで表示します（' + FUNNEL_CAP + '回を超える場合は「' + FUNNEL_CAP + '回以上」にまとめます）。なお定着カードの「固定化率」は分母が「実際に2回来店した人」なので、ここの2回→3回の継続率とは一致しません。'),
+      col: 'col-5', title: 'リテンション ファネル' + help('各段の到達人数は<b>予約ベース</b>：集計基準日より後の受付待ちの予約も「到達」に数えます。ただし<b>実際に来店しなかった予約（キャンセル・無断キャンセル、基準日を過ぎても未処理のもの）は到達に数えません</b>。キャンセル後に別の予約を取り直していれば、その予約で到達とみなします。段の間の<b>継続率＝次の段の到達人数 ÷ その段の到達人数</b>で、棒の減り方そのものです。段の数はデータに応じて増え、予約ベースで一番多く到達している方の回数まで表示します（' + FUNNEL_CAP + '回を超える場合は「' + FUNNEL_CAP + '回以上」にまとめます）。なお定着カードの「固定化率」は分母が「実際に2回来店した人」なので、ここの2回→3回の継続率とは一致しません。'),
       sub: '来店顧客 ' + s.customers + '人が母数（1回 → ' + fLast.n + '回' + (fLast.open ? '以上' : '') + ' 到達）',
       body: '<div id="cFunnel"></div>'
     });
@@ -350,17 +334,11 @@
       col: 'col-7', title: '月次コホート リピート率' + help('初回来店した月ごとに顧客をグループ化し、そのグループの何%が2回目の予約に到達したかを表示。' + (A.meta.completedOnly ? '会計明細のみのデータでは将来の予約が見えないため、獲得から45日経っていない直近の月は表示しません。' : '予約ベースなので集計途中の当月（※印）も測定でき、月末までに多少上下します。') + '母数5人未満の月は非表示。'), sub: '初回獲得月ごとの2回目到達　※印は集計途中の当月', tag: '%',
       body: chartBox('cTCohortR', 230)
     });
-    // 顧客LTV（現状・予測）は同じカードの上段に置く（オーナー要望: 月次コホートLTVの近く）。
-    // 以前は隣の小さなタイルだったが、スマホでは半幅の孤立タイルになり、デスクトップでは
-    // 縦に伸びた空白ができていた。
-    var ltvStrip = '<div class="stat stat-inline" data-kpi="ltv">' +
-      '<div><div class="stat-top"><span class="stat-label">顧客LTV（現状）' + taxTag + help('来店顧客1人あたりの累計売上（実績のみ）。「予測」は現在の客単価が今後も続くと仮定し、1回〜5回到達率の合計（期待来店回数）を掛けて見積もった将来のLTV。金額は税抜。') + '</span></div>' +
-      '<div class="stat-value">¥<span class="cu" data-to="' + s.ltv.current + '" data-unit="yen">' + F.int(s.ltv.current) + '</span></div></div>' +
-      '<div class="stat-foot"><span class="chip up">↑ 予測 ' + yen(s.ltv.predicted) + '</span> 期待来店 ' + s.ltv.expectedVisits + '回</div></div>';
     html += card({
-      col: 'col-7', title: '月次コホート LTV' + help('初回来店した月ごとに顧客をグループ化し、そのグループの現時点までの累計売上を平均したもの。新しい月ほど来店回数がまだ少ないため低く出て、時間とともに積み上がります（※印は集計途中の当月）。'), sub: '初回獲得月ごとの累計売上　※印は集計途中の当月', tag: '¥',
-      body: ltvStrip + chartBox('cTCohortL', 220)
+      col: 'col-8', title: '月次コホート LTV' + help('初回来店した月ごとに顧客をグループ化し、そのグループの現時点までの累計売上を平均したもの。新しい月ほど来店回数がまだ少ないため低く出て、時間とともに積み上がります（※印は集計途中の当月）。'), sub: '初回獲得月ごとの累計売上　※印は集計途中の当月', tag: '¥',
+      body: chartBox('cTCohortL', 220)
     });
+    html += statTile('ltv', '顧客LTV（現状）' + taxTag + help('来店顧客1人あたりの累計売上（実績のみ）。「予測」は現在の客単価が今後も続くと仮定し、1回〜5回到達率の合計（期待来店回数）を掛けて見積もった将来のLTV。金額は税抜。'), F.int(s.ltv.current), '¥', '<span class="chip up">↑ 予測 ' + yen(s.ltv.predicted) + '</span> 期待来店 ' + s.ltv.expectedVisits + '回', null);
     html += card({
       col: 'col-12', title: '客単価の推移' + taxTag + help('月ごとの客単価の推移。「予約ベース客単価」＝予約ベース売上（会計済みの実績＋受付待ちの見込み）÷ 予約件数（来店＋受付待ち）。「実績客単価」＝会計済み売上 ÷ 来店件数で、見込みを含まない確定値。予約・来店の無い月は線を引きません。金額は税抜。'),
       sub: '予約ベース客単価と実績客単価の月次推移', tag: '¥',
@@ -422,9 +400,7 @@
         series: [
           // 2本の終端月が異なり（見込みを含む予約ベースの方が先の月まで伸びる）、
           // 終端ラベルはどちらの線を指すのか紛らわしいため出さない（凡例で識別）。
-          // 予約ベース（受付待ちの見込みを含む）は「見込み」の意味で破線。実績の実線と
-          // 値が重なる月でも、破線が上に乗って両方見える。
-          { name: '予約ベース客単価', color: cvar('--series-1'), endLabel: false, dashed: true, values: s.monthly.map(function (m) { return m.res ? m.spend : null; }) },
+          { name: '予約ベース客単価', color: cvar('--series-1'), endLabel: false, values: s.monthly.map(function (m) { return m.res ? m.spend : null; }) },
           { name: '実績客単価', color: cvar('--series-4'), endLabel: false, values: s.monthly.map(function (m) { return m.spendActual; }) }
         ],
         valueFmt: yen, yFmt: F.compact, height: 230
@@ -601,7 +577,7 @@
         (regMile.maxed ? '（最高節目達成）' : '（次の節目 ' + F.int(regMile.next) + '人）');
       html += card({
         col: 'col-6', hoverable: true,
-        body: '<div class="staff-head"><div class="staff-avatar" style="background:' + col + ';color:' + inkOn(col) + '">' + esc(st.name[0].toUpperCase()) + '</div>' +
+        body: '<div class="staff-head"><div class="staff-avatar" style="background:' + col + '">' + esc(st.name[0].toUpperCase()) + '</div>' +
           '<div><div class="staff-name">' + esc(st.name) + '<span>実績 ' + st.avg.months + 'ヶ月 ・ 獲得顧客 ' + st.acquired + '人' + matureNote + regNote + '</span></div></div></div>' +
           '<div class="staff-metrics">' +
           sm(F.int(st.avg.visitsPerMonth), '平均来店 / 月' + help('実績のある月ごとの来店件数を単純平均したもの。')) + sm(yen(st.avg.spend), '平均客単価' + help('月ごとの客単価（予約ベース売上÷予約数）を単純平均したもの。')) +
@@ -618,25 +594,19 @@
       });
     });
 
-    // 半幅のチャートは 2 枚ずつ並ぶ。枚数が奇数なら最後の 1 枚を全幅にして、
-    // デスクトップで右半分が空くのを防ぐ（店販・稼働率はデータの有無で増減する）。
-    var charts = [];
     html += card({ col: 'col-12', title: '月次 予約数の比較' + help('月ごとにスタッフの棒を並べた積み上げ棒グラフ。色相でスタッフ、濃淡で来店回数（新規／2回目／3回目／4回目以上）を表現。会計済みの実績と受付待ちの見込みを合算した予約ベース。バーの下の色帯がスタッフ名の目印、上の数字は月ごとの合計件数。'), tag: '件', body: chartBox('cStaffRes', 250) });
-    charts.push({ col: 'col-6', title: '月次 予約ベース売上の比較' + help('月ごとの売上（会計済みの実績＋受付待ちの見込み）をスタッフ別に比較。'), tag: '¥', body: chartBox('cStaffRev', 240) });
-    charts.push({ col: 'col-6', title: '客単価の推移' + help('月ごとの客単価（予約ベース売上÷予約数）の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffSpend', 230) });
+    html += card({ col: 'col-6', title: '月次 予約ベース売上の比較' + help('月ごとの売上（会計済みの実績＋受付待ちの見込み）をスタッフ別に比較。'), tag: '¥', body: chartBox('cStaffRev', 240) });
+    html += card({ col: 'col-6', title: '客単価の推移' + help('月ごとの客単価（予約ベース売上÷予約数）の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffSpend', 230) });
     var censNote = A.meta.completedOnly ? '　※直近の月は再来待ちのため集計対象外' : '';
-    charts.push({ col: 'col-6', title: '次回予約取得率の推移' + help('来店（会計済み）のうち、その後に何らかの予約・来店があった割合の月次推移。'), sub: '来店時に次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext', 230) });
-    charts.push({ col: 'col-6', title: '月別リピート率の推移' + help('初回来店した月ごとに、このスタッフが担当した新規顧客を母数として、<b>2回目の予約に到達した割合</b>の推移。会計済みと今後の受付待ちを合算した予約ベースで、キャンセルは到達に数えず、取り直せば数えます。' + (A.meta.completedOnly ? '会計明細のみのデータでは将来の予約が見えないため、獲得から45日経っていない直近の月は表示しません。' : '予約ベースなので集計途中の当月（※印）も測定でき、月末までに多少上下します。') + '<b>母数が5人未満の月</b>も非表示です（1人の挙動が100%や0%に化けるため）。'), sub: '獲得月コホートの2回到達率　※印は集計途中の当月・母数5人未満の月は非表示', tag: '%', body: chartBox('cStaffRepeatRate', 230) });
-    charts.push({ col: 'col-6', title: '月別固定化率の推移' + help('初回来店した月ごとに、<b>実際に2回来店した顧客</b>を母数として、<b>3回目の予約に到達した割合</b>の推移。受付待ちを含み、キャンセルは到達に数えず、取り直せば数えます。<br><br>この分母（2回目の来店を済ませた方）は獲得から時間が経たないと育たず、育つ前は早く再来した熱心な方だけが母数に入って100%のような値が出てしまうため、<b>月末から「来店周期の中央値」（最低30日）が経つまでの月は表示しません</b>。あわせて<b>母数5人未満の月</b>も非表示です。'), sub: '獲得月コホートの3回到達率（2回来店が母数）　※母数が育つまでの直近月・母数5人未満の月は非表示', tag: '%', body: chartBox('cStaffFixRate', 230) });
+    html += card({ col: 'col-6', title: '次回予約取得率の推移' + help('来店（会計済み）のうち、その後に何らかの予約・来店があった割合の月次推移。'), sub: '来店時に次の予約を確保できた割合' + censNote, tag: '%', body: chartBox('cStaffNext', 230) });
+    html += card({ col: 'col-6', title: '月別リピート率の推移' + help('初回来店した月ごとに、このスタッフが担当した新規顧客を母数として、<b>2回目の予約に到達した割合</b>の推移。会計済みと今後の受付待ちを合算した予約ベースで、キャンセルは到達に数えず、取り直せば数えます。' + (A.meta.completedOnly ? '会計明細のみのデータでは将来の予約が見えないため、獲得から45日経っていない直近の月は表示しません。' : '予約ベースなので集計途中の当月（※印）も測定でき、月末までに多少上下します。') + '<b>母数が5人未満の月</b>も非表示です（1人の挙動が100%や0%に化けるため）。'), sub: '獲得月コホートの2回到達率　※印は集計途中の当月・母数5人未満の月は非表示', tag: '%', body: chartBox('cStaffRepeatRate', 230) });
+    html += card({ col: 'col-6', title: '月別固定化率の推移' + help('初回来店した月ごとに、<b>実際に2回来店した顧客</b>を母数として、<b>3回目の予約に到達した割合</b>の推移。受付待ちを含み、キャンセルは到達に数えず、取り直せば数えます。<br><br>この分母（2回目の来店を済ませた方）は獲得から時間が経たないと育たず、育つ前は早く再来した熱心な方だけが母数に入って100%のような値が出てしまうため、<b>月末から「来店周期の中央値」（最低30日）が経つまでの月は表示しません</b>。あわせて<b>母数5人未満の月</b>も非表示です。'), sub: '獲得月コホートの3回到達率（2回来店が母数）　※母数が育つまでの直近月・母数5人未満の月は非表示', tag: '%', body: chartBox('cStaffFixRate', 230) });
     if (A.store.retail.hasAmount) {
-      charts.push({ col: 'col-6', title: '店販売上の推移' + help('月ごとの店販売上金額の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffRetail', 230) });
+      html += card({ col: 'col-6', title: '店販売上の推移' + help('月ごとの店販売上金額の推移をスタッフ別に表示。'), tag: '¥', body: chartBox('cStaffRetail', 230) });
     }
     if (staff.some(function (st) { return st.utilization; })) {
-      charts.push({ col: 'col-6', title: '月次 施術時間と稼働率' + help('稼働率＝施術時間の合計 ÷ 稼働可能時間（実際に施術のあった日数 × 1日8時間）。進行中の当月・未来月は表示しない。予約データに所要時間の記録がある場合のみ算出可能。'), sub: '実稼働日 × 8時間を分母に算出', tag: '%', body: chartBox('cStaffUtil', 230) });
+      html += card({ col: 'col-6', title: '月次 施術時間と稼働率' + help('稼働率＝施術時間の合計 ÷ 稼働可能時間（実際に施術のあった日数 × 1日8時間）。進行中の当月・未来月は表示しない。予約データに所要時間の記録がある場合のみ算出可能。'), sub: '実稼働日 × 8時間を分母に算出', tag: '%', body: chartBox('cStaffUtil', 230) });
     }
-
-    if (charts.length % 2 === 1) charts[charts.length - 1].col = 'col-12';
-    charts.forEach(function (c) { html += card(c); });
 
     mount('staff', head + '<div class="grid">' + html + '</div>');
 
@@ -682,12 +652,7 @@
           { name: '3回目', color: tierColor(2), values: sum(resData.v3, resData.expV3) },
           { name: '4回目以上', color: tierColor(3), values: sum(resData.v4, resData.expV4) }
         ],
-        valueFmt: function (v) { return v + '件'; }, height: 250,
-        // 凡例: スタッフの色（棒の下の色帯）と、回数の濃淡ランプ。以前は凡例が無く、
-        // スマホでは棒の下の名前も出ないため、どの棒が誰か分からなかった。
-        legendItems: staff.map(function (st) { return { label: st.name, color: cvar(STAFF_COLOR[st.name]) }; }).concat([
-          { label: '新規 → 2回目 → 3回目 → 4回目以上（濃いほど回数が多い）', colors: ['--funnel-2', '--funnel-3', '--funnel-4', '--funnel-5'].map(cvar) }
-        ])
+        valueFmt: function (v) { return v + '件'; }, hideLegend: true, height: 250
       });
     });
     draw('cStaffRev', function (el) { C.columns(el, { groups: months, series: staff.map(function (st) { return { name: st.name, color: cvar(STAFF_COLOR[st.name]), values: st.monthly.map(function (m) { return m.rev; }) }; }), valueFmt: function (v) { return yen(v); }, totalFmt: yenCompact, yFmt: F.compact, height: 240 }); });
@@ -889,9 +854,9 @@
     // segment cards
     html += '<div class="section-title">セグメント サマリー' + help('R（最終来店からの経過日数）・F（来店回数）・M（累計売上）の3指標をもとに、顧客を9つのセグメントに分類。各指標は5段階のスコア（5が最も良い）に変換し、その組み合わせでセグメントを決定。') + '</div>';
     html += '<div class="seg-grid reveal" style="margin-top:10px">' + r.segments.map(function (sg) {
-      var col = cvar(SEG_COLOR[sg.seg] || '--series-6'), stt = SEG_STATE[sg.seg] || ['new', ''];
+      var col = cvar(SEG_COLOR[sg.seg] || '--series-6'), st = cvar(SEG_STATUS[sg.seg] || '--accent');
       return '<div class="seg-card" style="--seg-color:' + col + '">' +
-        '<div class="seg-name"><span class="seg-dot"></span>' + esc(sg.label) + (stt[1] ? '<span class="seg-state ' + stt[0] + '">' + stt[1] + '</span>' : '') + '</div>' +
+        '<div class="seg-name"><span class="seg-dot"></span>' + esc(sg.label) + '<span class="seg-status" style="background:' + st + '"></span></div>' +
         '<div class="seg-people tnum">' + sg.people + '<small> 人 ・ ' + pct(sg.ratio * 100, 1) + '</small></div>' +
         '<div class="seg-ratio"><i style="width:' + Math.max(2, sg.ratio * 100) + '%"></i></div>' +
         '<div class="seg-rfm"><span>R <b>' + (sg.people ? sg.r + '日' : '—') + '</b></span><span>F <b>' + (sg.people ? sg.f + '回' : '—') + '</b></span><span>M <b>' + (sg.people ? '¥' + F.compact(sg.m) : '—') + '</b></span></div>' +
@@ -906,9 +871,10 @@
 
     // customer table
     var overdueCount = r.customers.filter(function (c) { return c.cycleOverdue; }).length;
-    html += '<div class="grid" style="margin-top:28px">' + card({
+    html += '<div class="section-title">顧客 RFM 明細</div>';
+    html += '<div class="grid">' + card({
       col: 'col-12', sub: '累計売上(M)順・上位120人を表示。ヘッダーをタップで並べ替え。',
-      title: '顧客 RFM 明細',
+      title: '顧客一覧',
       body: '<div style="display:flex;justify-content:flex-end;margin-bottom:10px">' +
         '<button type="button" class="pill' + (rfmCallbackOnly ? ' accent' : '') + '" id="rfmCallbackToggle" aria-pressed="' + rfmCallbackOnly + '">呼び戻し対象のみ表示（' + overdueCount + '人）</button>' +
         '</div><div class="table-wrap tall"><table class="kate-table" id="rfmTable"></table></div>'
@@ -960,7 +926,7 @@
       var col = cvar(SEG_COLOR[c.seg] || '--series-6');
       var overdueCell = c.cycleOverdue
         ? '<span class="chip down">周期超過</span>'
-        : '<span class="note-inline">目安 ' + Math.round(c.ownCycle) + '日</span>';
+        : '<span class="note-inline">目安 ' + c.ownCycle + '日</span>';
       return '<tr><td>' + esc(c.name) + '</td><td>' + c.R + '</td><td>' + c.F + '</td><td><span class="full-num">' + F.int(c.M) + '</span><span class="compact-num">' + F.compact(c.M) + '</span></td>' +
         '<td style="text-align:left"><span class="seg-tag"><i style="background:' + col + '"></i>' + esc(c.seg) + '</span></td>' +
         '<td style="text-align:left">' + overdueCell + '</td></tr>';
@@ -988,7 +954,7 @@
   function slotStatusLine(slot) {
     var s = state.sources[slot];
     if (!s) return '<div class="status-line"><i style="background:var(--ink-muted)"></i>未読み込み</div>';
-    return '<div class="status-line" style="color:var(--good-ink)"><i style="background:var(--status-good)"></i>読み込み済み・' + F.int(s.records.length) + '件' + (s.fileName ? '・' + esc(s.fileName) : '（' + esc(s.via) + '）') + '</div>';
+    return '<div class="status-line" style="color:var(--status-good)"><i style="background:var(--status-good)"></i>読み込み済み・' + F.int(s.records.length) + '件' + (s.fileName ? '・' + esc(s.fileName) : '（' + esc(s.via) + '）') + '</div>';
   }
   // 年商カードの表示期間（ymd）。null のあいだは基準日の年の 1/1〜12/31 を使う。
   var annualFrom = null, annualTo = null;
@@ -1011,7 +977,7 @@
     var linkBroken = Object.keys(state.sheetErrors || {}).length > 0;
     if (state.sharedBlob && (!(state.sheetUrl || state.sheetUrlKaikei) || linkBroken)) {
       html += card({
-        col: 'col-6', title: '合言葉で店舗データを表示' + help('お店のスプレッドシートのURLを暗号化したものがこのアプリに同梱されています。合言葉を入力すると、この端末で復元されて自動連携が始まります（合言葉の入力は端末ごとに最初の1回だけ）。'),
+        col: 'col-12', title: '合言葉で店舗データを表示' + help('お店のスプレッドシートのURLを暗号化したものがこのアプリに同梱されています。合言葉を入力すると、この端末で復元されて自動連携が始まります（合言葉の入力は端末ごとに最初の1回だけ）。'),
         sub: linkBroken
           ? '<b>この端末の連携がうまくいっていません。</b>合言葉を入れ直すと、正しい連携URLが復元されます'
           : 'この端末で初めて使うときは、お店の合言葉を入力してください（1回だけ）',
@@ -1023,7 +989,7 @@
     }
     if (ownerLocked) {
       html += card({
-        col: 'col-6', title: '管理者メニュー' + help('年商・予約状況、スプレッドシート連携の設定（URLの表示を含む）・ファイル取り込み・データのクリアなどの管理操作は、管理用の合言葉でロックされています。一度解除すると、この端末では次回から入力不要です（解除した記録のみを端末に保存し、合言葉そのものは保存しません）。解除後の画面から、いつでもこの端末を再ロックできます。'),
+        col: 'col-12', title: '管理者メニュー' + help('年商・予約状況、スプレッドシート連携の設定（URLの表示を含む）・ファイル取り込み・データのクリアなどの管理操作は、管理用の合言葉でロックされています。一度解除すると、この端末では次回から入力不要です（解除した記録のみを端末に保存し、合言葉そのものは保存しません）。解除後の画面から、いつでもこの端末を再ロックできます。'),
         sub: '連携設定などの管理操作は、管理用の合言葉（店の合言葉とは別）でロックされています。入力は<b>この端末で最初の1回だけ</b>です',
         body: '<div class="field">' + lockSvg() +
           '<input type="password" id="ownerPassInput" autocomplete="off" placeholder="管理用の合言葉">' +
@@ -1103,11 +1069,11 @@
           '<button class="pill accent" id="' + sm.linkId + '" type="button">' + (linked ? '今すぐ更新' : '連携して読み込む') + '</button>' +
           (linked ? '<button class="pill" id="' + sm.unlinkId + '" type="button">解除</button>' : '') +
           '</div>' +
-          (linked ? '<div class="status-line" style="margin-top:8px;color:var(--good-ink)"><i style="background:var(--status-good)"></i>連携中。ページを開くたびに最新の内容を読み込みます。</div>' : '') +
+          (linked ? '<div class="status-line" style="margin-top:8px;color:var(--status-good)"><i style="background:var(--status-good)"></i>連携中。ページを開くたびに最新の内容を読み込みます。</div>' : '') +
           // 「ウェブに公開」URLは、自動再公開が止まるとGoogle側で内容が凍結され、
           // 何度読み込んでも古いまま になる。URL種別から判別できるので明示する。
           (linked && isPublishedUrl(sm.sheetUrl)
-            ? '<div class="status-line" style="margin-top:6px;color:var(--warn-ink)"><i style="background:var(--status-warning)"></i>' +
+            ? '<div class="status-line" style="margin-top:6px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' +
               '<b>「ウェブに公開」URL</b>です。公開設定の「自動的に再公開する」が外れていると、シートを更新してもこのURLの内容は<b>公開時点で凍結</b>され、更新が届きません。' +
               '更新が止まっている場合は、<code>ファイル → 共有 → ウェブに公開</code>で再公開するか、通常の<b>編集URL</b>（<code>/spreadsheets/d/…/edit</code>）に貼り替えてください（編集URLは常に最新を読みます）。</div>'
             : '') +
@@ -1183,8 +1149,8 @@
       // できなくなる。失敗行は既存のデータ行の「上に足す」。
       var errRow = err
         ? '<tr><td>' + esc(slotJa[sl]) + '</td>' +
-          '<td colspan="4" style="text-align:left;color:var(--warn-ink)">読み込み失敗（' + esc(ymdhmJa(err.at)) + '）：' + esc(err.message) + '</td>' +
-          '<td style="color:var(--warn-ink);font-weight:700">失敗</td></tr>'
+          '<td colspan="4" style="text-align:left;color:var(--status-warning)">読み込み失敗（' + esc(ymdhmJa(err.at)) + '）：' + esc(err.message) + '</td>' +
+          '<td style="color:var(--status-warning);font-weight:700">失敗</td></tr>'
         : '';
       if (!s3 || !s3.diag) return errRow;
       var d3 = s3.diag, today = new Date();
@@ -1193,12 +1159,12 @@
       var behind = d3.latest !== null && (todayNum - d3.latest) >= 2;
       return errRow + '<tr><td>' + esc(slotJa[sl]) + '</td>' +
         '<td class="tnum">' + F.int(d3.rows) + '件</td>' +
-        '<td class="tnum"' + (behind ? ' style="color:var(--warn-ink);font-weight:700"' : '') + '>' +
+        '<td class="tnum"' + (behind ? ' style="color:var(--status-warning);font-weight:700"' : '') + '>' +
           (d3.latest !== null ? esc(ymdNumJa(d3.latest)) : '—') + '</td>' +
         '<td>' + (s3.updatedAt ? esc(ymdhmJa(s3.updatedAt)) : '—') + '</td>' +
         '<td>' + esc(ymdhmJa(d3.fetchedAt)) + '</td>' +
         // 取得経路。export＝常に最新／gviz・pub＝Google側で古い内容が返ることがある
-        '<td' + (d3.kind === 'export' ? '' : ' style="color:var(--warn-ink);font-weight:700"') + '>' +
+        '<td' + (d3.kind === 'export' ? '' : ' style="color:var(--status-warning);font-weight:700"') + '>' +
           (d3.kind === 'export' ? '常に最新' : d3.kind === 'gviz' ? 'キャッシュ有' : '公開スナップ') + '</td></tr>' +
         // 取得経路ごとの結果。片方の経路だけが古い内容を返している場合、
         // ここに並べて出ることで「どちらが古いのか」が一目で分かる。
@@ -1226,11 +1192,11 @@
           '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--hairline)">' +
           '<div class="datainfo">' +
           '<div><span>自動更新の間隔</span><b>30分おき（終日）</b></div>' +
-          '<div><span>前回の自動更新</span><b' + (state.autoReloadLast ? '' : ' style="color:var(--warn-ink)"') + '>' +
+          '<div><span>前回の自動更新</span><b' + (state.autoReloadLast ? '' : ' style="color:var(--status-warning)"') + '>' +
             (state.autoReloadLast ? esc(ymdhmJa(state.autoReloadLast)) : 'まだ一度も動いていません') + '</b></div>' +
           (state.autoReloadNext ? '<div><span>次回の予定</span><b>' + esc(ymdhmJa(state.autoReloadNext)) + '</b></div>' : '') +
           '</div>' +
-          '<div class="status-line" style="margin-top:10px;color:var(--warn-ink)"><i style="background:var(--status-warning)"></i>' +
+          '<div class="status-line" style="margin-top:10px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' +
           '<b>自動更新は、この画面を開いたままの端末でのみ動きます。</b>このダッシュボードはサーバーを持たない仕組みのため、' +
           '誰もページを開いていなければ自動更新は行われません（次に開いたときに最新を読み込みます）。' +
           '毎晩必ず更新したい場合は、店頭の端末でこの画面を開いたままにしておいてください。</div>' +
@@ -1243,7 +1209,7 @@
       if (mr.matched === 0) {
         html += card({
           col: 'col-12', title: '突合レポート（予約データ ⇄ 会計明細）',
-          body: '<div class="status-line" style="color:var(--bad-ink)"><i style="background:var(--status-critical)"></i>結合0件 — フリガナ表記または対象期間が一致していない可能性があります。会計明細は結合されず、予約データ単独で表示しています。</div>'
+          body: '<div class="status-line" style="color:var(--status-critical)"><i style="background:var(--status-critical)"></i>結合0件 — フリガナ表記または対象期間が一致していない可能性があります。会計明細は結合されず、予約データ単独で表示しています。</div>'
         });
       } else {
         html += card({
@@ -1276,7 +1242,7 @@
       }
       if (s2.via === 'スプレッドシート連携' && s2.updatedAt && (Date.now() - Number(s2.updatedAt) > 26 * 3600 * 1000)) {
         var ageH = Math.floor((Date.now() - Number(s2.updatedAt)) / 3600000);
-        staleWarns += '<div class="status-line" style="margin-top:12px;color:var(--warn-ink)"><i style="background:var(--status-warning)"></i>' +
+        staleWarns += '<div class="status-line" style="margin-top:12px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' +
           '<b>' + slotJa[slot2] + '</b>のシートが' + (ageH >= 48 ? Math.floor(ageH / 24) + '日' : ageH + '時間') + '更新されていません（最終更新 ' + esc(ymdhmJa(s2.updatedAt)) + '）。' +
           'シート側の同期（DailyCSVSync）が失敗していないか、スプレッドシートの「拡張機能 → Apps Script → 実行数」でエラーをご確認ください。</div>';
       }
@@ -1294,7 +1260,7 @@
         srcRows +
         (state.dataLoadedAt ? '<div><span>最終読込</span><b>' + esc(ymdhmJa(state.dataLoadedAt)) + '</b></div>' : '') + '</div>' +
         staleWarns +
-        (m.undatedRows ? '<div class="status-line" style="margin-top:12px;color:var(--warn-ink)"><i style="background:var(--status-warning)"></i>' + F.int(m.undatedRows) + '件は来店日を読み取れず、日付ベースの集計から除外しました。</div>' : '')
+        (m.undatedRows ? '<div class="status-line" style="margin-top:12px;color:var(--status-warning)"><i style="background:var(--status-warning)"></i>' + F.int(m.undatedRows) + '件は来店日を読み取れず、日付ベースの集計から除外しました。</div>' : '')
     });
     html += card({
       col: 'col-6', title: '認識した列', sub: '予約データの主要列を自動でマッピング',
@@ -1748,8 +1714,8 @@
           'ネットワーク側でGoogleへの接続が遮断されている場合もあります。'
         : 'シート自体は取得できましたが、中身を表として読み取れませんでした。' +
           '1行目の見出しが変わっていないか、連携しているタブ（gid）が正しいかを「データ」タブでご確認ください。';
-    return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec notice warn">' +
-      '<div class="notice-title">⚠ スプレッドシートを読み込めませんでした' + headline + '</div>' +
+    return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
+      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ スプレッドシートを読み込めませんでした' + headline + '</div>' +
       '<ul style="margin:0 0 10px;padding-left:1.2em;font-size:14px;line-height:1.8">' + rows + '</ul>' +
       '<div class="note-inline">' + advice + '</div>' +
       // 復旧の入口をこのバナー自身に置く。連携が壊れている端末では、データタブの
@@ -1764,8 +1730,8 @@
   function mergeAlertBanner() {
     var mr = state.mergeReport;
     if (!mr || mr.matched !== 0) return '';
-    return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec notice warn">' +
-      '<div class="notice-title">⚠ 会計明細が予約データと1件も結合できませんでした（会計明細は集計に入っていません）</div>' +
+    return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
+      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ 会計明細が予約データと1件も結合できませんでした（会計明細は集計に入っていません）</div>' +
       '<div class="note-inline">両方のシートは読み込めていますが、フリガナの表記または対象期間が一致しないため結合できず、' +
       '<b>予約データ単独で集計しています</b>。売上・客単価・店販の数字は会計実績ではなく予約金額ベースになります。' +
       '「データ」タブの突合レポートで、どの行が一致していないかを確認できます。</div>' +
@@ -1779,8 +1745,8 @@
     if (!state.sharedBlob) return '';
     if (state.sheetUrl || state.sheetUrlKaikei) return '';
     if (state.source !== 'サンプルデータ') return '';
-    return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec notice warn">' +
-      '<div class="notice-title">⚠ この端末は店舗データに接続していません（いまの表示は<u>サンプルデータ</u>です）</div>' +
+    return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
+      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ この端末は店舗データに接続していません（いまの表示は<u>サンプルデータ</u>です）</div>' +
       '<div class="note-inline">お店の数字ではありません。合言葉を入力すると、この端末でも実データが表示されます（入力は端末ごとに1回だけ）。</div>' +
       '<div style="margin-top:12px"><button class="pill accent" type="button" onclick="location.hash=\'#data\'">合言葉を入力する</button></div>' +
       '</div></div></div>';
@@ -1839,15 +1805,15 @@
         (facts.length ? '<br><span class="note-inline">' + esc(facts.join('　／　')) + '</span>' : '') +
         '</li>';
     }).join('');
-    return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec notice warn">' +
-      '<div class="notice-title">⚠ シートの内容が1日以上変わっていません（表示中の数字はその時点のものです）</div>' +
+    return '<div class="grid" style="margin-top:16px"><div class="col-12"><div class="gsec" style="border:1px solid var(--status-warning);border-radius:14px;padding:18px 20px;background:color-mix(in srgb, var(--status-warning) 8%, transparent)">' +
+      '<div style="font-weight:700;margin-bottom:8px;color:var(--status-warning)">⚠ シートの内容が1日以上変わっていません（表示中の数字はその時点のものです）</div>' +
       '<ul style="margin:0 0 10px;padding-left:1.2em;font-size:14px;line-height:1.8">' + rows + '</ul>' +
       (anyPub
         // 「ウェブに公開」URLは、公開設定の自動再公開が外れるとGoogle側で内容が
         // 公開時点に凍結する。何度読み込んでも同じ古い内容が返るため、
         // シート側が更新されていても永久に反映されない。しかもこの形式のURLは
         // ドキュメントIDを含まないため、別経路へのフォールバックが作れない。
-        ? '<div class="note-inline" style="color:var(--bad-ink)"><b>連携が「ウェブに公開」URLです。</b>' +
+        ? '<div class="note-inline" style="color:var(--status-critical)"><b>連携が「ウェブに公開」URLです。</b>' +
           'この形式は、公開設定の「自動的に再公開する」が外れていると<b>Google側で内容が公開時点に凍結</b>し、' +
           'シートを更新しても永久に届きません（何度更新を押しても同じ内容が返ります）。' +
           '「データ」タブで<b>通常の編集URL</b>（<code>/spreadsheets/d/…/edit</code>）に貼り替えてください。' +

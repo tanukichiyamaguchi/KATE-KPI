@@ -1,93 +1,64 @@
 /* ============================================================================
- * KATEstageLASH 蒲田西口店 — KPI Dashboard · Design System v2 「Ink & Stage」
+ * KATEstageLASH 蒲田西口店 — KPI Dashboard · Design System
  * ----------------------------------------------------------------------------
- * 舞台（ステージ）の額縁のように、上下のクローム（トップバー／タブ／ボトムナビ）を
- * 墨色（インク）で締め、その中に明るい「ステージ」＝カードとチャートを置く。
- * 数字は Manrope（自前ホスト・数字と英字のみ）で大きく太く、日本語は端末の
- * ゴシック（Hiragino / Noto）で組む。文字色はすべて WCAG AA（4.5:1 以上）。
- *
- *  - 墨のクローム: --chrome-* トークン（ライト／ダーク共通で暗い）
- *  - ステージ面:   --page-bg / --surface-* / --ink-*（テーマごとに設計）
- *  - アクセント:   コバルト 1色（操作系・momo の系列色）。文字用は --accent-ink
- *  - データ色:     --series-1..8（dataviz validator で検証済み）、青と橙の順序ランプ
- *
+ * iOS-native (Apple HIG) look: grouped background (#F2F2F7 / #000), white
+ * inset-grouped cards, iOS system colors (systemBlue tint), Large Title
+ * typography, hairline separators at the rgba(60,60,67,.29) "0.5px look",
+ * blur tab/nav bars. System typography (SF Pro / Hiragino on Apple).
  * Token NAMES are stable API for app.js/charts.js — values only here.
  * ==========================================================================*/
-
-/* ---- Display face: Manrope（数字・英字のみ。日本語には当たらないよう unicode-range で限定） */
-@font-face { font-family: "Manrope"; font-style: normal; font-weight: 600; font-display: swap; src: url("../fonts/Manrope-600.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
-@font-face { font-family: "Manrope"; font-style: normal; font-weight: 700; font-display: swap; src: url("../fonts/Manrope-700.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
-@font-face { font-family: "Manrope"; font-style: normal; font-weight: 800; font-display: swap; src: url("../fonts/Manrope-800.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 
 /* ---- Tokens: LIGHT (default) ---------------------------------------------*/
 :root {
   color-scheme: light;
-  --page-bg: #f3f4f8;                    /* 冷たい灰白のステージ */
-  --surface-1: #ffffff;                  /* カード */
-  --surface-2: rgba(16, 24, 48, 0.06);   /* 薄い塗り（チップ／入力欄／セグメント） */
-  --surface-3: rgba(16, 24, 48, 0.12);
-  --surface-elevated: #ffffff;           /* ポップオーバー */
-  --glass: rgba(255, 255, 255, 0.82);    /* トースト（明るいガラス） */
+  --page-bg: #f2f2f7;                    /* iOS systemGroupedBackground */
+  --surface-1: #ffffff;                  /* grouped cell */
+  --surface-2: rgba(120, 120, 128, 0.12); /* iOS tertiary fill (chips/fields/segmented) */
+  --surface-3: rgba(120, 120, 128, 0.2);
+  --surface-elevated: #ffffff;
+  --glass: rgba(242, 242, 247, 0.78);    /* nav/tab bar material */
 
-  /* 墨のクローム（トップバー／タブ帯／ボトムナビ）。ライトでも暗い */
-  --chrome-bg: rgba(11, 14, 22, 0.9);
-  --chrome-solid: #0b0e16;
-  --chrome-ink: #f5f7fb;
-  --chrome-ink-2: #aab2c4;               /* 9:1 on chrome */
-  --chrome-line: rgba(255, 255, 255, 0.1);
-  --chrome-fill: rgba(255, 255, 255, 0.09);
-  --chrome-accent: #8fa8ff;              /* 暗い地の上のアクセント（7.8:1） */
+  --ink-primary: #000000;                /* iOS label */
+  --ink-secondary: rgba(60, 60, 67, 0.72); /* deepened vs iOS .6 to hold ~4.5:1 on #F2F2F7 */
+  --ink-muted: rgba(60, 60, 67, 0.6);    /* iOS secondaryLabel — captions/section headers */
 
-  --ink-primary: #0b0f1a;                /* 17:1 */
-  --ink-secondary: #454c5c;              /* 7.8:1 on page */
-  --ink-muted: #5f6675;                  /* 5.2:1 on page / 5.8:1 on white — AA */
-  --ink-faint: #8a91a0;                  /* 装飾・矢印のみ（本文には使わない） */
+  --accent: #007aff;         /* iOS systemBlue — every interactive/primary role */
+  --accent-ink: #007aff;     /* accent as text (iOS uses tint directly) */
+  --accent-soft: rgba(0, 122, 255, 0.15); /* iOS "tinted" button fill */
 
-  --accent: #2456e6;                     /* コバルト。塗り・スイッチ・アクティブ */
-  --accent-ink: #1f4fd6;                 /* 文字用（6.7:1） */
-  --accent-fill: #2456e6;                /* 白文字を載せる塗り（5.9:1） */
-  --accent-soft: rgba(36, 86, 230, 0.11);
-  --accent-glow: rgba(36, 86, 230, 0.22);
-  --cal-wd: #5b6b82; --cal-sat: #3a68ad; --cal-sun: #ad5d6b; --cal-ink: #ffffff;   /* 日次カレンダーの日付ピル */
+  --border: rgba(60, 60, 67, 0.29);      /* iOS separator */
+  --border-strong: rgba(60, 60, 67, 0.36);
+  --hairline: rgba(60, 60, 67, 0.29);    /* 1px at .29 alpha = the iOS .5px look */
+  --gridline: #ebebf0;
+  --baseline: #c6c6c8;                   /* iOS opaqueSeparator */
+  --track: rgba(120, 120, 128, 0.12);    /* meter/progress track fill */
 
-  --border: rgba(16, 24, 48, 0.12);
-  --border-strong: rgba(16, 24, 48, 0.22);
-  --hairline: rgba(16, 24, 48, 0.09);
-  --gridline: #e3e6ee;
-  --baseline: #c5cad6;
-  --track: rgba(16, 24, 48, 0.08);
+  --good: #34c759; --good-ink: #248a3d;  /* systemGreen / its darkened text variant */
+  --warn: #ff9500; --bad: #ff3b30; --bad-ink: #ff3b30;
+  --status-good: #34c759; --status-warning: #ff9500; --status-serious: #ff3b30; --status-critical: #d70015;
 
-  --good: #12a150; --good-ink: #157a3d;
-  --warn: #f59e0b; --warn-ink: #9a5a00;
-  --bad: #e5484d; --bad-ink: #c8323a;
-  --status-good: #12a150; --status-warning: #f59e0b; --status-serious: #e5484d; --status-critical: #b91c1c;
-  --status-good-ink: var(--good-ink); --status-warning-ink: var(--warn-ink); --status-critical-ink: var(--bad-ink);
+  /* Data palette — iOS system colors (blue/orange staff pair stays CVD-safe) */
+  --series-1: #007aff; --series-2: #ff9500; --series-3: #34c759;
+  --series-4: #af52de; --series-5: #ff2d55; --series-6: #32ade6;
+  --series-7: #8e8e93; --series-8: #a2845e;
 
-  /* Data palette（固定順・循環させない）。1=momo コバルト, 2=aoi アンバー */
-  --series-1: #2456e6; --series-2: #e07800; --series-3: #0f9d8c;
-  --series-4: #7c4dff; --series-5: #e0407a; --series-6: #0f8fcf;
-  --series-7: #7d8aa6; --series-8: #c47a2b;                 /* 7 は意図的な低彩度（休眠） */
-  --series-1-ink: #1f4fd6; --series-2-ink: #b3540a;   /* スタッフ色を文字に使うとき */
+  /* Blue monochrome ramp (funnel ordinal + sequential heatmap) — momo's identity
+     hue, rebased on systemBlue; endpoints tuned for the white grouped cells. */
+  --funnel-1: #cfe4ff; --funnel-2: #9cc7ff; --funnel-3: #5ea4f7; --funnel-4: #2d82e8; --funnel-5: #0a5fc2;
+  --seq-0: #edf5ff; --seq-1: #cfe4ff; --seq-2: #9cc7ff; --seq-3: #5ea4f7; --seq-4: #2d82e8; --seq-5: #0a5fc2;
+  /* Orange monochrome ramp — aoi's identity hue (systemOrange), same lightness
+     steps as --funnel-* so staff-colored ordinal charts darken monotonically. */
+  --funnel-o1: #ffe3c2; --funnel-o2: #ffc27d; --funnel-o3: #f79a3e; --funnel-o4: #e07800; --funnel-o5: #a85a00;
 
-  /* コバルトの単色ランプ（ファネル／ヒートマップ）— 白いカードの上で 5 段が読み分けられる */
-  --funnel-1: #93aef7; --funnel-2: #6b8ff3; --funnel-3: #4b6ff5; --funnel-4: #2f55d9; --funnel-5: #1e3fae;
-  --seq-0: #eef2ff; --seq-1: #93aef7; --seq-2: #6b8ff3; --seq-3: #4b6ff5; --seq-4: #2f55d9; --seq-5: #1e3fae;
-  /* アンバーの単色ランプ（aoi の順序チャート）— 同じ明度ステップ */
-  --funnel-o1: #ffe4c4; --funnel-o2: #ffc78a; --funnel-o3: #f7a24e; --funnel-o4: #e0801a; --funnel-o5: #a85c05;
+  --shadow-1: none;                       /* iOS inset-grouped cards are flat */
+  --shadow-2: 0 2px 8px rgba(0,0,0,0.08), 0 12px 34px rgba(0,0,0,0.14); /* popovers/toasts only */
 
-  --shadow-1: 0 1px 2px rgba(11, 15, 26, 0.04), 0 12px 32px -18px rgba(11, 15, 26, 0.18);
-  --shadow-2: 0 4px 12px rgba(11, 15, 26, 0.08), 0 20px 48px -12px rgba(11, 15, 26, 0.28);
-
-  --radius-lg: 16px; --radius: 12px; --radius-sm: 8px;
+  --radius-lg: 12px; --radius: 10px; --radius-sm: 8px;
   --ease: cubic-bezier(.25, .1, .25, 1);
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Noto Sans CJK JP", sans-serif;
-  --font-display: "Manrope", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
   --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
-
-  /* 行送り・字間。日本語は詰めない（負の字間は数字だけ） */
-  --lh-num: 1.1; --lh-ui: 1.4; --lh-text: 1.7;
-  --track-num: -0.015em;
 
   /* chart-facing aliases */
   --text-primary: var(--ink-primary);
@@ -99,201 +70,173 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page-bg: #0b0d13;                    /* 真っ黒ではなく墨紺 */
-  --surface-1: #151822;
-  --surface-2: rgba(255, 255, 255, 0.06);
-  --surface-3: rgba(255, 255, 255, 0.12);
-  --surface-elevated: #1e2230;
-  --glass: rgba(30, 34, 48, 0.82);
+  --page-bg: #000000;                     /* iOS dark grouped background */
+  --surface-1: #1c1c1e;                   /* elevated grouped cell */
+  --surface-2: rgba(120, 120, 128, 0.24); /* iOS dark tertiary fill */
+  --surface-3: rgba(120, 120, 128, 0.36);
+  --surface-elevated: #2c2c2e;            /* popovers/tooltips (secondary elevated) */
+  --glass: rgba(28, 28, 30, 0.75);
 
-  --chrome-bg: rgba(8, 10, 16, 0.86);
-  --chrome-solid: #080a10;
-  --chrome-ink: #f5f7fb;
-  --chrome-ink-2: #aab2c4;
-  --chrome-line: rgba(255, 255, 255, 0.08);
-  --chrome-fill: rgba(255, 255, 255, 0.08);
-  --chrome-accent: #8fa8ff;
+  --ink-primary: #ffffff;
+  --ink-secondary: rgba(235, 235, 245, 0.66);
+  --ink-muted: rgba(235, 235, 245, 0.56);
 
-  --ink-primary: #f4f6fb;
-  --ink-secondary: #b7bfcf;              /* 9.6:1 */
-  --ink-muted: #8e97aa;                  /* 6:1 */
-  --ink-faint: #5f6879;
+  --accent: #0a84ff;         /* iOS systemBlue (dark) */
+  --accent-ink: #0a84ff;
+  --accent-soft: rgba(10, 132, 255, 0.22);
 
-  --accent: #5b7ff5;
-  --accent-ink: #8fa8ff;                 /* 7.8:1 */
-  --accent-fill: #3558d9;                /* 白文字 5.9:1 */
-  --accent-soft: rgba(107, 140, 255, 0.16);
-  --accent-glow: rgba(107, 140, 255, 0.28);
-  --cal-wd: #8a97ab; --cal-sat: #6f9fe6; --cal-sun: #d98a98; --cal-ink: #0b0f1a;
+  --border: rgba(84, 84, 88, 0.65);       /* iOS dark separator */
+  --border-strong: rgba(84, 84, 88, 0.8);
+  --hairline: rgba(84, 84, 88, 0.6);
+  --gridline: #303034;
+  --baseline: #48484a;
+  --track: rgba(120, 120, 128, 0.24);
 
-  --border: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.18);
-  --hairline: rgba(255, 255, 255, 0.08);
-  --gridline: #262b3a;
-  --baseline: #3b4152;
-  --track: rgba(255, 255, 255, 0.09);
+  --good: #30d158; --good-ink: #30d158;
+  --warn: #ff9f0a; --bad: #ff453a; --bad-ink: #ff6961;
+  --status-good: #30d158; --status-warning: #ff9f0a; --status-serious: #ff453a; --status-critical: #ff6961;
 
-  --good: #3ddc7a; --good-ink: #5fe08f;
-  --warn: #ffb020; --warn-ink: #ffc45c;
-  --bad: #ff6b6b; --bad-ink: #ff8080;
-  --status-good: #3ddc7a; --status-warning: #ffb020; --status-serious: #ff6b6b; --status-critical: #ff8080;
-  --status-good-ink: var(--good-ink); --status-warning-ink: var(--warn-ink); --status-critical-ink: var(--bad-ink);
+  --series-1: #0a84ff; --series-2: #ff9f0a; --series-3: #30d158;
+  --series-4: #bf5af2; --series-5: #ff375f; --series-6: #64d2ff;
+  --series-7: #98989d; --series-8: #ac8e68;
 
-  --series-1: #5b7ff5; --series-2: #d9821e; --series-3: #1fa885;
-  --series-4: #9575f0; --series-5: #e8508c; --series-6: #2fa8e6;
-  --series-7: #8590ad; --series-8: #b8843f;
-  --series-1-ink: #8fa8ff; --series-2-ink: #ffb466;
-
-  --funnel-1: #2f4899; --funnel-2: #3a5cc4; --funnel-3: #4d74e8; --funnel-4: #6f92ff; --funnel-5: #a3b8ff;
-  --seq-0: #12162a; --seq-1: #2f4899; --seq-2: #3a5cc4; --seq-3: #4d74e8; --seq-4: #6f92ff; --seq-5: #a3b8ff;
+  --funnel-1: #123a63; --funnel-2: #17548f; --funnel-3: #2478d1; --funnel-4: #4d9bf5; --funnel-5: #85bdff;
+  --seq-0: #15181d; --seq-1: #123a63; --seq-2: #17548f; --seq-3: #2478d1; --seq-4: #4d9bf5; --seq-5: #85bdff;
   --funnel-o1: #4a2e10; --funnel-o2: #7a4a15; --funnel-o3: #b06e1c; --funnel-o4: #e8932e; --funnel-o5: #ffb566;
 
-  --shadow-1: none;                      /* ダークは枠線で段差を出す */
-  --shadow-2: 0 12px 40px rgba(0, 0, 0, 0.6);
+  --shadow-1: none;
+  --shadow-2: 0 8px 30px rgba(0,0,0,0.55);
 }
 
 /* ---- Base -----------------------------------------------------------------*/
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; scroll-padding-top: 76px; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 72px; }
 body {
-  margin: 0; font-family: var(--font-sans); font-size: 15px; color: var(--ink-primary); background: var(--page-bg);
-  min-height: 100vh; line-height: var(--lh-text); letter-spacing: 0;
+  margin: 0; font-family: var(--font-sans); color: var(--ink-primary); background: var(--page-bg);
+  min-height: 100vh; line-height: 1.55; letter-spacing: -0.003em;
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
   transition: background-color .3s ease, color .3s ease;
 }
-/* ダーク: ステージ上部にスポットライト（微かな青い光） */
-:root[data-theme="dark"] body { background-image: radial-gradient(900px 420px at 50% -140px, rgba(91, 127, 245, 0.16), transparent 72%); background-repeat: no-repeat; }
-:lang(ja), [lang="ja"] { line-height: var(--lh-text); }
-h1, h2, h3, h4 { margin: 0; font-weight: 700; letter-spacing: 0; }
+:lang(ja), [lang="ja"] { line-height: 1.75; }
+h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.015em; }
 a { color: var(--accent-ink); text-decoration: none; }
 a:hover { text-decoration: underline; }
 ::selection { background: var(--accent-soft); }
 .tnum { font-variant-numeric: tabular-nums; }
 .serif, .kicker { font-family: var(--font-sans); }
-.kicker { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.kicker { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 5px; }
 svg { display: block; }
 
 /* ---- App shell ------------------------------------------------------------*/
 .app { max-width: 1120px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 120px; }
-/* トップバー: 墨のクローム。ライトでも暗く、白いワードマークで店名を立てる */
 .topbar {
   position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 14px;
   padding: 12px clamp(16px, 4vw, 32px); margin: 0 calc(-1 * clamp(16px, 4vw, 32px));
-  background: var(--chrome-bg); color: var(--chrome-ink);
-  backdrop-filter: saturate(1.4) blur(18px); -webkit-backdrop-filter: saturate(1.4) blur(18px);
-  border-bottom: 1px solid var(--chrome-line);
+  background: var(--glass); backdrop-filter: saturate(1.8) blur(20px); -webkit-backdrop-filter: saturate(1.8) blur(20px);
+  border-bottom: 1px solid var(--hairline);
 }
-@media (min-width: 768px) { .topbar { background: var(--chrome-solid); } }
-.brand { display: flex; flex-direction: row; align-items: center; gap: 12px; margin-right: auto; min-width: 0; color: inherit; }
-.brand:hover { text-decoration: none; }
-.brand-mark { flex: none; color: var(--chrome-ink); line-height: 0; }
-.brand-mark svg { height: 36px; width: auto; display: block; }
-.brand-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.wordmark { font-family: var(--font-display); font-size: 17px; font-weight: 600; letter-spacing: .18em; text-transform: uppercase; line-height: 1; white-space: nowrap; color: var(--chrome-ink); }
-.wordmark b { font-weight: 800; }
-.wordmark i { font-style: normal; font-weight: 600; text-transform: lowercase; letter-spacing: .1em; margin: 0 .14em; color: var(--chrome-ink-2); }
-.brand-sub { font-size: 11.5px; font-weight: 500; color: var(--chrome-ink-2); letter-spacing: .02em; line-height: var(--lh-ui); }
-.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.brand { display: flex; flex-direction: row; align-items: center; gap: 11px; margin-right: auto; min-width: 0; color: inherit; }
+.brand-mark { flex: none; color: var(--ink-primary); line-height: 0; }
+.brand-mark svg { height: 34px; width: auto; display: block; }
+.brand-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wordmark { font-family: var(--font-display); font-size: 17px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; line-height: 1; white-space: nowrap; }
+.wordmark b { font-weight: 700; }
+.wordmark i { font-style: normal; font-weight: 400; text-transform: lowercase; letter-spacing: .1em; margin: 0 .12em; color: var(--ink-secondary); }
+.brand-sub { font-size: 11px; color: var(--ink-muted); letter-spacing: .02em; }
+.topbar-actions { display: flex; align-items: center; gap: 8px; }
 @media (max-width: 600px) {
-  .topbar { gap: 8px; padding-top: 10px; padding-bottom: 10px; }
-  .brand { gap: 8px; }
-  .brand-mark svg { height: 27px; }
-  .wordmark { font-size: 13.5px; letter-spacing: .08em; }
-  .brand-sub { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .badge-soft { font-size: 11px; padding: 5px 9px; }
+  .topbar { gap: 8px; }
+  .brand { gap: 7px; }
+  .brand-mark svg { height: 25px; }
+  .wordmark { font-size: 13.5px; letter-spacing: .06em; }
+  .brand-sub { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge-soft { font-size: 10.5px; padding: 5px 9px; }
 }
-.asof { font-size: 12.5px; font-weight: 500; color: var(--chrome-ink-2); font-variant-numeric: tabular-nums; display: none; }
+.asof { font-size: 12px; color: var(--ink-muted); font-variant-numeric: tabular-nums; display: none; }
 @media (min-width: 720px) { .asof { display: inline-flex; align-items: center; gap: 6px; } }
 
-/* ボタン: 既定＝薄い塗り（tinted）、.accent＝コバルト塗り。押下は不透明度で応える */
+/* iOS buttons: default = "tinted" (rgba tint fill, tint text), .accent = "filled"
+   (tint bg, white text). Press feedback is iOS's opacity dip, not a scale. */
 .pill {
-  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 36px; padding: 0 16px;
-  border-radius: 980px; border: none; background: var(--accent-soft); color: var(--accent-ink);
-  font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap; font-family: var(--font-sans);
-  letter-spacing: 0; line-height: 1; transition: background .2s, opacity .15s, transform .15s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 34px; padding: 0 15px;
+  border-radius: 980px; border: none; background: var(--accent-soft); color: var(--accent);
+  font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: var(--font-sans);
+  letter-spacing: -0.1px; transition: background .2s, opacity .15s;
 }
-.pill:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
-.pill:active { opacity: .55; transform: translateY(1px); }
-.pill.accent { background: var(--accent-fill); color: #fff; box-shadow: 0 6px 16px -8px var(--accent-glow); }
-.pill.accent:hover { background: color-mix(in srgb, var(--accent-fill) 88%, #000); }
-.pill.icon-only { width: 36px; padding: 0; }
+.pill:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.pill:active { opacity: .4; }
+.pill.accent { background: var(--accent); color: #fff; }
+.pill.accent:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.pill.icon-only { width: 34px; padding: 0; }
 /* 年商カードの期間コントロール（年ボタン／開始・終了日） */
 .ann-range { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-.ann-range label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-secondary); }
+.ann-range label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-secondary); }
 .ann-range input[type="date"] {
   font-family: inherit; font-size: 14px; color: var(--ink-primary); color-scheme: light dark;
   background: var(--surface-2); border: none; border-radius: 8px; padding: 7px 10px; outline: none;
 }
 .ann-range input[type="date"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.pill svg { width: 17px; height: 17px; stroke-width: 1.8; }
-.badge-soft { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 12px; font-weight: 700; white-space: nowrap; flex: none; line-height: var(--lh-ui); }
-.badge-soft .dot { width: 7px; height: 7px; border-radius: 980px; background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent); }
-.topbar .badge-soft { background: var(--chrome-fill); color: var(--chrome-ink); }
+.pill svg { width: 17px; height: 17px; stroke-width: 1.7; }
+.badge-soft { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 11px; font-weight: 600; white-space: nowrap; flex: none; }
+.badge-soft .dot { width: 7px; height: 7px; border-radius: 980px; background: var(--good); }
 
-/* データ出所バッジ */
-.badge-data { font-size: 11px; padding: 4px 9px; gap: 5px; font-weight: 700; }
+/* データ出所バッジ: 小さめに（取得日時は各ビューのリード文に表示） */
+.badge-data { font-size: 10px; padding: 3px 8px; gap: 4px; font-weight: 600; }
 
-/* スイッチ — 税抜（OFF）／税込（ON）。クローム上なので白系で描く */
-.taxsw { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; white-space: nowrap; flex: none; }
-.taxsw-lab { font-size: 12.5px; font-weight: 700; color: var(--chrome-ink-2); transition: color .2s; letter-spacing: 0; }
-.taxsw-lab.on { color: var(--chrome-ink); }
-.switch { position: relative; display: inline-block; width: 42px; height: 25px; flex: none; }
+/* iOS-style switch — 税抜（OFF）／税込（ON）。両側にラベルを置き、選択中を強調 */
+.taxsw { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; white-space: nowrap; flex: none; }
+.taxsw-lab { font-size: 12px; font-weight: 600; color: var(--ink-muted); transition: color .2s; letter-spacing: -0.1px; }
+.taxsw-lab.on { color: var(--ink-primary); }
+.switch { position: relative; display: inline-block; width: 40px; height: 24px; flex: none; }
 .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
-.switch .switch-track { position: absolute; inset: 0; background: rgba(255, 255, 255, 0.22); border-radius: 980px; transition: background .25s var(--ease); pointer-events: none; }
-.switch .switch-thumb { position: absolute; top: 2.5px; left: 2.5px; width: 20px; height: 20px; background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.35); transition: transform .25s var(--ease); }
-.switch input:checked ~ .switch-track { background: var(--accent); }
-.switch input:checked ~ .switch-track .switch-thumb { transform: translateX(17px); }
-.switch input:focus-visible ~ .switch-track { box-shadow: 0 0 0 3px var(--accent-glow); }
+.switch .switch-track { position: absolute; inset: 0; background: var(--surface-3); border-radius: 980px; transition: background .25s var(--ease); pointer-events: none; }
+.switch .switch-thumb { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.2), 0 0 1px rgba(0,0,0,.06); transition: transform .25s var(--ease); }
+.switch input:checked ~ .switch-track { background: var(--good); }
+.switch input:checked ~ .switch-track .switch-thumb { transform: translateX(16px); }
+.switch input:focus-visible ~ .switch-track { box-shadow: 0 0 0 3px var(--accent-soft); }
 
-/* ---- Tabs (desktop): クロームの帯に載る。アクティブは白文字＋アクセントの下線 --*/
-.tabs-wrap { margin: 0 calc(-1 * clamp(16px, 4vw, 32px)) 22px; padding: 4px clamp(16px, 4vw, 32px) 0; background: var(--chrome-solid); border-bottom: 1px solid var(--chrome-line); }
-.tabs { position: relative; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 0; }
+/* ---- Tabs (desktop): iOS-style — active tab is a subtle tint pill ---------*/
+.tabs-wrap { margin: 16px 0 20px; }
+.tabs { position: relative; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px 0; }
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
   appearance: none; border: 0; background: transparent; cursor: pointer; position: relative;
-  padding: 12px 14px 13px; border-radius: 10px 10px 0 0; font-size: 14px; font-weight: 600; color: var(--chrome-ink-2);
-  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; line-height: 1;
-  transition: color .2s, background .2s; font-family: var(--font-sans); letter-spacing: 0;
+  padding: 8px 14px; border-radius: 10px; font-size: 14px; font-weight: 500; color: var(--ink-secondary);
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  transition: color .2s, background .2s; font-family: var(--font-sans); letter-spacing: -0.2px;
 }
-.tab::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: transparent; transition: background .2s; }
 .tab .t-ico { display: inline-flex; }
-.tab .t-ico svg { width: 17px; height: 17px; stroke-width: 1.8; }
-.tab:hover { color: var(--chrome-ink); background: var(--chrome-fill); }
-.tab.active { color: var(--chrome-ink); }
-.tab.active::after { background: var(--chrome-accent); }
-.tab:focus-visible { outline-color: var(--chrome-accent); }
+.tab .t-ico svg { width: 17px; height: 17px; stroke-width: 1.7; }
+.tab:hover { color: var(--ink-primary); background: var(--surface-2); }
+.tab.active { color: var(--accent); font-weight: 600; background: var(--accent-soft); }
+.tab.active:hover { background: var(--accent-soft); }
 .tab-underline { display: none; }
-@media (min-width: 768px) { .topbar { border-bottom-color: transparent; } }
 @media (max-width: 767px) { .tabs-wrap { display: none; } }
 
-/* ---- Bottom nav (mobile): 墨のクローム、アクティブは光る ---------------------*/
+/* ---- Bottom nav (mobile) --------------------------------------------------*/
 .botnav {
   position: fixed; z-index: 60; left: 0; right: 0; bottom: 0; display: none; justify-content: space-around;
-  background: var(--chrome-bg); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
-  border-top: 1px solid var(--chrome-line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  background: var(--glass); backdrop-filter: blur(20px) saturate(1.8); -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  border-top: 1px solid var(--hairline); padding: 7px 4px calc(6px + env(safe-area-inset-bottom));
 }
 .botnav button {
-  flex: 1; min-height: 52px; border: 0; background: transparent; cursor: pointer; color: var(--chrome-ink-2);
-  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 2px 4px; font-size: 11px; font-weight: 600;
-  transition: color .2s; font-family: var(--font-sans); line-height: var(--lh-ui); letter-spacing: 0;
+  flex: 1; min-height: 50px; border: 0; background: transparent; cursor: pointer; color: var(--ink-muted);
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 2px; font-size: 10px; font-weight: 500;
+  transition: color .2s; font-family: var(--font-sans);
 }
-.botnav button .t-ico { display: inline-flex; padding: 3px 12px; border-radius: 980px; transition: background .2s; }
-.botnav button .t-ico svg { width: 23px; height: 23px; stroke-width: 1.7; }
-.botnav button.active { color: var(--chrome-accent); }
-.botnav button.active .t-ico { background: rgba(143, 168, 255, 0.16); }
-.botnav button:active { transform: scale(.96); }
-.botnav button:focus-visible { outline-color: var(--chrome-accent); }
-@media (max-width: 767px) { .botnav { display: flex; } .app { padding-bottom: calc(92px + env(safe-area-inset-bottom)); } }
+.botnav button .t-ico svg { width: 23px; height: 23px; stroke-width: 1.6; }
+.botnav button.active { color: var(--accent); }
+.botnav button:active { transform: scale(.94); }
+@media (max-width: 767px) { .botnav { display: flex; } .app { padding-bottom: 84px; } }
 
 /* ---- Grid & cards ---------------------------------------------------------*/
-.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 28px 18px; }
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; }
 .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-5 { grid-column: span 5; }
 .col-6 { grid-column: span 6; } .col-7 { grid-column: span 7; } .col-8 { grid-column: span 8; } .col-12 { grid-column: span 12; }
 @media (max-width: 1000px) { .col-3 { grid-column: span 6; } .col-4 { grid-column: span 6; } .col-5, .col-7 { grid-column: span 12; } }
-
 @media (max-width: 620px) {
-  .grid { gap: 22px 14px; }
+  .grid { gap: 12px; }
   .grid > [class*="col-"] { grid-column: span 12 !important; }
   /* KPI stat tiles (col-3/col-4) stay 2-up on phones — full-width tiles triple
      the scroll distance for three short numbers. A trailing odd tile (the 3rd
@@ -302,233 +245,210 @@ svg { display: block; }
   .grid > .col-4 + .col-4 + .col-4 { grid-column: span 12 !important; }
 }
 
-/* カード: 白い皿。1px の縁と柔らかい影で舞台の上に浮かせる（ダークは縁だけ） */
+/* iOS inset-grouped card: white cell, 12px radius, no border, no shadow.
+   The title bar is styled as the 13px gray iOS section header (CSS-only
+   approximation of the header-above-card pattern — DOM stays as-is). */
 .card {
-  background: var(--surface-1); border-radius: var(--radius-lg); padding: 18px;
-  border: 1px solid var(--hairline); box-shadow: var(--shadow-1); position: relative;
+  background: var(--surface-1); border-radius: var(--radius-lg); padding: 16px;
+  box-shadow: var(--shadow-1); position: relative;
 }
-@media (max-width: 620px) { .card { padding: 16px; } }
 .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
-.card-title { font-size: 15px; font-weight: 700; letter-spacing: 0; color: var(--ink-primary); line-height: 1.35; }
-.card-sub { font-size: 13px; color: var(--ink-secondary); margin-top: 3px; letter-spacing: 0; line-height: 1.5; }
-.card-tag { font-size: 11.5px; color: var(--ink-secondary); font-weight: 700; padding: 3px 9px; border-radius: 980px; background: var(--surface-2); white-space: nowrap; line-height: var(--lh-ui); }
+.card-title { font-size: 13px; font-weight: 500; letter-spacing: -0.08px; color: var(--ink-muted); line-height: 1.5; }
+.card-sub { font-size: 12px; color: var(--ink-muted); margin-top: 2px; letter-spacing: -0.08px; }
+.card-tag { font-size: 11px; color: var(--ink-muted); font-weight: 600; padding: 3px 9px; border-radius: 980px; background: var(--surface-2); white-space: nowrap; }
 
-/* ==== グループ見出し（.gsec）: 見出しはカードの外。読める大きさの本文色で ====
-   card() はタイトル付きの場合、見出しを白いカードの「外」に出す。ヘッダー行は
-   タイトル（左）＋タグ（右）のみ。補足文(sub)はヘッダー下の全幅行に置き、狭い画面
-   でも自然に折り返させる（右寄せの固定幅コンテナに入れると横スクロールの原因になる）。 */
-.gsec > .card-head { margin-bottom: 8px; padding: 0 4px; align-items: baseline; gap: 8px; }
-.gsec > .card-head .card-title { flex: 1 1 auto; min-width: 0; font-size: 16px; }
+/* ==== iOS grouped-list idiom（承認済みプロトタイプの .gsec/.gsec-h） ====
+   card() はタイトル付きの場合、見出しを白いカードの「外」に 13px グレーの
+   セクションヘッダーとして出す。ヘッダー行はタイトル（左）＋タグ（右）のみ。
+   補足文(sub)はヘッダー下の全幅行に置き、狭い画面でも自然に折り返させる
+   （右寄せの固定幅コンテナに入れると横スクロールの原因になるため）。 */
+.gsec > .card-head { margin-bottom: 5px; padding: 0 16px; align-items: baseline; gap: 8px; }
+.gsec > .card-head .card-title { flex: 1 1 auto; min-width: 0; }
 .gsec > .card-head .card-tag { flex: none; }
-.gsec > .card-sub { padding: 0 4px; margin: -4px 0 10px; }
-@media (min-width: 768px) { .gsec > .card-head .card-title { font-size: 17px; } }
+.gsec > .card-sub { padding: 0 16px; margin: 0 0 7px; }
 /* メーター等を iOS のセル列として区切るヘアライン */
-.cell-list > * + * { border-top: 1px solid var(--hairline); padding-top: 12px; margin-top: 12px; }
-/* 入力フィールド */
-.field { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border-radius: 12px; padding: 11px 13px; max-width: 560px; }
+.cell-list > * + * { border-top: 1px solid var(--hairline); padding-top: 11px; margin-top: 11px; }
+/* iOS の入力フィールド（プロトタイプ .field） */
+.field { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border-radius: 10px; padding: 10px 12px; max-width: 560px; }
 .field:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
-.field input { flex: 1; min-width: 0; border: none; background: none; font-family: inherit; font-size: 17px; letter-spacing: 0; color: var(--ink-primary); outline: none; }
+.field input { flex: 1; min-width: 0; border: none; background: none; font-family: inherit; font-size: 17px; letter-spacing: -0.4px; color: var(--ink-primary); outline: none; }
 .field input::placeholder { color: var(--ink-muted); }
 .field-ico { color: var(--ink-muted); flex: none; }
-/* 塗りボタン（合言葉 など） */
-.btn-ios { display: block; width: 100%; max-width: 560px; border: none; border-radius: 12px; padding: 14px; font-family: inherit; font-size: 16px; font-weight: 700; letter-spacing: 0; background: var(--accent-fill); color: #fff; cursor: pointer; transition: opacity .15s; box-shadow: 0 8px 20px -10px var(--accent-glow); }
-.btn-ios:active { opacity: .6; }
+/* iOS Filled ボタン（プロトタイプ .btn.filled） */
+.btn-ios { display: block; width: 100%; max-width: 560px; border: none; border-radius: 12px; padding: 13px; font-family: inherit; font-size: 17px; font-weight: 600; letter-spacing: -0.4px; background: var(--accent); color: #fff; cursor: pointer; transition: opacity .15s; }
+.btn-ios:active { opacity: .4; }
 
-.reveal { opacity: 0; transform: translateY(8px); }
-.reveal.in { opacity: 1; transform: none; transition: opacity .45s var(--ease), transform .45s var(--ease); }
+.reveal { opacity: 0; transform: translateY(10px); }
+.reveal.in { opacity: 1; transform: none; transition: opacity .5s var(--ease), transform .5s var(--ease); }
 @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1 !important; transform: none !important; } }
 
-/* ---- Hero metric（店販・年商カードの大きな数字）------------------------------*/
-.hero-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 22px; }
-.hero-metric b { display: block; font-family: var(--font-display); font-size: 30px; font-weight: 800; letter-spacing: var(--track-num); font-variant-numeric: tabular-nums; line-height: var(--lh-num); color: var(--ink-primary); }
-.hero-metric span { display: block; margin-top: 6px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); line-height: var(--lh-ui); }
+/* ---- Hero KGI (clean editorial, no gradient) ------------------------------*/
+.hero { grid-column: span 12; background: var(--surface-1); border-radius: var(--radius-lg); padding: clamp(24px, 3.4vw, 40px); box-shadow: var(--shadow-1); }
+:root[data-theme="dark"] .hero { border: 1px solid var(--hairline); }
+.hero-inner { display: grid; grid-template-columns: 1.3fr 1fr; gap: 32px; align-items: center; }
+@media (max-width: 780px) { .hero-inner { grid-template-columns: 1fr; gap: 22px; } }
+.hero-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent-ink); }
+.hero-value { font-family: var(--font-display); font-weight: 600; font-size: clamp(40px, 8vw, 68px); line-height: 1.04; letter-spacing: -0.03em; margin: 10px 0 8px; font-variant-numeric: tabular-nums; color: var(--ink-primary); overflow-wrap: anywhere; }
+.hero-value .unit { font-size: .3em; font-weight: 500; color: var(--ink-muted); margin-left: 6px; letter-spacing: 0; }
+.hero-caption { font-size: 14px; color: var(--ink-secondary); max-width: 46ch; line-height: 1.7; }
+.hero-caption b { color: var(--ink-primary); font-weight: 600; }
+.hero-split { margin-top: 22px; }
+.hero-split-bar { height: 10px; border-radius: 980px; overflow: hidden; display: flex; gap: 2px; background: var(--track); }
+.hero-split-bar i { display: block; height: 100%; width: 0; transition: width 1s var(--ease) .2s; border-radius: 980px; }
+.hero-split-bar .actual { background: var(--accent); }
+.hero-split-bar .expected { background: var(--series-6); opacity: .55; }
+.hero-split-legend { display: flex; gap: 20px; margin-top: 12px; font-size: 12.5px; flex-wrap: wrap; color: var(--ink-secondary); }
+.hero-split-legend span { display: flex; align-items: center; gap: 8px; }
+.hero-split-legend b { font-variant-numeric: tabular-nums; color: var(--ink-primary); }
+.hero-split-legend i { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+.hero-split-legend .actual-key { background: var(--accent); }
+.hero-split-legend .expected-key { background: var(--series-6); opacity: .55; }
+.hero-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 22px; padding-left: 32px; border-left: 1px solid var(--hairline); }
+@media (max-width: 780px) { .hero-metrics { padding-left: 0; border-left: 0; padding-top: 20px; border-top: 1px solid var(--hairline); } }
+.hero-metric b { display: block; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.hero-metric span { font-size: 12px; color: var(--ink-muted); }
 
-/* ファネル（左）の高さに合わせて、右側にコホート2枚を縦に積む */
-@media (min-width: 1001px) { #cardFunnel { grid-row: span 2; } }
-/* カード上段に置く大きな数字（顧客LTV など）: 左に数字、右に補足。下にヘアライン */
-.stat-inline { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 18px; flex-wrap: wrap; min-height: 0; padding-bottom: 14px; margin-bottom: 8px; border-bottom: 1px solid var(--hairline); }
-.stat-inline .stat-foot { margin-top: 0; }
-
-/* ---- Stat tiles -------------------------------------------------------------*/
-.stat { display: flex; flex-direction: column; gap: 8px; min-height: 118px; }
+/* ---- Stat tiles (iOS .kpi look) -------------------------------------------*/
+.stat { display: flex; flex-direction: column; gap: 7px; min-height: 118px; }
 .stat-top { display: flex; align-items: center; gap: 8px; }
-.stat-ico { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-ink); flex: none; }
-.stat-ico svg { width: 16px; height: 16px; stroke-width: 1.8; }
-.stat-label { font-size: 13px; color: var(--ink-secondary); font-weight: 500; letter-spacing: 0; line-height: var(--lh-ui); }
-.stat-value { font-family: var(--font-display); font-size: clamp(30px, 4.6vw, 36px); font-weight: 800; letter-spacing: var(--track-num); line-height: var(--lh-num); font-variant-numeric: tabular-nums; color: var(--ink-primary); }
-.stat-value .unit { font-family: var(--font-sans); font-size: .42em; font-weight: 600; color: var(--ink-secondary); margin-left: 3px; letter-spacing: 0; }
-.stat-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; font-size: 12.5px; color: var(--ink-secondary); flex-wrap: wrap; line-height: var(--lh-ui); }
-.chip { display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px; border-radius: 980px; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: var(--lh-ui); }
+.stat-ico { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-2); color: var(--accent-ink); flex: none; }
+.stat-ico svg { width: 16px; height: 16px; stroke-width: 1.7; }
+.stat-label { font-size: 12px; color: var(--ink-muted); font-weight: 400; letter-spacing: -0.1px; }
+.stat-value { font-family: var(--font-display); font-size: clamp(24px, 4vw, 28px); font-weight: 700; letter-spacing: -0.6px; line-height: 1.08; font-variant-numeric: tabular-nums; }
+.stat-value .unit { font-size: .5em; font-weight: 500; color: var(--ink-muted); margin-left: 3px; }
+.stat-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; font-size: 11px; color: var(--ink-muted); flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 3px; padding: 3px 9px; border-radius: 980px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .chip.up { color: var(--good-ink); background: color-mix(in srgb, var(--good) 14%, transparent); }
 .chip.down { color: var(--bad-ink); background: color-mix(in srgb, var(--bad) 12%, transparent); }
 .chip.flat { color: var(--ink-secondary); background: var(--surface-2); }
 .spark { height: 30px; margin-top: 2px; }
 
-/* ---- Meter（8px のトラック、丸い塗り、目安の目盛り）-----------------------------*/
+/* ---- Meter (iOS rowstat: 6px track, rounded tint fill, 2px target tick) ---*/
 .meter { margin: 6px 0 14px; }
-.meter-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; flex-wrap: wrap; gap: 2px 10px; }
+.meter-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; flex-wrap: wrap; gap: 2px 10px; }
 .meter-label-wrap { display: inline-flex; align-items: center; flex: 1 1 auto; min-width: 0; }
 .meter-val { margin-left: auto; flex: none; }
-.meter-label { font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--ink-primary); line-height: var(--lh-ui); }
-.meter-val { font-family: var(--font-display); font-size: 18px; font-weight: 800; letter-spacing: var(--track-num); font-variant-numeric: tabular-nums; color: var(--ink-primary); }
-.meter-track { position: relative; height: 8px; border-radius: 4px; background: var(--track); overflow: visible; }
-.meter-fill { position: absolute; inset: 0 auto 0 0; width: 0; height: 8px; border-radius: 4px; background: var(--accent); transition: width .8s var(--ease); }
+.meter-label { font-size: 15px; font-weight: 400; letter-spacing: -0.3px; }
+.meter-val { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; font-variant-numeric: tabular-nums; }
+.meter-track { position: relative; height: 6px; border-radius: 3px; background: var(--track); overflow: visible; }
+.meter-fill { position: absolute; inset: 0 auto 0 0; width: 0; height: 6px; border-radius: 3px; background: var(--accent); transition: width .8s var(--ease); }
 .meter-fill::after { display: none; }
-.meter-tick { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink-secondary); border-radius: 1px; box-shadow: 0 0 0 1.5px var(--surface-1); }
-.meter .note-inline { font-size: 12.5px; }
-.note-inline { font-size: 13px; color: var(--ink-secondary); line-height: 1.55; }
-.empty-note { font-size: 13.5px; line-height: 1.7; color: var(--ink-secondary); background: var(--surface-2); border-radius: var(--radius); padding: 14px 16px; }
-.empty-note b { color: var(--ink-primary); font-weight: 700; }
+.meter-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink-muted); opacity: .5; border-radius: 1px; }
+.meter .note-inline { font-size: 11px; }
+.note-inline { font-size: 12px; color: var(--ink-muted); }
+.empty-note { font-size: 13px; line-height: 1.7; color: var(--ink-secondary); background: var(--surface-2); border-radius: var(--radius); padding: 14px 16px; }
+.empty-note b { color: var(--ink-primary); font-weight: 600; }
 
 /* ---- Funnel ---------------------------------------------------------------*/
 .kate-funnel { display: flex; flex-direction: column; }
 .kate-funnel-row { padding: 6px 0; }
 .kate-funnel-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
-.kate-funnel-label { font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--ink-primary); }
-.kate-funnel-val b { font-family: var(--font-display); font-size: 17px; font-weight: 800; letter-spacing: var(--track-num); font-variant-numeric: tabular-nums; }
-.kate-funnel-val em { font-style: normal; font-size: 12.5px; font-weight: 500; color: var(--ink-secondary); margin-left: 6px; }
-.kate-funnel-track { height: 24px; background: var(--track); border-radius: 8px; overflow: hidden; }
-.kate-funnel-bar { height: 100%; border-radius: 8px; width: 0; transition: width .9s var(--ease); }
-.kate-funnel-conv { font-size: 13px; color: var(--ink-secondary); padding: 5px 0 7px; display: flex; align-items: center; gap: 3px 6px; flex-wrap: wrap; line-height: var(--lh-ui); }
-.kate-funnel-conv .kate-arrow { color: var(--ink-faint); }
-.kate-funnel-conv b { color: var(--ink-primary); font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.kate-funnel-conv .kate-funnel-frac { font-style: normal; font-size: 11.5px; color: var(--ink-secondary); font-variant-numeric: tabular-nums; }
-/* 離脱率は継続率の裏返しなので、狭い画面では隠して1行に収める。段の高さも詰める */
-@media (max-width: 620px) {
-  .kate-funnel-conv .kate-funnel-churn { display: none; }
-  .kate-funnel-row { padding: 4px 0; }
-  .kate-funnel-head { margin-bottom: 5px; }
-  .kate-funnel-track { height: 18px; border-radius: 6px; }
-  .kate-funnel-bar { border-radius: 6px; }
-  .kate-funnel-conv { padding: 4px 0 5px; font-size: 12.5px; }
-}
+.kate-funnel-label { font-size: 15px; font-weight: 400; letter-spacing: -0.3px; }
+.kate-funnel-val b { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; font-variant-numeric: tabular-nums; }
+.kate-funnel-val em { font-style: normal; font-size: 12px; color: var(--ink-muted); margin-left: 5px; }
+.kate-funnel-track { height: 22px; background: var(--track); border-radius: 7px; overflow: hidden; }
+.kate-funnel-bar { height: 100%; border-radius: 7px; width: 0; transition: width .9s var(--ease); }
+.kate-funnel-conv { font-size: 11.5px; color: var(--ink-muted); padding: 4px 0 6px; display: flex; align-items: center; gap: 3px 6px; flex-wrap: wrap; }
+.kate-funnel-conv .kate-arrow { color: var(--ink-muted); }
+.kate-funnel-conv b { color: var(--ink-secondary); font-variant-numeric: tabular-nums; }
+.kate-funnel-conv .kate-funnel-frac { font-style: normal; font-size: 10.5px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 
 /* ---- Horizontal bars ------------------------------------------------------*/
 .kate-hbars { display: flex; flex-direction: column; gap: 14px; }
 .kate-hbar-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 6px; }
-.kate-hbar-label { font-size: 15px; font-weight: 500; letter-spacing: 0; color: var(--ink-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kate-hbar-label { font-size: 15px; font-weight: 400; letter-spacing: -0.3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kate-hbar-val { white-space: nowrap; }
-.kate-hbar-val b { font-family: var(--font-display); font-size: 16px; font-weight: 800; letter-spacing: var(--track-num); font-variant-numeric: tabular-nums; }
-.kate-hbar-val em { font-style: normal; font-size: 12.5px; color: var(--ink-secondary); margin-left: 6px; }
-.kate-hbar-track { height: 10px; background: var(--track); border-radius: 980px; overflow: hidden; }
+.kate-hbar-val b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.kate-hbar-val em { font-style: normal; font-size: 11.5px; color: var(--ink-muted); margin-left: 5px; }
+.kate-hbar-track { height: 8px; background: var(--track); border-radius: 980px; overflow: hidden; }
 .kate-hbar-bar { height: 100%; border-radius: 980px; width: 0; transition: width .8s var(--ease); }
 
 /* ---- Legend & tooltip -----------------------------------------------------*/
-.kate-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; }
-.kate-legend-item { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); line-height: var(--lh-ui); }
-.kate-legend-dot { width: 11px; height: 11px; border-radius: 3.5px; flex: none; }
-.kate-legend-dot.is-line { height: 3px; border-radius: 2px; width: 16px; }
-.kate-legend-dot.is-dashed { background: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 9px) !important; height: 3px; }
-.kate-legend-dot.is-ramp { width: 44px; height: 10px; border-radius: 3px; }
-.kate-legend-item.is-dashed-item { color: var(--ink-secondary); }
-/* ツールチップ: 両テーマとも墨色。ステージの上に浮くカードとして最も読みやすい */
-.kate-tip { position: fixed; z-index: 90; pointer-events: none; opacity: 0; transform: translateY(3px); background: #161a24; color: #f4f6fb; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 10px 13px; box-shadow: var(--shadow-2); font-size: 13px; min-width: 132px; line-height: var(--lh-ui); transition: opacity .12s ease, transform .12s ease; }
-.kate-tip-title { font-weight: 700; font-size: 12.5px; margin-bottom: 6px; color: #aab2c4; }
-.kate-tip-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
-.kate-tip-row i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-.kate-tip-row span { color: #d6dbe6; margin-right: auto; }
-.kate-tip-row b { font-family: var(--font-display); font-variant-numeric: tabular-nums; font-weight: 800; font-size: 14px; }
-.kate-tip-total { margin-top: 4px; padding-top: 5px; border-top: 1px solid rgba(255,255,255,.14); }
-.kate-tip-total i { visibility: hidden; }
-.kate-tip-total span { color: #f4f6fb; font-weight: 700; }
-/* チャート内の文字は本文フォント・数字は等幅 */
-.chart-box svg text { font-family: var(--font-sans); }
+.kate-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 16px; }
+.kate-legend-item { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-secondary); }
+.kate-legend-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.kate-legend-dot.is-line { height: 3px; border-radius: 2px; width: 15px; }
+.kate-tip { position: fixed; z-index: 90; pointer-events: none; opacity: 0; transform: translateY(3px); background: var(--surface-elevated); color: var(--ink-primary); border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px; box-shadow: var(--shadow-2); font-size: 12.5px; min-width: 128px; transition: opacity .12s ease, transform .12s ease; }
+.kate-tip-title { font-weight: 600; font-size: 12.5px; margin-bottom: 5px; }
+.kate-tip-row { display: flex; align-items: center; gap: 7px; padding: 1px 0; }
+.kate-tip-row i { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.kate-tip-row span { color: var(--ink-secondary); margin-right: auto; }
+.kate-tip-row b { font-variant-numeric: tabular-nums; }
 
 /* ---- RFM segments ---------------------------------------------------------*/
-.seg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-@media (min-width: 1001px) { .seg-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 620px) {
-  .seg-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .seg-card { padding: 12px 12px 12px; }
-  .seg-name { font-size: 13px; flex-wrap: wrap; row-gap: 4px; }
-  .seg-state { margin-left: 0; font-size: 10.5px; padding: 1px 7px; }
-  .seg-people { font-size: 26px; }
-  .seg-rfm { flex-wrap: wrap; gap: 3px 10px; font-size: 12px; }
-  .seg-action { font-size: 12px; }
-}
-.seg-card { border: 1px solid var(--hairline); border-radius: var(--radius-lg); padding: 16px; background: var(--surface-1); box-shadow: var(--shadow-1); border-top: 3px solid var(--seg-color); }
-.seg-name { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 7px; color: var(--ink-primary); }
+.seg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.seg-card { border: none; border-radius: var(--radius-lg); padding: 16px; background: var(--surface-1); }
+.seg-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
 .seg-dot { width: 9px; height: 9px; border-radius: 3px; background: var(--seg-color); flex: none; }
-.seg-status { margin-left: auto; width: 8px; height: 8px; border-radius: 980px; }
-.seg-state { margin-left: auto; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 980px; line-height: var(--lh-ui); letter-spacing: .01em; white-space: nowrap; }
-.seg-state.good { color: var(--good-ink); background: color-mix(in srgb, var(--good) 14%, transparent); }
-.seg-state.warn { color: var(--warn-ink); background: color-mix(in srgb, var(--warn) 16%, transparent); }
-.seg-state.bad { color: var(--bad-ink); background: color-mix(in srgb, var(--bad) 12%, transparent); }
-.seg-state.new { color: var(--accent-ink); background: var(--accent-soft); }
-.seg-state.lost { color: var(--ink-secondary); background: var(--surface-2); }
-.seg-people { font-family: var(--font-display); font-size: 30px; font-weight: 800; letter-spacing: var(--track-num); margin-top: 8px; font-variant-numeric: tabular-nums; line-height: var(--lh-num); }
-.seg-people small { font-family: var(--font-sans); font-size: 13px; font-weight: 500; color: var(--ink-secondary); letter-spacing: 0; }
-.seg-ratio { height: 5px; border-radius: 980px; background: var(--track); overflow: hidden; margin: 10px 0; }
+.seg-status { margin-left: auto; width: 7px; height: 7px; border-radius: 980px; }
+.seg-people { font-family: var(--font-display); font-size: 27px; font-weight: 600; letter-spacing: -0.02em; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.seg-people small { font-size: 12.5px; font-weight: 500; color: var(--ink-muted); }
+.seg-ratio { height: 4px; border-radius: 980px; background: var(--track); overflow: hidden; margin: 10px 0; }
 .seg-ratio i { display: block; height: 100%; background: var(--seg-color); border-radius: 980px; width: 0; transition: width .8s var(--ease); }
-.seg-rfm { display: flex; gap: 13px; font-size: 12.5px; color: var(--ink-secondary); }
+.seg-rfm { display: flex; gap: 13px; font-size: 11.5px; color: var(--ink-secondary); }
 .seg-rfm b { color: var(--ink-primary); font-variant-numeric: tabular-nums; }
-.seg-action { font-size: 13px; color: var(--ink-secondary); margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--hairline); line-height: 1.55; }
+.seg-action { font-size: 12px; color: var(--ink-secondary); margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--hairline); line-height: 1.5; }
 
-/* ---- Head-to-head scoreboard（スタッフ比較）--------------------------------*/
-.vs-table { width: 100%; border-collapse: collapse; font-size: 15px; letter-spacing: 0; min-width: 360px; line-height: var(--lh-ui); }
-.vs-table th, .vs-table td { padding: 12px 14px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.vs-table th:first-child, .vs-table td:first-child { text-align: left; color: var(--ink-secondary); font-weight: 500; white-space: nowrap; }
-.vs-table thead th { font-size: 14px; color: var(--ink-primary); font-weight: 700; border-bottom: 1px solid var(--border); }
-.vs-table thead th .vs-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 7px; vertical-align: middle; }
+/* ---- Head-to-head scoreboard ---------------------------------------------*/
+.vs-table { width: 100%; border-collapse: collapse; font-size: 15px; letter-spacing: -0.2px; min-width: 360px; }
+.vs-table th, .vs-table td { padding: 11px 14px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vs-table th:first-child, .vs-table td:first-child { text-align: left; color: var(--ink-secondary); font-weight: 400; white-space: nowrap; }
+.vs-table thead th { font-size: 13px; color: var(--ink-primary); font-weight: 600; border-bottom: 1px solid var(--hairline); }
+.vs-table thead th .vs-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 7px; vertical-align: middle; }
 .vs-table tbody tr { border-bottom: 1px solid var(--hairline); }
 .vs-table tbody tr:last-child { border-bottom: 0; }
-.vs-table td b { font-family: var(--font-display); font-weight: 700; font-size: 16px; letter-spacing: var(--track-num); }
-.vs-table td .vs-frac { display: block; font-size: 11.5px; color: var(--ink-secondary); font-weight: 400; margin-top: 2px; letter-spacing: 0; white-space: nowrap; }
+.vs-table td b { font-weight: 500; }
+.vs-table td .vs-frac { display: block; font-size: 11px; color: var(--ink-muted); font-weight: 400; margin-top: 2px; letter-spacing: -0.2px; white-space: nowrap; }
 .vs-table td.vs-win { background: var(--accent-soft); }
-.vs-table td.vs-win b { font-weight: 800; color: var(--accent-ink); }
-.vs-table td .vs-lead { font-size: 11px; color: var(--accent-ink); margin-left: 7px; font-weight: 800; letter-spacing: .02em; }
-.vs-table td:first-child .help-ico { display: inline; vertical-align: -1px; }
+.vs-table td.vs-win b { font-weight: 700; color: var(--accent-ink); }
+.vs-table td .vs-lead { font-size: 10px; color: var(--accent-ink); margin-left: 7px; font-weight: 700; letter-spacing: .02em; }
 
 /* ---- Staff ----------------------------------------------------------------*/
 .staff-head { display: flex; align-items: center; gap: 14px; }
-.staff-avatar { width: 48px; height: 48px; border-radius: 980px; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 19px; flex: none; font-family: var(--font-display); box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); }
-.staff-name { font-size: 18px; font-weight: 700; letter-spacing: 0; }
-.staff-name span { font-size: 13px; color: var(--ink-secondary); font-weight: 500; display: block; line-height: var(--lh-ui); }
+.staff-avatar { width: 46px; height: 46px; border-radius: 980px; display: grid; place-items: center; color: #fff; font-weight: 600; font-size: 18px; flex: none; font-family: var(--font-display); }
+.staff-name { font-size: 17px; font-weight: 600; }
+.staff-name span { font-size: 12px; color: var(--ink-muted); font-weight: 400; display: block; }
 .staff-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
-.staff-metric b { font-family: var(--font-display); font-size: 24px; font-weight: 800; letter-spacing: var(--track-num); display: block; font-variant-numeric: tabular-nums; line-height: var(--lh-num); }
-.staff-metric span { display: block; margin-top: 5px; font-size: 13px; font-weight: 500; color: var(--ink-secondary); line-height: var(--lh-ui); }
-.pb-tag, .staff-metric .pb-tag { display: inline-flex; align-items: center; margin-left: 6px; padding: 2px 8px; border-radius: 980px; font-size: 11px; font-weight: 800; letter-spacing: .01em; background: var(--accent-soft); color: var(--accent-ink); line-height: var(--lh-ui); }
+.staff-metric b { font-family: var(--font-display); font-size: 21px; font-weight: 700; letter-spacing: -0.5px; display: block; font-variant-numeric: tabular-nums; }
+.staff-metric span { font-size: 11.5px; color: var(--ink-muted); }
+.pb-tag { display: inline-flex; align-items: center; margin-left: 6px; padding: 1px 7px; border-radius: 980px; font-size: 10px; font-weight: 700; letter-spacing: .01em; background: var(--accent-soft); color: var(--accent-ink); }
 
-/* ---- 次の一手 (self-growth suggestion) — アクセントの帯 ---------------------*/
-.next-hint { margin-top: 16px; padding: 13px 15px; background: var(--accent-soft); border-left: 3px solid var(--accent); border-radius: 12px; font-size: 13.5px; letter-spacing: 0; line-height: 1.6; color: var(--ink-primary); }
+/* ---- 次の一手 (self-growth suggestion) — iOS tinted banner ------------------*/
+.next-hint { margin-top: 16px; padding: 12px 14px; background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: 12px; font-size: 13px; letter-spacing: -0.2px; line-height: 1.6; color: var(--ink-primary); }
 
 /* ---- Self-growth panel (vs the staff member's own past average) -----------*/
 .self-growth { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--hairline); }
-.sg-title { font-size: 12.5px; font-weight: 700; color: var(--ink-secondary); margin-bottom: 8px; letter-spacing: .01em; }
-.sg-row { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: 13px; line-height: var(--lh-ui); }
-.sg-row > span { color: var(--ink-secondary); min-width: 92px; }
-.sg-row > b { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-primary); }
+.sg-title { font-size: 11.5px; font-weight: 600; color: var(--ink-secondary); margin-bottom: 8px; letter-spacing: .01em; }
+.sg-row { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: 12.5px; }
+.sg-row > span { color: var(--ink-muted); min-width: 92px; }
+.sg-row > b { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-primary); }
 .sg-row > .sg-na { font-weight: 500; color: var(--ink-muted); }
-.sg-row > em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 700; }
-.sg-up { color: var(--good-ink); }
+.sg-row > em { margin-left: auto; font-style: normal; font-size: 11.5px; font-weight: 600; }
+.sg-up { color: var(--status-good); }
 .sg-down { color: var(--ink-secondary); }
 .sg-flat { color: var(--ink-muted); }
 
-/* ---- Segmented control ----------------------------------------------------*/
-.segmented { display: inline-flex; padding: 3px; background: var(--surface-2); border-radius: 10px; gap: 2px; position: relative; }
-.segmented button { appearance: none; border: 0; background: transparent; cursor: pointer; padding: 7px 14px; font-size: 13px; font-weight: 600; color: var(--ink-secondary); border-radius: 8px; transition: color .2s; white-space: nowrap; z-index: 1; font-family: var(--font-sans); letter-spacing: 0; line-height: var(--lh-ui); }
-.segmented button.active { color: var(--ink-primary); font-weight: 700; }
-.segmented .seg-thumb { position: absolute; top: 3px; bottom: 3px; background: var(--surface-1); border-radius: 8px; box-shadow: 0 1px 4px rgba(11,15,26,.14), 0 0 0 1px var(--hairline); transition: transform .25s var(--ease), width .25s var(--ease); z-index: 0; }
-:root[data-theme="dark"] .segmented .seg-thumb { background: #2a2f3f; }
-@media (max-width: 520px) { .segmented { display: flex; width: 100%; } .segmented button { flex: 1; padding: 8px 6px; } }
+/* ---- Segmented control (iOS) ----------------------------------------------*/
+.segmented { display: inline-flex; padding: 2px; background: var(--surface-2); border-radius: 9px; gap: 2px; position: relative; }
+.segmented button { appearance: none; border: 0; background: transparent; cursor: pointer; padding: 6px 14px; font-size: 13px; font-weight: 500; color: var(--ink-primary); border-radius: 7px; transition: color .2s; white-space: nowrap; z-index: 1; font-family: var(--font-sans); letter-spacing: -0.1px; }
+.segmented button.active { color: var(--ink-primary); font-weight: 600; }
+.segmented .seg-thumb { position: absolute; top: 2px; bottom: 2px; background: var(--surface-1); border-radius: 7px; box-shadow: 0 1px 4px rgba(0,0,0,.12), 0 0 1px rgba(0,0,0,.08); transition: transform .25s var(--ease), width .25s var(--ease); z-index: 0; }
+:root[data-theme="dark"] .segmented .seg-thumb { background: #636366; } /* iOS dark segmented knob */
+@media (max-width: 520px) { .segmented { display: flex; width: 100%; } .segmented button { flex: 1; padding: 7px 6px; } }
 
 /* ---- Table ----------------------------------------------------------------*/
 .table-wrap { overflow-x: auto; margin: 0 -6px; -webkit-overflow-scrolling: touch; }
 .table-wrap.tall { max-height: min(64vh, 620px); overflow: auto; }
-table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; letter-spacing: 0; min-width: 480px; line-height: var(--lh-ui); }
-.kate-table th { text-align: right; font-size: 12.5px; font-weight: 700; color: var(--ink-secondary); padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0; z-index: 2; background: var(--surface-1); cursor: pointer; user-select: none; }
+table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; letter-spacing: -0.2px; min-width: 480px; }
+.kate-table th { text-align: right; font-size: 12px; font-weight: 500; color: var(--ink-muted); padding: 10px 12px; border-bottom: 1px solid var(--hairline); white-space: nowrap; position: sticky; top: 0; z-index: 2; background: var(--surface-1); cursor: pointer; user-select: none; }
 .kate-table th:first-child, .kate-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface-1); }
 .kate-table th:first-child { z-index: 3; }
 .kate-table th.sorted { color: var(--accent-ink); }
 .kate-table th.sorted::after { content: " ↓"; } .kate-table th.sorted.asc::after { content: " ↑"; }
-.kate-table td { padding: 12px 12px; border-bottom: 1px solid var(--hairline); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kate-table td { padding: 11px 12px; border-bottom: 1px solid var(--hairline); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .kate-table tbody tr:last-child td { border-bottom: 0; }
 .kate-table tbody tr:hover td { background: var(--surface-2); }
-/* 売上サマリー: 数字が主役。太く大きく、今月（最右列）を最も強く */
-.period-table td:not(:first-child) { font-family: var(--font-display); font-size: 17px; font-weight: 700; letter-spacing: var(--track-num); color: var(--ink-primary); }
-.period-table td:last-child { font-weight: 800; }
-.period-table td:first-child { color: var(--ink-secondary); font-weight: 500; }
-.seg-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 980px; font-size: 12px; font-weight: 600; background: var(--surface-2); line-height: var(--lh-ui); }
+.seg-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 980px; font-size: 12px; font-weight: 500; background: var(--surface-2); }
 .seg-tag i { width: 7px; height: 7px; border-radius: 2px; }
 /* #rfmTable's M column: full comma-grouped figure by default (desktop has the
    room); swapped for an abbreviated one on narrow phones, see the media query
@@ -541,44 +461,43 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
 
 /* ---- Daily revenue calendar (直近30日の日次売上・概要) -----------------------
    月〜日曜の7列カレンダーに連続配置（月で段は分けない）。曜日見出し行つき、日付は
-   M/D 表記で曜日により色分け（平日=スレート/土=青/日=ローズ）、最新日はアクセント枠。
+   M/D 表記で曜日により色分け（平日=スレート/土=青/日=赤）、最新日はアクセント枠。
    金額は広幅=フル, 狭幅=圧縮表記に切替。 */
 .dr-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: stretch; }
-.dr-wh { text-align: center; font-size: 11.5px; font-weight: 700; color: var(--ink-secondary); padding-bottom: 2px; }
-.dr-wh.dr-sat { color: var(--cal-sat); }
-.dr-wh.dr-sun { color: var(--cal-sun); }
-:root[data-theme="dark"] .dr-wh.dr-sat, :root[data-theme="dark"] .dr-wh.dr-sun { filter: brightness(1.15); }
-.dr-cell { background: var(--surface-2); border-radius: 10px; padding: 7px 5px 8px; text-align: center; min-width: 0; overflow: hidden; }
+.dr-wh { text-align: center; font-size: 11px; font-weight: 600; color: var(--ink-muted); padding-bottom: 1px; }
+.dr-wh.dr-sat { color: #4f7cc0; }
+.dr-wh.dr-sun { color: #c07784; }
+.dr-cell { background: var(--surface-2); border-radius: 9px; padding: 7px 5px 8px; text-align: center; min-width: 0; overflow: hidden; }
 .dr-cell.dr-empty { background: transparent; }
-.dr-date { font-size: 11.5px; font-weight: 700; color: var(--cal-ink); background: var(--cal-wd); border-radius: 6px; padding: 3px 2px; margin-bottom: 7px; white-space: nowrap; letter-spacing: 0; line-height: var(--lh-ui); }
-.dr-cell.dr-sat .dr-date { background: var(--cal-sat); }
-.dr-cell.dr-sun .dr-date { background: var(--cal-sun); }
-.dr-cell.dr-today { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
+.dr-date { font-size: 11.5px; font-weight: 600; color: #fff; background: #64748b; border-radius: 6px; padding: 3px 2px; margin-bottom: 7px; white-space: nowrap; letter-spacing: -0.2px; }
+.dr-cell.dr-sat .dr-date { background: #4f7cc0; }
+.dr-cell.dr-sun .dr-date { background: #c07784; }
+.dr-cell.dr-today { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
 /* 未来日（受付待ちの予約・見込み）: 塗りではなく枠線にして「まだ確定していない」を表す */
-.dr-cell.dr-future { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
-.dr-cell.dr-future .dr-date { background: transparent; color: var(--cal-wd); box-shadow: inset 0 0 0 1.5px currentColor; }
-.dr-cell.dr-future.dr-sat .dr-date { color: var(--cal-sat); }
-.dr-cell.dr-future.dr-sun .dr-date { color: var(--cal-sun); }
+.dr-cell.dr-future { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline); }
+.dr-cell.dr-future .dr-date { background: #94a3b8; }
+.dr-cell.dr-future.dr-sat .dr-date { background: #93b0d8; }
+.dr-cell.dr-future.dr-sun .dr-date { background: #d8a8b0; }
 .dr-cell.dr-future .dr-rev { color: var(--ink-secondary); }
-.dr-rev { font-size: 14px; font-weight: 700; color: var(--ink-primary); font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.02em; line-height: var(--lh-ui); }
-.dr-retail { font-size: 11px; font-weight: 500; color: var(--ink-secondary); margin-top: 1px; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.01em; }
-.dr-cnt { font-size: 11px; font-weight: 500; color: var(--ink-secondary); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.dr-rev { font-size: 14px; font-weight: 600; color: var(--ink-primary); font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.4px; }
+.dr-retail { font-size: 10.5px; font-weight: 500; color: var(--ink-secondary); margin-top: 1px; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.3px; }
+.dr-cnt { font-size: 11px; font-weight: 500; color: var(--ink-muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
 /* 狭幅では金額を圧縮表記（¥3.7万）に切替え、7列を維持したまま桁あふれを防ぐ */
 @media (max-width: 560px) {
   .dr-grid { gap: 4px; }
   .dr-grid .full-num { display: none; }
   .dr-grid .compact-num { display: inline; }
-  .dr-cell { padding: 6px 3px; border-radius: 8px; }
-  .dr-wh { font-size: 10.5px; }
-  .dr-date { font-size: 10.5px; margin-bottom: 5px; }
+  .dr-cell { padding: 6px 3px; border-radius: 7px; }
+  .dr-wh { font-size: 10px; }
+  .dr-date { font-size: 10px; margin-bottom: 5px; }
   .dr-rev { font-size: 12px; }
-  .dr-retail { font-size: 10px; }
-  .dr-cnt { font-size: 10.5px; }
+  .dr-retail { font-size: 9.5px; }
+  .dr-cnt { font-size: 10px; }
 }
 @media (max-width: 380px) {
   .dr-grid { gap: 3px; }
-  .dr-date { font-size: 10px; padding: 2px 1px; }
-  .dr-rev { font-size: 11px; letter-spacing: -0.03em; }
+  .dr-date { font-size: 9.5px; padding: 2px 1px; }
+  .dr-rev { font-size: 11px; letter-spacing: -0.5px; }
 }
 /* Mobile: the fixed min-width above forces horizontal scroll on phone widths
    even though the actual content (short ¥/%/count values) doesn't need it —
@@ -587,19 +506,16 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
    value cells stay nowrap so a ¥/% figure never breaks mid-digit. */
 @media (max-width: 620px) {
   .vs-table, table.kate-table { min-width: 0; }
-  .vs-table th, .vs-table td { padding: 9px 7px; font-size: 12.5px; }
+  .vs-table th, .vs-table td { padding: 8px 7px; font-size: 12px; }
   /* スタッフ比較表は横スクロールさせず必ず画面内に収める。固定レイアウトで列幅を
      等分し、指標名（第1列）だけ広めに確保。値は nowrap のまま、分子÷分母の下段は
      ÷ で自然に折り返せるようにして、はみ出しを防ぐ。 */
   .vs-table { table-layout: fixed; width: 100%; }
   /* 指標名（第1列）は語の途中で1文字ずつ縦積みにならないよう keep-all で折り返す。 */
-  .vs-table th:first-child, .vs-table td:first-child { white-space: normal; word-break: keep-all; overflow-wrap: normal; width: 38%; font-size: 12.5px; }
-  .vs-table thead th { font-size: 13.5px; }
-  .vs-table td b { font-size: 15px; }
-  .vs-table td .vs-frac { font-size: 10.5px; white-space: normal; overflow-wrap: anywhere; }
-  table.kate-table { font-size: 12px; table-layout: fixed; }
-  .kate-table th, .kate-table td { padding: 8px 5px; overflow: hidden; }
-  .kate-table th { font-size: 11.5px; }
+  .vs-table th:first-child, .vs-table td:first-child { white-space: normal; word-break: keep-all; overflow-wrap: normal; width: 38%; }
+  .vs-table td .vs-frac { font-size: 10px; white-space: normal; overflow-wrap: anywhere; }
+  table.kate-table { font-size: 11px; table-layout: fixed; }
+  .kate-table th, .kate-table td { padding: 7px 5px; overflow: hidden; }
   .kate-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }
   /* Headers may wrap, but only at natural boundaries (spaces / <wbr>), never
      mid-word: word-break:break-word here once let a header fragment into one
@@ -630,16 +546,14 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
      (up to 7 characters, 「高ロイヤル顧客」) and 周期超過 (the 4-character
      overdue chip, previously untuned and wrapping one character per line) get
      the rest. */
-  #rfmTable { font-size: 12px; }
   #rfmTable th:first-child, #rfmTable td:first-child { width: 16%; }
   #rfmTable th:nth-child(2), #rfmTable td:nth-child(2) { width: 11%; }
   #rfmTable th:nth-child(3), #rfmTable td:nth-child(3) { width: 8%; }
   #rfmTable th:nth-child(4), #rfmTable td:nth-child(4) { width: 13%; }
   #rfmTable th:nth-child(5), #rfmTable td:nth-child(5) { width: 33%; }
   #rfmTable th:nth-child(6), #rfmTable td:nth-child(6) { width: 19%; }
-  #rfmTable .seg-tag { font-size: 11px; padding: 2px 6px; gap: 3px; }
-  #rfmTable .chip { font-size: 10.5px; padding: 2px 4px; gap: 2px; }
-  #rfmTable .note-inline { font-size: 11px; }
+  #rfmTable .seg-tag { font-size: 10.5px; padding: 2px 6px; gap: 3px; }
+  #rfmTable .chip { font-size: 10px; padding: 2px 3px; gap: 2px; }
   /* M (¥): a full 6-digit comma-grouped figure ("123,456") doesn't fit the
      narrowed M column below ~400px — swap to abbreviated notation ("12万"),
      already the convention this dashboard uses for chart axes. Both spans
@@ -650,114 +564,93 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; lett
   /* 売上サマリー (periodTable): its row labels (平均月間売上, 6 chars) need more
      than the generic 24% first column to stay on one line, and its 3 value
      columns are short enough to spare the width. */
-  .period-table th:first-child, .period-table td:first-child { width: 27%; font-size: 12.5px; }
-  .period-table th, .period-table td { padding: 9px 4px; }
-  .period-table td:not(:first-child) { font-size: 13.5px; letter-spacing: -0.02em; }
-  .period-table th { font-size: 12px; }
+  .period-table th:first-child, .period-table td:first-child { width: 31%; }
 }
 /* Very narrow phones (e.g. 320px-wide devices): a few more digits than the
    above accounts for — shave a bit more font/padding so large ¥ figures
    (6+ digits) still render in full instead of clipping at the cell edge. */
 @media (max-width: 340px) {
-  .vs-table th, .vs-table td { padding: 7px 5px; font-size: 11.5px; }
-  .vs-table td b { font-size: 14px; }
-  .vs-table td .vs-frac { font-size: 10px; }
-  table.kate-table { font-size: 10.5px; }
+  .vs-table th, .vs-table td { padding: 7px 5px; font-size: 11px; }
+  table.kate-table { font-size: 10.3px; }
   .kate-table th, .kate-table td { padding: 6px 3px; }
-  #rfmTable { font-size: 11px; }
   /* 売上サマリー: a 7-digit month (¥1,162,451) physically can't fit a 320px
      layout at any readable size — swap to the abbreviated form instead. */
   .period-table .full-num { display: none; }
   .period-table .compact-num { display: inline; }
-  .period-table td:not(:first-child) { font-size: 13px; }
   /* Squeeze the RFM badges just enough that the longest segment name
      (高ロイヤル顧客) and the 周期超過 chip stay on a single line at 320px. */
   #rfmTable .seg-tag { font-size: 9.5px; padding: 2px 4px; }
   #rfmTable .chip { font-size: 9.5px; padding: 2px 2px; }
-  #rfmTable .note-inline { font-size: 10px; }
 }
 
 /* ---- Data view ------------------------------------------------------------*/
 .dropzone { border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg); padding: clamp(28px, 6vw, 44px) 24px; text-align: center; background: var(--surface-2); transition: border-color .2s, background .2s, transform .2s; cursor: pointer; }
 .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); }
 .dropzone.drag { transform: scale(1.005); }
-.dropzone-ico { color: var(--accent-ink); margin-bottom: 12px; display: flex; justify-content: center; }
+.dropzone-ico { color: var(--accent); margin-bottom: 12px; display: flex; justify-content: center; }
 .dropzone-ico svg { width: 40px; height: 40px; stroke-width: 1.5; }
-.dropzone h3 { font-size: 18px; font-weight: 700; }
-.dropzone p { color: var(--ink-secondary); font-size: 14px; margin: 8px 0 18px; }
+.dropzone h3 { font-size: 18px; font-weight: 600; }
+.dropzone p { color: var(--ink-secondary); font-size: 13.5px; margin: 8px 0 18px; }
 .datainfo { display: flex; flex-wrap: wrap; gap: 14px 28px; }
-.datainfo div span { color: var(--ink-secondary); font-size: 13px; font-weight: 500; display: block; line-height: var(--lh-ui); }
-.datainfo div b { font-family: var(--font-display); font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: var(--track-num); }
-.how { font-size: 14px; color: var(--ink-secondary); line-height: 1.8; }
+.datainfo div span { color: var(--ink-muted); font-size: 12px; display: block; }
+.datainfo div b { font-family: var(--font-display); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.how { font-size: 13.5px; color: var(--ink-secondary); line-height: 1.8; }
 .how code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-size: 12.5px; font-family: var(--font-mono); }
 .how li { margin-bottom: 6px; }
 .map-chips { display: flex; flex-wrap: wrap; gap: 7px; }
-.map-chip { font-size: 12.5px; padding: 4px 11px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); display: inline-flex; align-items: center; gap: 6px; line-height: var(--lh-ui); }
+.map-chip { font-size: 12px; padding: 4px 11px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); display: inline-flex; align-items: center; gap: 6px; }
 .map-chip i { width: 6px; height: 6px; border-radius: 980px; background: var(--good); }
-.sheet-input { flex: 1; min-width: 220px; height: 42px; padding: 0 13px; border-radius: 12px; border: none; background: var(--surface-2); color: var(--ink-primary); font-size: 15px; letter-spacing: 0; font-family: var(--font-sans); }
+/* iOS filled field: gray fill, 10px radius, no border */
+.sheet-input { flex: 1; min-width: 220px; height: 40px; padding: 0 12px; border-radius: 10px; border: none; background: var(--surface-2); color: var(--ink-primary); font-size: 15px; letter-spacing: -0.2px; font-family: var(--font-sans); }
 .sheet-input::placeholder { color: var(--ink-muted); }
 .sheet-input:focus-visible { outline: 2px solid var(--accent); }
 
-/* お知らせ（#sheetAlert）: 種類ごとに左の帯色で区別。文字は本文色で読める大きさ */
-.notice { border: 1px solid var(--hairline); border-left: 4px solid var(--accent); border-radius: 14px; padding: 16px 18px; background: var(--surface-1); box-shadow: var(--shadow-1); }
-.notice.warn { border-left-color: var(--warn); }
-.notice.bad { border-left-color: var(--bad); }
-.notice.good { border-left-color: var(--good); }
-.notice-title { font-size: 15px; font-weight: 700; color: var(--ink-primary); margin-bottom: 6px; line-height: 1.45; }
-.notice.warn .notice-title { color: var(--warn-ink); }
-.notice.bad .notice-title { color: var(--bad-ink); }
-.notice .note-inline { font-size: 13.5px; }
-.notice-actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
-
-/* トースト: ガラスのカプセル */
-.toast { position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom)); transform: translate(-50%, 16px); z-index: 95; background: var(--glass); backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6); color: var(--ink-primary); border: 1px solid var(--border); padding: 12px 20px; border-radius: 14px; font-size: 13.5px; font-weight: 600; letter-spacing: 0; box-shadow: var(--shadow-2); opacity: 0; transition: all .3s var(--ease); pointer-events: none; max-width: 90vw; line-height: 1.5; }
+/* iOS toast: blur capsule, hairline edge */
+.toast { position: fixed; left: 50%; bottom: 92px; transform: translate(-50%, 16px); z-index: 95; background: var(--glass); backdrop-filter: blur(20px) saturate(1.8); -webkit-backdrop-filter: blur(20px) saturate(1.8); color: var(--ink-primary); border: 1px solid var(--hairline); padding: 11px 20px; border-radius: 14px; font-size: 13px; font-weight: 500; letter-spacing: -0.1px; box-shadow: var(--shadow-2); opacity: 0; transition: all .3s var(--ease); pointer-events: none; max-width: 90vw; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
-.toast.err { background: var(--bad-ink); color: #fff; border-color: transparent; } .toast.ok { background: var(--good-ink); color: #fff; border-color: transparent; }
-:root[data-theme="dark"] .toast.err { background: var(--bad); color: #0b0f1a; } :root[data-theme="dark"] .toast.ok { background: var(--good); color: #0b0f1a; }
+.toast.err { background: var(--bad); color: #fff; border-color: transparent; } .toast.ok { background: var(--good); color: #fff; border-color: transparent; }
 
 /* ---- Section heading & misc ----------------------------------------------*/
-.section-title { display: flex; align-items: center; gap: 12px; margin: 30px 2px 10px; font-size: 19px; font-weight: 700; color: var(--ink-primary); letter-spacing: 0; line-height: 1.35; }
-.view-title { font-family: var(--font-sans); font-weight: 800; font-size: clamp(25px, 7.4vw, 32px); letter-spacing: 0; line-height: 1.25; margin: 20px 0 4px; word-break: keep-all; overflow-wrap: anywhere; }
-.view-lead { color: var(--ink-secondary); font-size: 14px; letter-spacing: 0; margin-bottom: 14px; line-height: 1.65; }
-.view-lead b { color: var(--ink-primary); }
-.view-lead .lead-upd { display: inline-block; margin-left: 6px; padding: 2px 9px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; line-height: var(--lh-ui); }
+/* iOS grouped-list section header: 13px secondary ink above the content */
+.section-title { display: flex; align-items: center; gap: 12px; margin: 26px 2px 0; font-size: 13px; font-weight: 500; color: var(--ink-muted); letter-spacing: -0.08px; }
+.view-title { font-family: var(--font-display); font-weight: 700; font-size: 34px; letter-spacing: -0.5px; line-height: 1.2; margin: 16px 0 2px; }
+.view-lead { color: var(--ink-muted); font-size: 13px; letter-spacing: -0.1px; margin-bottom: 12px; line-height: 1.6; }
+.view-lead .lead-upd { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mini-stats { display: flex; gap: 22px; flex-wrap: wrap; }
-.mini-stat b { font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: var(--track-num); font-variant-numeric: tabular-nums; line-height: var(--lh-num); }
-.mini-stat span { font-size: 13px; font-weight: 500; color: var(--ink-secondary); display: block; margin-top: 4px; line-height: var(--lh-ui); }
+.mini-stat b { font-family: var(--font-display); font-size: 19px; font-weight: 700; letter-spacing: -0.4px; font-variant-numeric: tabular-nums; }
+.mini-stat span { font-size: 11.5px; color: var(--ink-muted); display: block; }
 .chart-box { margin-top: 8px; }
-.chart-toggle { font-size: 12.5px; color: var(--ink-secondary); background: var(--surface-2); border: 0; border-radius: 980px; padding: 5px 12px; cursor: pointer; font-weight: 600; font-family: var(--font-sans); line-height: var(--lh-ui); }
+.chart-toggle { font-size: 11.5px; color: var(--ink-secondary); background: var(--surface-2); border: 0; border-radius: 980px; padding: 4px 11px; cursor: pointer; font-weight: 500; }
 .chart-toggle:hover { color: var(--accent-ink); }
 
 /* ---- Metric help icons (tap for a plain-language description) -------------*/
 .help-ico {
   position: relative;
   display: inline-flex; align-items: center; justify-content: center; flex: none;
-  width: 17px; height: 17px; margin-left: 6px; padding: 0; vertical-align: middle;
-  border: none; border-radius: 50%; background: var(--surface-3);
-  color: var(--ink-secondary); font-size: 11px; font-weight: 800; line-height: 1;
+  width: 15px; height: 15px; margin-left: 5px; padding: 0; vertical-align: middle;
+  border: none; border-radius: 50%; background: var(--surface-2);
+  color: var(--ink-muted); font-size: 10px; font-weight: 700; line-height: 1;
   font-family: var(--font-sans); cursor: pointer; transition: background .15s, color .15s;
 }
-/* Invisible tap-target extension: the visual stays a subtle 17px ring, but the
-   touchable area becomes ~33px — a 17px button is below any comfortable
+/* Invisible tap-target extension: the visual stays a subtle 15px ring, but the
+   touchable area becomes ~31px — a 15px button is below any comfortable
    fingertip size. Clicks on the halo hit the button itself (the pseudo-element
    is part of it), so the existing closest('.help-ico') delegation just works. */
 .help-ico::before { content: ''; position: absolute; inset: -8px; border-radius: 50%; }
-.help-ico:hover, .help-ico:focus-visible, .help-ico.active { background: var(--accent); color: #fff; }
+.help-ico:hover, .help-ico:focus-visible, .help-ico.active { background: var(--accent-soft); color: var(--accent-ink); }
 .help-pop {
-  position: fixed; z-index: 97; max-width: 300px; padding: 12px 14px;
-  background: var(--surface-elevated); color: var(--ink-primary); border: 1px solid var(--border);
-  border-radius: 14px; box-shadow: var(--shadow-2); font-size: 13.5px; letter-spacing: 0; line-height: 1.65;
+  position: fixed; z-index: 97; max-width: 260px; padding: 10px 12px;
+  background: var(--surface-elevated); color: var(--ink-primary); border: 1px solid var(--hairline);
+  border-radius: 12px; box-shadow: var(--shadow-2); font-size: 13px; letter-spacing: -0.1px; line-height: 1.55;
   opacity: 0; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease; pointer-events: none;
 }
-.help-pop b { font-weight: 700; }
-.help-pop code { font-family: var(--font-mono); font-size: 12.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
 .help-pop.show { opacity: 1; transform: translateY(0); pointer-events: auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
-.view { display: none; } .view.active { display: block; animation: viewIn .32s var(--ease); }
+.view { display: none; } .view.active { display: block; animation: viewIn .35s var(--ease); }
 @keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .view.active { animation: none; } }
-.footer { text-align: center; color: var(--ink-secondary); font-size: 12.5px; padding: 44px 0 12px; line-height: 1.8; }
-.footer b { color: var(--ink-primary); font-weight: 700; }
+.footer { text-align: center; color: var(--ink-muted); font-size: 12px; padding: 40px 0 12px; line-height: 1.8; }
+.footer b { color: var(--ink-secondary); font-weight: 600; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.status-line { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+.status-line { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; }
 .status-line i { width: 8px; height: 8px; border-radius: 980px; }
