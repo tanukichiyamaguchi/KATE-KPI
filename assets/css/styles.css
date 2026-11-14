@@ -682,3 +682,34 @@ details > summary.sum { cursor: pointer; font-size: 15px; color: var(--accent-in
 .alert-card { border-radius: var(--radius-xl); padding: 16px 18px; background: color-mix(in srgb, var(--warn) 12%, var(--surface-1)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 45%, transparent); }
 .alert-card .alert-t { font-weight: 700; font-size: 16px; color: var(--warn-ink); margin-bottom: 6px; line-height: 1.5; }
 .alert-card ul { margin: 0 0 10px; padding-left: 1.2em; font-size: 15px; line-height: 1.7; }
+
+/* ---- 2回目の点検で足した部品（app.js の新しいクラス） ----------------------*/
+/* ホーム：「お店だけ表示」の端末は、お店の列だけを全幅で */
+@media (min-width: 980px) { .home-cols.home-cols--single { grid-template-columns: 1fr; } }
+/* 自分の推移：対象の月と件数の小さな注記 */
+.sg-row .sg-foot { display: block; font-size: 13px; font-weight: 400; color: var(--ink-muted); margin-top: 1px; }
+/* 顧客一覧：表示件数の注記と絞り込みボタンを1行に（狭いときは折り返す） */
+.rfm-tools { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px; }
+/* スタッフ選択：人数が多いときは、ページではなくこの行の中だけを横にスクロール */
+.subnav.seg-scroll { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding: 2px 0 6px; margin-bottom: 10px; }
+.subnav.seg-scroll::-webkit-scrollbar { display: none; }
+.subnav.seg-scroll .segmented.full { min-width: max-content; }
+.subnav.seg-scroll .segmented.full button { flex: 1 0 auto; padding-left: 12px; padding-right: 12px; }
+/* スタッフ比較：4人以上は表を横にスクロールさせ、左の項目名の列を固定 */
+.vs-table.many th:first-child, .vs-table.many td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface-1); }
+@media (max-width: 680px) {
+  .vs-table.many { table-layout: auto; width: auto; min-width: 100%; }
+  .vs-table.many th, .vs-table.many td { white-space: nowrap; }
+  .vs-table.many th:first-child, .vs-table.many td:first-child { width: auto; min-width: 8.5em; white-space: normal; word-break: normal; overflow-wrap: anywhere; }
+  .vs-table.many td .vs-frac { white-space: nowrap; }
+}
+/* データ：取得の診断表は数字を切らず、はみ出す分は表の中で横にスクロール */
+table.kate-table.diag-table { width: auto; min-width: 100%; table-layout: auto; }
+.diag-table th, .diag-table td { white-space: nowrap; }
+.diag-table td.wrap { white-space: normal; min-width: 14em; }
+@media (max-width: 680px) {
+  table.kate-table.diag-table { table-layout: auto; font-size: 13px; }
+  .diag-table th, .diag-table td { overflow: visible; white-space: nowrap; word-break: normal; }
+  .diag-table th:first-child, .diag-table td:first-child { width: auto; white-space: nowrap; }
+  .diag-table td.wrap { white-space: normal; }
+}

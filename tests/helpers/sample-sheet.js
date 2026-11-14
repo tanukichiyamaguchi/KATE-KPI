@@ -21,12 +21,14 @@ function cell(v) {
   const s = typeof v === 'number' ? String(Math.round(v * 100) / 100) : String(v);
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
-function sampleCsv() {
-  const rows = globalThis.KATE.SAMPLE_RESERVATIONS;
+// 任意の予約レコード（サンプルと同じ形）を、予約データの CSV にする
+function recordsCsv(rows) {
   return [COLS.map(c => c[0]).join(',')].concat(rows.map(r => COLS.map(c => cell(r[c[1]])).join(','))).join('\n');
 }
+function sampleCsv() { return recordsCsv(globalThis.KATE.SAMPLE_RESERVATIONS); }
+function sampleRows() { return globalThis.KATE.SAMPLE_RESERVATIONS.map(r => Object.assign({}, r)); }
 // 「目標」タブの例（税抜）。7月＝サンプルの集計基準日（2026-07-03）の月。
 function targetsCsv() {
   return ['月,お店,momo,aoi,データ更新日時', '2026/07/01,1200000,700000,500000,2026/07/03 23:10:00', '毎月,1000000,600000,400000,'].join('\n');
 }
-module.exports = { sampleCsv, targetsCsv };
+module.exports = { sampleCsv, targetsCsv, recordsCsv, sampleRows };

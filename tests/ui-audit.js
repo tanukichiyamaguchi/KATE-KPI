@@ -9,7 +9,14 @@
  *                       (digits silently cut off at the cell edge);
  *   3. clipped-chart-label — an SVG value label pushed above its chart's
  *                       top edge;
- *   4. any console/page error.
+ *   4. any console/page error;
+ *   5. page-level horizontal overflow, and buttons/chips sticking out of
+ *      their card (e.g. a long pill label at 320px).
+ *
+ * Two scenarios: (a) the bundled sample (2 staff) with the owner area locked;
+ * (b) a linked sheet with 6 staff, some with long names, and the owner area
+ * unlocked — the staff selector and the data tab's admin buttons must still
+ * fit a 320px phone.
  *
  * Run: node tests/ui-audit.js  (wired into `npm test`).
  * Requires playwright-core + a Chromium binary (PW_CHROMIUM env var, or the
@@ -50,6 +57,24 @@ const server = http.createServer(function (req, res) {
 
 const TABS = ['ホーム', 'お店', 'スタッフ', '顧客', 'データ'];
 const WIDTHS = [320, 375, 390, 414, 1280];
+const { recordsCsv, sampleRows } = require('./helpers/sample-sheet.js');
+// 6人のスタッフ（長い名前・全角スペース入りを含む）。サンプルの momo の担当分を
+// お客様ごとに5人へ振り分け、aoi はそのまま残す。
+function sixStaffCsv() {
+  const extra = ['momo', '佐藤　美咲', '高橋ゆきの', 'Kobayashi', '山本あやの'];
+  const rows = sampleRows().map(function (r) {
+    if (r.staff === 'momo') {
+      var h = 0; String(r.custKey).split('').forEach(function (ch) { h = (h * 31 + ch.charCodeAt(0)) >>> 0; });
+      r.staff = extra[h % extra.length];
+    }
+    return r;
+  });
+  return recordsCsv(rows);
+}
+const SCENARIOS = [
+  { name: 'サンプル', widths: WIDTHS, linked: false },
+  { name: '6人・管理画面あり', widths: [320, 375, 390, 1280], linked: true }
+];
 
 (async () => {
   await new Promise(function (ok) { server.listen(0, '127.0.0.1', ok); });
@@ -57,19 +82,40 @@ const WIDTHS = [320, 375, 390, 414, 1280];
   const browser = await chromium.launch({ executablePath: EXEC });
   const failures = [];
 
-  for (const width of WIDTHS) {
+  const SIX = sixStaffCsv();
+  for (const sc of SCENARIOS) for (const width of sc.widths) {
     // スマホ幅は実機に近い高さ（640px）にする。説明ポップオーバーが画面下に
     // はみ出す不具合は、高さが十分だと再現しないため。
     const page = await browser.newPage({ viewport: { width: width, height: width < 600 ? 640 : 900 } });
-    await page.addInitScript(function () { try { localStorage.setItem('kate-me', 'momo'); } catch (e) {} });
+    await page.addInitScript(function (linked) {
+      try {
+        localStorage.setItem('kate-me', 'momo');
+        if (linked) localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/AUDIT6/edit#gid=0');
+      } catch (e) {}
+    }, sc.linked);
+    if (sc.linked) {
+      // 連携中のシート（6人）。「目標」タブは無い（gviz が1枚目を返す）扱い。
+      await page.route('https://docs.google.com/**', function (route) { return route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: SIX }); });
+      // 管理用のロックと共有リンクを無効にして、データタブの管理画面（長いボタン）も表示する
+      await page.route('**/data/owner-lock.json', function (route) { return route.fulfill({ status: 404, body: '' }); });
+      await page.route('**/data/shared-link.json', function (route) { return route.fulfill({ status: 404, body: '' }); });
+    }
     // Charts honor prefers-reduced-motion → render instantly, so measurements
     // are deterministic instead of racing entry animations.
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const errors = [];
     page.on('pageerror', function (e) { errors.push(String(e.message)); });
-    page.on('console', function (m) { if (m.type() === 'error' && !/favicon/i.test(m.text())) errors.push(m.text()); });
+    page.on('console', function (m) {
+      if (m.type() !== 'error' || /favicon/i.test(m.text())) return;
+      // 管理ロック・共有リンクを 404 にして無効化した場面では、その 404 は想定どおり
+      if (sc.linked && /Failed to load resource: .*404/.test(m.text())) return;
+      errors.push(m.text());
+    });
     await page.goto('http://127.0.0.1:' + port + '/index.html', { waitUntil: 'networkidle' });
     await page.evaluate(function () { return document.fonts ? document.fonts.ready : null; });
+    if (sc.linked) {
+      await page.waitForFunction(function () { var a = document.querySelector('#asof'); return a && /最終読込/.test(a.textContent); }, {}, { timeout: 8000 }).catch(function () {});
+    }
 
     for (const tab of TABS) {
       await page.evaluate(function (t) {
@@ -86,12 +132,13 @@ const WIDTHS = [320, 375, 390, 414, 1280];
       for (const key of (segKeys.length ? segKeys : [null])) {
         if (key !== null) {
           await page.evaluate(function (k) {
-            var b = document.querySelector('.view.active .subnav .segmented button[data-k="' + k + '"]');
+            // data-k はスタッフ名（全角スペースなどを含む）なので、セレクタを組み立てずに比べる
+            var b = Array.prototype.filter.call(document.querySelectorAll('.view.active .subnav .segmented button[data-k]'), function (x) { return x.dataset.k === k; })[0];
             if (b && !b.classList.contains('active')) b.click();
           }, key);
           await page.waitForTimeout(300);
         }
-        const label = tab + (key !== null ? ' > ' + key : '');
+        const label = (sc.linked ? '[' + sc.name + '] ' : '') + tab + (key !== null ? ' > ' + key : '');
         const found = await page.evaluate(function () {
           var out = [];
           function txt(el) { return (el.innerText || '').trim(); }
@@ -182,12 +229,36 @@ const WIDTHS = [320, 375, 390, 414, 1280];
             });
             if (!culprits.length) out.push({ type: 'h-overflow', text: 'page ' + document.documentElement.scrollWidth + 'px / vw' + docW });
           }
+          // 4b) ボタン・チップがカードの右端からはみ出していない（ページ全体は横に
+          //     スクロールしなくても、長いラベルのボタンがカードの外へ突き出す）。
+          //     横スクロールする行（.seg-scroll・.table-wrap）の中は対象外。
+          var pills = document.querySelectorAll('.card .pill, .card button, .hc .pill, .chip');
+          for (var q = 0; q < pills.length; q++) {
+            var pe = pills[q];
+            if (!pe.offsetParent) continue;
+            var inX = false;
+            for (var pp = pe.parentElement; pp && !pp.classList.contains('card') && !pp.classList.contains('hc'); pp = pp.parentElement) {
+              var oxs = getComputedStyle(pp).overflowX; if (oxs === 'auto' || oxs === 'scroll') { inX = true; break; }
+            }
+            if (inX) continue;
+            var cardEl = pe.closest('.card, .hc');
+            if (!cardEl) continue;
+            var cr = cardEl.getBoundingClientRect(), pr = pe.getBoundingClientRect();
+            if (pr.right > cr.right + 1 || pr.left < cr.left - 1) out.push({ type: 'out-of-card', text: (pe.id ? '#' + pe.id : txt(pe).slice(0, 20)) + ' ' + Math.round(pr.left) + '..' + Math.round(pr.right) + ' / card ' + Math.round(cr.left) + '..' + Math.round(cr.right) });
+          }
           // 5) スタッフ比較表は横スクロールさせず画面内に必ず収める設計。.table-wrap は
           //    overflow-x:auto なので #4 の全体検査では拾えないため個別に確認する。
+          //    ただし4人以上（.many）は表を横にスクロールさせる設計なので、代わりに
+          //    左の項目名の列が固定（position: sticky）されていることを確認する。
           var vt = document.querySelector('.vs-table');
           if (vt && vt.offsetParent) {
             var vw = vt.closest('.table-wrap');
-            if (vw && vt.scrollWidth > vw.clientWidth + 2) {
+            if (vt.classList.contains('many')) {
+              var fc = vt.querySelector('tbody td:first-child');
+              if (vw && vt.scrollWidth > vw.clientWidth + 2 && fc && getComputedStyle(fc).position !== 'sticky') {
+                out.push({ type: 'vs-table-first-col-not-sticky', text: vt.scrollWidth + 'px > wrap ' + vw.clientWidth + 'px' });
+              }
+            } else if (vw && vt.scrollWidth > vw.clientWidth + 2) {
               out.push({ type: 'vs-table-overflow', text: vt.scrollWidth + 'px > wrap ' + vw.clientWidth + 'px' });
             }
           }
@@ -241,6 +312,6 @@ const WIDTHS = [320, 375, 390, 414, 1280];
     console.log('\n\x1b[1mUI AUDIT SUMMARY\x1b[0m  \x1b[31m' + failures.length + ' fail\x1b[0m');
     process.exit(1);
   }
-  console.log('\n\x1b[1mUI AUDIT SUMMARY\x1b[0m  \x1b[32mPASS\x1b[0m (' + WIDTHS.length + ' widths × ' + TABS.length + ' tabs and their sub-sections: no vertical text, no clipped cells, no clipped chart labels, help popovers on-screen without literal tags, no console errors)');
+  console.log('\n\x1b[1mUI AUDIT SUMMARY\x1b[0m  \x1b[32mPASS\x1b[0m (' + SCENARIOS.map(function (x) { return x.name + ' ' + x.widths.length + ' widths'; }).join(' + ') + ' × ' + TABS.length + ' tabs and their sub-sections: no vertical text, no clipped cells, no clipped chart labels, no horizontal page scroll, nothing sticking out of its card, help popovers on-screen without literal tags, no console errors)');
   process.exit(0);
 })().catch(function (e) { console.error('UI AUDIT: unexpected error', e); server.close(); process.exit(1); });

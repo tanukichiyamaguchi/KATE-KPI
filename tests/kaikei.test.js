@@ -1,6 +1,9 @@
 /* Regression tests for the Phase-1 calculation fixes (会計明細 / retail-ratio /
  * maturity-trimming / pooled staff averages) and the Phase-3 self-growth fields
- * (personal best / cumulative milestones / 育てた常連). Fixtures are small and
+ * (personal best / cumulative milestones / 育てた常連), plus the 2nd-review fixes
+ * (GG–LL: same-day visits in the cycle, 会計明細-only next-reservation censoring,
+ * 育てた常連 = 2 visits + 3rd booking, 5-visit floor for best spend, pooled
+ * self-growth, 次の一手 met / met-partial / censored). Fixtures are small and
  * hand-verified in the comments below — each expected value is computed by hand,
  * not derived from the implementation. Run: node tests/kaikei.test.js */
 'use strict';
@@ -1238,7 +1241,11 @@ h('■ Fixture FF: 次の一手の母数判定');
   check('X: リピート率の分母 20人・分子 14人', X.reachDen === 20 && X.reach2Num === 14 ? 1 : 0, 1);
   check('X: 固定化率の分母は2人（20人未満）', X.fixDenom, 2);
   check('X: 固定化率0%は分母不足なので提案しない（以前は「常連化0%」と出ていた）', X.growthFocus.key === null ? 1 : 0, 1);
-  check('X: リピート率は目安達成 → 「すべて達成」', X.growthFocus.reason === 'met' ? 1 : 0, 1);
+  // 固定化率は分母2人で判定していないので、「両方とも達成」（'met'）とは言わない。
+  // 判定できたのはリピート率だけ → 'met-partial'（画面は「リピート率は目安を達成」とだけ書く）
+  check('X: リピート率だけ判定・達成 → met-partial（固定化率は未判定）', X.growthFocus.reason === 'met-partial' ? 1 : 0, 1);
+  check('X: judged はリピート率のみ', X.growthFocus.judged.join() === 'repeat' ? 1 : 0, 1);
+  check('X: 固定化率は保留（分母2人・必要20人）', X.growthFocus.pending.length === 1 && X.growthFocus.pending[0].key === 'fix' && X.growthFocus.pending[0].den === 2 && X.growthFocus.pending[0].need === 20 ? 1 : 0, 1);
 
   // Y: 5月に初回担当25人が全員6月に2回目来店、うち5人が3回目を予約 → 固定化率 5/25＝20%（分母25人）
   const rowsY = [];
@@ -1255,12 +1262,193 @@ h('■ Fixture FF: 次の一手の母数判定');
   check('Y: 提案の値は 20%', Y.growthFocus.value, 0.2);
   check('Y: 提案の目安は 60%', Y.growthFocus.target, 0.6);
 
-  // W: 初回担当が少ない（5人）→ どの率も分母不足
+  // W: 初回担当が少ない（5人）→ どの率も分母不足。これからの予約を1件入れて予約データ扱いにする
+  // （予約が1件も無いと会計明細のみ＝'censored' になり、分母不足の判定を確かめられないため）。
   const rowsW = [];
   for (let i = 1; i <= 5; i++) rowsW.push(rec({ staff: 'W', custKey: 'E' + i, name: 'E' + i, date: '2026-06-0' + i, kaikeiTotal: 5000 }));
+  rowsW.push(rec({ staff: 'W', custKey: 'E1', name: 'E1', date: '2026-07-25', status: '受付待ち', yoyakuTotal: 5000 }));
   rowsW.push(rec({ staff: 'W', custKey: 'Z', name: 'Z', date: '2026-07-03', kaikeiTotal: 5000 }));
   const W = engine.compute(rowsW, { asOf: '2026-07-03' }).staff.find(function (s) { return s.name === 'W'; });
   check('W: 分母不足 → 提案なし（データ不足）', W.growthFocus.key === null && W.growthFocus.reason === 'insufficient' ? 1 : 0, 1);
+  check('W: 保留はリピート率（5人）・固定化率（0人）', W.growthFocus.pending.map(function (p) { return p.key + p.den; }).join() === 'repeat5,fix0' ? 1 : 0, 1);
+}
+
+// ============================================================================
+// Fixture GG — 来店周期は「別の日の来店」どうしで測る（同じ日の2件で周期0日にしない）
+// ============================================================================
+// P : 6/30 に会計が2件（同じ日）・予約なし。以前は間隔0日 → 本人の周期0日 →
+//     基準日 7/3 の時点（3日後）で「周期超過＝呼び戻し候補」になっていた。
+// P2: 同じ日に2件ずつ、4/1・5/1・5/31 → 別の日どうしの間隔は 30日・30日 → 周期30日。
+// Q : 5/1・5/31 → 間隔30日。S1: 5/10 の1回だけ（お店全体の中央値で判定）。
+// お店全体の間隔 = P2 の [30, 30] ＋ Q の [30] → 中央値30日（0日は数えない。数えると
+// [0,0,0,0,30,30,30] の中央値が 0 になっていた）。
+// 呼び戻し: P (R=3, 周期30 → 3 > 45 ではない)・P2 (R=33 > 45 ではない)・Q (R=33) は候補でない、
+//           S1 は R=54 > 30×1.5=45 で候補 → 1人。
+h('■ Fixture GG: 同じ日の2件は周期に数えない');
+{
+  const rows = [
+    rec({ staff: 'A', custKey: 'P', name: 'P', date: '2026-06-30', kaikeiTotal: 5000 }),
+    rec({ staff: 'B', custKey: 'P', name: 'P', date: '2026-06-30', kaikeiTotal: 3000 }),
+    rec({ staff: 'A', custKey: 'P2', name: 'P2', date: '2026-04-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'B', custKey: 'P2', name: 'P2', date: '2026-04-01', kaikeiTotal: 3000 }),
+    rec({ staff: 'A', custKey: 'P2', name: 'P2', date: '2026-05-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'B', custKey: 'P2', name: 'P2', date: '2026-05-01', kaikeiTotal: 3000 }),
+    rec({ staff: 'A', custKey: 'P2', name: 'P2', date: '2026-05-31', kaikeiTotal: 5000 }),
+    rec({ staff: 'B', custKey: 'P2', name: 'P2', date: '2026-05-31', kaikeiTotal: 3000 }),
+    rec({ staff: 'A', custKey: 'Q', name: 'Q', date: '2026-05-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'A', custKey: 'Q', name: 'Q', date: '2026-05-31', kaikeiTotal: 5000 }),
+    rec({ staff: 'A', custKey: 'S1', name: 'S1', date: '2026-05-10', kaikeiTotal: 5000 }),
+    rec({ staff: 'A', custKey: 'Z', name: 'Z', date: '2026-07-03', kaikeiTotal: 5000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-03' });
+  const byKey = {}; R.rfm.customers.forEach(function (c) { byKey[c.name] = c; });
+  check('お店全体の来店周期は30日（0日の間隔を数えない）', R.store.visitCycleMedianDays, 30);
+  check('P: 本人の間隔が無いのでお店全体の30日を使う', byKey.P.ownCycle, 30);
+  check('P: 3日前に来店した方は呼び戻し候補にしない', byKey.P.callback ? 1 : 0, 0);
+  check('P2: 同じ日に2件ずつでも周期は30日', byKey.P2.ownCycle, 30);
+  check('P2: 呼び戻し候補にしない（R=33日 ≤ 45日）', byKey.P2.callback ? 1 : 0, 0);
+  check('S1: R=54日 > 45日 → 候補', byKey.S1.callback ? 1 : 0, 1);
+  check('呼び戻し候補は S1 の1人', R.rfm.callbackCount, 1);
+}
+
+// ============================================================================
+// Fixture HH — 会計明細のみ: 次回予約率は月末から30日経った月の来店だけで数える
+// ============================================================================
+// これからの予約が無いデータ（会計明細）。基準日 7/3。
+//  4月: A1〜A5 が来店。A1〜A3 は5月にまた来店 → 4月の次回あり 3/5
+//  5月: A1〜A3・B1・B2 が来店。A1 は6月にまた来店 → 5月の次回あり 1/5
+//  6月: A1・C1〜C4 が来店（その後なし）→ 6月末から3日しか経っていない＝再来待ち
+//  7月: D1 が 7/3 に来店 → 再来待ち
+// 直近3ヶ月（4〜6月）の次回予約率 = 30日経った4・5月だけで (3+1)/(5+5) = 0.4
+// （以前は6月の0/5も分母に入り 4/15 = 0.27 と低く出ていた）。
+h('■ Fixture HH: 会計明細のみの次回予約率（直近の月は再来待ち）');
+{
+  const rows = [];
+  ['A1', 'A2', 'A3', 'A4', 'A5'].forEach(function (k, i) { rows.push(rec({ staff: 'A', custKey: k, name: k, date: '2026-04-1' + i, kaikeiTotal: 5000 })); });
+  ['A1', 'A2', 'A3'].forEach(function (k, i) { rows.push(rec({ staff: 'A', custKey: k, name: k, date: '2026-05-2' + i, kaikeiTotal: 5000 })); });
+  ['B1', 'B2'].forEach(function (k, i) { rows.push(rec({ staff: 'A', custKey: k, name: k, date: '2026-05-0' + (i + 5), kaikeiTotal: 5000 })); });
+  rows.push(rec({ staff: 'A', custKey: 'A1', name: 'A1', date: '2026-06-25', kaikeiTotal: 5000 }));
+  ['C1', 'C2', 'C3', 'C4'].forEach(function (k, i) { rows.push(rec({ staff: 'A', custKey: k, name: k, date: '2026-06-1' + i, kaikeiTotal: 5000 })); });
+  rows.push(rec({ staff: 'A', custKey: 'D1', name: 'D1', date: '2026-07-03', kaikeiTotal: 5000 }));
+  const R = engine.compute(rows, { asOf: '2026-07-03' });
+  const P = R.store.periods, A = R.staff.find(function (s) { return s.name === 'A'; });
+  check('会計明細のみ（completedOnly）', R.meta.completedOnly ? 1 : 0, 1);
+  check('予約の状態の行は無い（hasReservationRows=false）', R.meta.hasReservationRows ? 1 : 0, 0);
+  check('直近3ヶ月: 来店は15件（来店件数そのものは除かない）', P.last3.visits, 15);
+  check('直近3ヶ月: 次回予約率の分母は4・5月の10件', P.last3.nextDen, 10);
+  check('直近3ヶ月: 分子は 3+1=4件', P.last3.nextNum, 4);
+  check('直近3ヶ月: 次回予約率 0.4', P.last3.nextRate, 0.4);
+  check('直近3ヶ月: 直近の月を除いた印', P.last3.nextCensored ? 1 : 0, 1);
+  check('先月（6月）: 率を出さない（再来待ち）', P.prev.nextRate === null && P.prev.nextDen === 0 && P.prev.nextCensored ? 1 : 0, 1);
+  check('今月（7月）: 率を出さない（再来待ち）', R.store.month.cur.nextRate === null && R.store.month.cur.nextCensored ? 1 : 0, 1);
+  check('今月の「残りの予約」は追跡できない（tracked=false）', R.store.month.booked.tracked ? 1 : 0, 0);
+  check('月次: 4月 0.6・5月 0.2', R.store.monthly.find(function (m) { return m.m === '2026-04'; }).nextRes * 10 + R.store.monthly.find(function (m) { return m.m === '2026-05'; }).nextRes, 6.2, 1e-9);
+  check('月次: 6月・7月は null', [R.store.monthly.find(function (m) { return m.m === '2026-06'; }).nextRes, R.store.monthly.find(function (m) { return m.m === '2026-07'; }).nextRes].every(function (v) { return v === null; }) ? 1 : 0, 1);
+  check('スタッフ: 月ごとの数字の直近3ヶ月 = 比較表の値（avgRecent）', A.periods.last3.nextRate === A.avgRecent.nextRes && A.periods.last3.nextNum === A.avgRecent.nextResNum && A.periods.last3.nextDen === A.avgRecent.nextResDen ? 1 : 0, 1);
+  check('次の一手は会計明細のみでは出さない（censored）', A.growthFocus.reason === 'censored' && A.growthFocus.key === null ? 1 : 0, 1);
+}
+
+// ============================================================================
+// Fixture II — 育てた常連: 実際に2回来店して3回目のご予約まで（固定化率の分子と同じ）
+// ============================================================================
+// K1: 3回来店 → 数える。K2: 2回来店＋3回目の予約（受付待ち）→ 数える。
+// K3: 1回来店＋予約2件 → 数えない（以前は「予約3件以上」で数えていた）。
+h('■ Fixture II: 育てた常連の数え方');
+{
+  const rows = [
+    rec({ staff: 'G', custKey: 'K1', name: 'K1', date: '2026-05-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'G', custKey: 'K1', name: 'K1', date: '2026-06-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'G', custKey: 'K1', name: 'K1', date: '2026-07-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'G', custKey: 'K2', name: 'K2', date: '2026-05-02', kaikeiTotal: 5000 }),
+    rec({ staff: 'G', custKey: 'K2', name: 'K2', date: '2026-06-02', kaikeiTotal: 5000 }),
+    rec({ staff: 'G', custKey: 'K2', name: 'K2', date: '2026-07-20', status: '受付待ち', yoyakuTotal: 5000 }),
+    rec({ staff: 'G', custKey: 'K3', name: 'K3', date: '2026-05-03', kaikeiTotal: 5000 }),
+    rec({ staff: 'G', custKey: 'K3', name: 'K3', date: '2026-07-21', status: '受付待ち', yoyakuTotal: 5000 }),
+    rec({ staff: 'G', custKey: 'K3', name: 'K3', date: '2026-08-21', status: '受付待ち', yoyakuTotal: 5000 }),
+    rec({ staff: 'G', custKey: 'K4', name: 'K4', date: '2026-07-03', kaikeiTotal: 5000 })
+  ];
+  const G = engine.compute(rows, { asOf: '2026-07-03' }).staff.find(function (s) { return s.name === 'G'; });
+  check('育てた常連は K1・K2 の2人（K3 は1回来店なので数えない）', G.regulars3, 2);
+}
+
+// ============================================================================
+// Fixture JJ — 自己ベストの「月間の平均単価」は来店5件以上の月だけで比べる
+// ============================================================================
+// P: 4月 6件×¥5,000、5月 1件×¥20,000、6月 6件×¥6,000（7月は集計中）。
+//    以前は5月の1件（¥20,000）が自己ベストだった → 5件以上の4・6月で比べて 6月 ¥6,000、6月が更新。
+// P2: 4月 6件×¥5,000、5月 6件×¥6,000、6月 1件×¥30,000 → 直近の確定月（6月）が1件なので「更新」にしない。
+h('■ Fixture JJ: 自己ベストの平均単価（5件以上の月）');
+{
+  function staffRows(name, plan) {
+    const rows = []; let n = 0;
+    plan.forEach(function (p) { for (let i = 0; i < p[1]; i++) { n++; rows.push(rec({ staff: name, custKey: name + n, name: name + n, date: p[0], kaikeiTotal: p[2] })); } });
+    rows.push(rec({ staff: name, custKey: name + 'Z', name: name + 'Z', date: '2026-07-03', kaikeiTotal: 5000 }));
+    return rows;
+  }
+  const P = engine.compute(staffRows('P', [['2026-04-10', 6, 5000], ['2026-05-10', 1, 20000], ['2026-06-10', 6, 6000]]), { asOf: '2026-07-03' }).staff[0];
+  check('P: 平均単価の自己ベストは ¥6,000（6月）', P.personalBest.spend.v, 6000);
+  check('P: 自己ベストの月は6月', P.personalBest.spend.m === '2026-06' ? 1 : 0, 1);
+  check('P: 6月で更新', P.personalBest.latestIsBest.spend ? 1 : 0, 1);
+  const P2 = engine.compute(staffRows('P2', [['2026-04-10', 6, 5000], ['2026-05-10', 6, 6000], ['2026-06-10', 1, 30000]]), { asOf: '2026-07-03' }).staff[0];
+  check('P2: 直近の確定月が1件なら「更新」にしない', P2.personalBest.latestIsBest.spend ? 1 : 0, 0);
+  check('P2: 自己ベストは5月の ¥6,000', P2.personalBest.spend.v, 6000);
+}
+
+// ============================================================================
+// Fixture KK — 自分の推移: 客単価・次回予約率は件数で重み付け、来店5件未満の月は除く
+// ============================================================================
+// Q: 2月 10件×¥5,000（次回あり4件）・3月 1件×¥20,000（次回あり1件）・
+//    4月 10件×¥6,000（6件）・5月 10件×¥7,000（8件）。次回ありは7/20の受付待ちで作る。
+//  客単価: 3月（1件）を除き (50,000+60,000+70,000)/30 = ¥6,000（以前は月ごとの単純平均 ¥9,500）
+//          前半＝2月 ¥5,000・後半＝5月 ¥7,000 → 上向き
+//  次回予約率: 3月を除き (4+6+8)/30 = 0.6、前半 0.4・後半 0.8 → 上向き
+//  来店/月: 2〜5月の件数の平均 (10+1+10+10)/4 = 7.75、前半 (10+1)/2・後半 (10+10)/2 → 上向き
+h('■ Fixture KK: 自分の推移（件数で重み付け・5件未満の月は除く）');
+{
+  const rows = []; let n = 0;
+  [['2026-02-10', 10, 5000, 4], ['2026-03-10', 1, 20000, 1], ['2026-04-10', 10, 6000, 6], ['2026-05-10', 10, 7000, 8]].forEach(function (p) {
+    for (let i = 0; i < p[1]; i++) {
+      n++; const k = 'Q' + n;
+      rows.push(rec({ staff: 'Q', custKey: k, name: k, date: p[0], kaikeiTotal: p[2] }));
+      if (i < p[3]) rows.push(rec({ staff: 'Q', custKey: k, name: k, date: '2026-07-20', status: '受付待ち', yoyakuTotal: 5000 }));
+    }
+  });
+  rows.push(rec({ staff: 'Q', custKey: 'QZ', name: 'QZ', date: '2026-07-03', kaikeiTotal: 5000 }));
+  const Q = engine.compute(rows, { asOf: '2026-07-03' }).staff[0], sg = Q.selfGrowth;
+  check('客単価の平均 ¥6,000（件数で重み付け・3月を除く）', sg.spend.avg, 6000);
+  check('客単価: 対象3ヶ月・30件', sg.spend.months * 100 + sg.spend.den, 330);
+  check('客単価: 上向き', sg.spend.dir === 'up' ? 1 : 0, 1);
+  check('次回予約率の平均 0.6', sg.nextRes.avg, 0.6);
+  check('次回予約率: 18/30件', sg.nextRes.num * 100 + sg.nextRes.den, 1830);
+  check('次回予約率: 前半0.4 → 後半0.8', sg.nextRes.early * 10 + sg.nextRes.late, 4.8, 1e-9);
+  check('来店/月の平均 7.75（件数そのものの平均）', sg.visits.avg, 7.75);
+  check('来店/月: 上向き', sg.visits.dir === 'up' ? 1 : 0, 1);
+}
+
+// ============================================================================
+// Fixture LL — 次の一手: 判定した指標だけ「達成」と言う／会計明細のみでは提案しない
+// ============================================================================
+h('■ Fixture LL: 次の一手（met / met-partial / censored / insufficient）');
+{
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  // 両方判定して両方達成: 5月に初回25人 → 全員6月に2回目来店、うち20人が3回目を予約
+  // リピート 25/25、固定化 20/25 = 80% ≥ 60% → 'met'（judged が2つ）
+  const rowsM = [];
+  for (let i = 1; i <= 25; i++) {
+    const k = 'M' + pad2(i);
+    rowsM.push(rec({ staff: 'M', custKey: k, name: k, date: '2026-05-' + pad2(i), kaikeiTotal: 5000 }));
+    rowsM.push(rec({ staff: 'M', custKey: k, name: k, date: '2026-06-' + pad2(i), kaikeiTotal: 5000 }));
+    if (i <= 20) rowsM.push(rec({ staff: 'M', custKey: k, name: k, date: '2026-07-21', status: '受付待ち', yoyakuTotal: 5000 }));
+  }
+  rowsM.push(rec({ staff: 'M', custKey: 'Z', name: 'Z', date: '2026-07-03', kaikeiTotal: 5000 }));
+  const M = engine.compute(rowsM, { asOf: '2026-07-03' }).staff.find(function (s) { return s.name === 'M'; });
+  check('両方判定・両方達成 → met', M.growthFocus.reason === 'met' && M.growthFocus.key === null ? 1 : 0, 1);
+  check('…judged はリピート率・固定化率の2つ', M.growthFocus.judged.join() === 'repeat,fix' ? 1 : 0, 1);
+
+  // 同じ構成で予約が無い（会計明細のみ）→ censored
+  const rowsC = rowsM.filter(function (r) { return r.status !== '受付待ち'; });
+  const Cs = engine.compute(rowsC, { asOf: '2026-07-03' }).staff.find(function (s) { return s.name === 'M'; });
+  check('会計明細のみ → 提案しない（censored）', Cs.growthFocus.reason === 'censored' && Cs.growthFocus.key === null ? 1 : 0, 1);
 }
 
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
