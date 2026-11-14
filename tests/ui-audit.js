@@ -48,7 +48,7 @@ const server = http.createServer(function (req, res) {
   fs.createReadStream(file).pipe(res);
 });
 
-const TABS = ['概要', 'スタッフ', '傾向', '顧客', 'データ'];
+const TABS = ['ホーム', 'お店', 'スタッフ', '顧客', 'データ'];
 const WIDTHS = [320, 375, 390, 414, 1280];
 
 (async () => {
@@ -61,6 +61,7 @@ const WIDTHS = [320, 375, 390, 414, 1280];
     // スマホ幅は実機に近い高さ（640px）にする。説明ポップオーバーが画面下に
     // はみ出す不具合は、高さが十分だと再現しないため。
     const page = await browser.newPage({ viewport: { width: width, height: width < 600 ? 640 : 900 } });
+    await page.addInitScript(function () { try { localStorage.setItem('kate-me', 'momo'); } catch (e) {} });
     // Charts honor prefers-reduced-motion → render instantly, so measurements
     // are deterministic instead of racing entry animations.
     await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -77,140 +78,154 @@ const WIDTHS = [320, 375, 390, 414, 1280];
         if (el) el.click();
       }, tab);
       await page.waitForTimeout(300);
-
-      const found = await page.evaluate(function () {
-        var out = [];
-        function txt(el) { return (el.innerText || '').trim(); }
-        // Count rendered text lines of an element. Table cells stretch to
-        // their ROW's height, so box height says nothing about how many lines
-        // the cell's own text occupies; and non-text children (color swatches
-        // like .seg-tag i) would inflate a whole-element Range measurement.
-        // Walk only the text nodes and count distinct line tops.
-        function lineCount(el) {
-          var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-          var tops = [], node;
-          while ((node = walker.nextNode())) {
-            if (!node.textContent.trim()) continue;
-            var range = document.createRange();
-            range.selectNodeContents(node);
-            var rects = range.getClientRects();
-            for (var i = 0; i < rects.length; i++) {
-              var r = rects[i];
-              if (!r.width || !r.height) continue;
-              var isNew = true;
-              for (var j = 0; j < tops.length; j++) if (Math.abs(tops[j] - r.top) < 3) { isNew = false; break; }
-              if (isNew) tops.push(r.top);
-            }
-          }
-          return tops.length;
-        }
-        // 1) vertical text: a short label (≤10 chars) should never occupy 3+
-        //    lines. (2 lines is a legitimate wrap on very narrow phones; 3+
-        //    means the text is stacking a character or two per line.)
-        var els = document.querySelectorAll('th, td, .chip, .seg-tag, .pb-tag, .mini-stat span, .kate-legend-item');
-        for (var i = 0; i < els.length; i++) {
-          var el = els[i];
-          if (!el.offsetParent) continue;
-          var t = txt(el);
-          if (!t || t.length > 10) continue;
-          if (lineCount(el) >= 3) out.push({ type: 'vertical-text', text: t.slice(0, 20) });
-        }
-        // 2) clipped table cells (content wider than the box)
-        var cells = document.querySelectorAll('th, td');
-        for (var j2 = 0; j2 < cells.length; j2++) {
-          var c = cells[j2];
-          if (!c.offsetParent) continue;
-          if (c.scrollWidth > c.clientWidth + 2) out.push({ type: 'clipped-cell', text: txt(c).slice(0, 20) });
-        }
-        // 3) chart value labels escaping the top of their SVG
-        var svgs = document.querySelectorAll('.chart-box svg');
-        for (var k = 0; k < svgs.length; k++) {
-          var top = svgs[k].getBoundingClientRect().top;
-          var box = svgs[k].closest('.chart-box');
-          var texts = svgs[k].querySelectorAll('text');
-          for (var m = 0; m < texts.length; m++) {
-            if (texts[m].getBoundingClientRect().top < top - 1) {
-              out.push({ type: 'clipped-chart-label', text: (box && box.id ? box.id + ': ' : '') + texts[m].textContent });
-              break;
-            }
-          }
-        }
-        // 4) page-level horizontal overflow: a phone page must never scroll
-        //    sideways. Wide tables/charts are allowed BEHIND an
-        //    overflow-x:auto scroll container; anything else poking past the
-        //    viewport's right edge is the 「横スクロール」bug. Name the widest
-        //    offending leaf so the failure is actionable.
-        var docW = document.documentElement.clientWidth;
-        if (document.documentElement.scrollWidth > docW + 1) {
-          function inScrollX(el) {
-            for (var p = el.parentElement; p && p !== document.body; p = p.parentElement) {
-              var ox = getComputedStyle(p).overflowX;
-              if ((ox === 'auto' || ox === 'scroll') && p.scrollWidth > p.clientWidth + 2) return true;
-            }
-            return false;
-          }
-          var all = document.body.querySelectorAll('*'), culprits = [];
-          for (var o = 0; o < all.length; o++) {
-            var e2 = all[o];
-            if (!e2.offsetParent) continue;
-            var r2 = e2.getBoundingClientRect();
-            if (r2.right > docW + 1 && !inScrollX(e2)) {
-              var sel = (e2.id ? '#' + e2.id : (typeof e2.className === 'string' && e2.className.trim()
-                ? '.' + e2.className.trim().split(/\s+/).slice(0, 2).join('.') : e2.tagName.toLowerCase()));
-              culprits.push({ w: Math.round(r2.right), sel: sel });
-            }
-          }
-          culprits.sort(function (a, b) { return b.w - a.w; });
-          var seenC = {};
-          culprits.slice(0, 30).forEach(function (c) {
-            if (seenC[c.sel]) return; seenC[c.sel] = 1;
-            out.push({ type: 'h-overflow', text: c.sel + ' →' + c.w + 'px / vw' + docW });
-          });
-          if (!culprits.length) out.push({ type: 'h-overflow', text: 'page ' + document.documentElement.scrollWidth + 'px / vw' + docW });
-        }
-        // 5) スタッフ比較表は横スクロールさせず画面内に必ず収める設計。.table-wrap は
-        //    overflow-x:auto なので #4 の全体検査では拾えないため個別に確認する。
-        var vt = document.querySelector('.vs-table');
-        if (vt && vt.offsetParent) {
-          var vw = vt.closest('.table-wrap');
-          if (vw && vt.scrollWidth > vw.clientWidth + 2) {
-            out.push({ type: 'vs-table-overflow', text: vt.scrollWidth + 'px > wrap ' + vw.clientWidth + 'px' });
-          }
-        }
-        return out;
+      // タブの中の切り替え（「お店」の売上・予約／リピート／曜日・時間、「スタッフ」の各スタッフ／比較）も
+      // それぞれ表示して検査する。切り替えが無いタブはそのまま1回だけ検査する。
+      const segKeys = await page.evaluate(function () {
+        return Array.prototype.slice.call(document.querySelectorAll('.view.active .subnav .segmented button[data-k]')).map(function (b) { return b.dataset.k; });
       });
-      // 6) 説明ポップオーバー（?）: このタブの ? を順に開き、(a) <b> などのタグが
-      //    文字として見えていない、(b) 画面の中に収まっている（下にはみ出すと
-      //    スクロールで閉じてしまい末尾が読めない）ことを確認する。
-      const icoCount = await page.evaluate(function () { return document.querySelectorAll('.help-ico').length; });
-      for (let hi = 0; hi < icoCount; hi++) {
-        const res = await page.evaluate(function (idx) {
-          var btn = document.querySelectorAll('.help-ico')[idx];
-          if (!btn || !btn.offsetParent) return null;
-          btn.scrollIntoView({ block: 'center' });
-          btn.click();
-          var pop = document.querySelector('.help-pop.show');
-          var head = String(btn.dataset.help || '').slice(0, 24);
-          if (!pop) return { type: 'help-pop-missing', text: head };
-          var r = pop.getBoundingClientRect(), t = pop.textContent || '';
-          var out = null;
-          if (/<\/?(b|br|code|i)>/.test(t)) out = { type: 'help-literal-tag', text: head };
-          else if (r.top < 0 || r.bottom > window.innerHeight + 1 || r.left < 0 || r.right > window.innerWidth + 1) {
-            out = { type: 'help-pop-offscreen', text: Math.round(r.top) + '..' + Math.round(r.bottom) + 'px / vh' + window.innerHeight + ' ' + head };
+      for (const key of (segKeys.length ? segKeys : [null])) {
+        if (key !== null) {
+          await page.evaluate(function (k) {
+            var b = document.querySelector('.view.active .subnav .segmented button[data-k="' + k + '"]');
+            if (b && !b.classList.contains('active')) b.click();
+          }, key);
+          await page.waitForTimeout(300);
+        }
+        const label = tab + (key !== null ? ' > ' + key : '');
+        const found = await page.evaluate(function () {
+          var out = [];
+          function txt(el) { return (el.innerText || '').trim(); }
+          // Count rendered text lines of an element. Table cells stretch to
+          // their ROW's height, so box height says nothing about how many lines
+          // the cell's own text occupies; and non-text children (color swatches
+          // like .seg-tag i) would inflate a whole-element Range measurement.
+          // Walk only the text nodes and count distinct line tops.
+          function lineCount(el) {
+            var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+            var tops = [], node;
+            while ((node = walker.nextNode())) {
+              if (!node.textContent.trim()) continue;
+              var range = document.createRange();
+              range.selectNodeContents(node);
+              var rects = range.getClientRects();
+              for (var i = 0; i < rects.length; i++) {
+                var r = rects[i];
+                if (!r.width || !r.height) continue;
+                var isNew = true;
+                for (var j = 0; j < tops.length; j++) if (Math.abs(tops[j] - r.top) < 3) { isNew = false; break; }
+                if (isNew) tops.push(r.top);
+              }
+            }
+            return tops.length;
           }
-          btn.click();   // 閉じる
+          // 1) vertical text: a short label (≤10 chars) should never occupy 3+
+          //    lines. (2 lines is a legitimate wrap on very narrow phones; 3+
+          //    means the text is stacking a character or two per line.)
+          var els = document.querySelectorAll('th, td, .chip, .seg-tag, .pb-tag, .mini-stat span, .kate-legend-item');
+          for (var i = 0; i < els.length; i++) {
+            var el = els[i];
+            if (!el.offsetParent) continue;
+            var t = txt(el);
+            if (!t || t.length > 10) continue;
+            if (lineCount(el) >= 3) out.push({ type: 'vertical-text', text: t.slice(0, 20) });
+          }
+          // 2) clipped table cells (content wider than the box)
+          var cells = document.querySelectorAll('th, td');
+          for (var j2 = 0; j2 < cells.length; j2++) {
+            var c = cells[j2];
+            if (!c.offsetParent) continue;
+            if (c.scrollWidth > c.clientWidth + 2) out.push({ type: 'clipped-cell', text: txt(c).slice(0, 20) });
+          }
+          // 3) chart value labels escaping the top of their SVG
+          var svgs = document.querySelectorAll('.chart-box svg');
+          for (var k = 0; k < svgs.length; k++) {
+            var top = svgs[k].getBoundingClientRect().top;
+            var box = svgs[k].closest('.chart-box');
+            var texts = svgs[k].querySelectorAll('text');
+            for (var m = 0; m < texts.length; m++) {
+              if (texts[m].getBoundingClientRect().top < top - 1) {
+                out.push({ type: 'clipped-chart-label', text: (box && box.id ? box.id + ': ' : '') + texts[m].textContent });
+                break;
+              }
+            }
+          }
+          // 4) page-level horizontal overflow: a phone page must never scroll
+          //    sideways. Wide tables/charts are allowed BEHIND an
+          //    overflow-x:auto scroll container; anything else poking past the
+          //    viewport's right edge is the 「横スクロール」bug. Name the widest
+          //    offending leaf so the failure is actionable.
+          var docW = document.documentElement.clientWidth;
+          if (document.documentElement.scrollWidth > docW + 1) {
+            function inScrollX(el) {
+              for (var p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+                var ox = getComputedStyle(p).overflowX;
+                if ((ox === 'auto' || ox === 'scroll') && p.scrollWidth > p.clientWidth + 2) return true;
+              }
+              return false;
+            }
+            var all = document.body.querySelectorAll('*'), culprits = [];
+            for (var o = 0; o < all.length; o++) {
+              var e2 = all[o];
+              if (!e2.offsetParent) continue;
+              var r2 = e2.getBoundingClientRect();
+              if (r2.right > docW + 1 && !inScrollX(e2)) {
+                var sel = (e2.id ? '#' + e2.id : (typeof e2.className === 'string' && e2.className.trim()
+                  ? '.' + e2.className.trim().split(/\s+/).slice(0, 2).join('.') : e2.tagName.toLowerCase()));
+                culprits.push({ w: Math.round(r2.right), sel: sel });
+              }
+            }
+            culprits.sort(function (a, b) { return b.w - a.w; });
+            var seenC = {};
+            culprits.slice(0, 30).forEach(function (c) {
+              if (seenC[c.sel]) return; seenC[c.sel] = 1;
+              out.push({ type: 'h-overflow', text: c.sel + ' →' + c.w + 'px / vw' + docW });
+            });
+            if (!culprits.length) out.push({ type: 'h-overflow', text: 'page ' + document.documentElement.scrollWidth + 'px / vw' + docW });
+          }
+          // 5) スタッフ比較表は横スクロールさせず画面内に必ず収める設計。.table-wrap は
+          //    overflow-x:auto なので #4 の全体検査では拾えないため個別に確認する。
+          var vt = document.querySelector('.vs-table');
+          if (vt && vt.offsetParent) {
+            var vw = vt.closest('.table-wrap');
+            if (vw && vt.scrollWidth > vw.clientWidth + 2) {
+              out.push({ type: 'vs-table-overflow', text: vt.scrollWidth + 'px > wrap ' + vw.clientWidth + 'px' });
+            }
+          }
           return out;
-        }, hi);
-        if (res) found.push(res);
+        });
+        // 6) 説明ポップオーバー（?）: このタブの ? を順に開き、(a) <b> などのタグが
+        //    文字として見えていない、(b) 画面の中に収まっている（下にはみ出すと
+        //    スクロールで閉じてしまい末尾が読めない）ことを確認する。
+        const icoCount = await page.evaluate(function () { return document.querySelectorAll('.help-ico').length; });
+        for (let hi = 0; hi < icoCount; hi++) {
+          const res = await page.evaluate(function (idx) {
+            var btn = document.querySelectorAll('.help-ico')[idx];
+            if (!btn || !btn.offsetParent) return null;
+            btn.scrollIntoView({ block: 'center' });
+            btn.click();
+            var pop = document.querySelector('.help-pop.show');
+            var head = String(btn.dataset.help || '').slice(0, 24);
+            if (!pop) return { type: 'help-pop-missing', text: head };
+            var r = pop.getBoundingClientRect(), t = pop.textContent || '';
+            var out = null;
+            if (/<\/?(b|br|code|i)>/.test(t)) out = { type: 'help-literal-tag', text: head };
+            else if (r.top < 0 || r.bottom > window.innerHeight + 1 || r.left < 0 || r.right > window.innerWidth + 1) {
+              out = { type: 'help-pop-offscreen', text: Math.round(r.top) + '..' + Math.round(r.bottom) + 'px / vh' + window.innerHeight + ' ' + head };
+            }
+            btn.click();   // 閉じる
+            return out;
+          }, hi);
+          if (res) found.push(res);
+        }
+        // dedupe identical findings within a tab so one bad column doesn't
+        // produce 120 rows of noise
+        var seen = {};
+        found.forEach(function (f) {
+          var key = f.type + '|' + f.text;
+          if (seen[key]) return; seen[key] = 1;
+          failures.push({ width: width, tab: label, type: f.type, text: f.text });
+        });
       }
-      // dedupe identical findings within a tab so one bad column doesn't
-      // produce 120 rows of noise
-      var seen = {};
-      found.forEach(function (f) {
-        var key = f.type + '|' + f.text;
-        if (seen[key]) return; seen[key] = 1;
-        failures.push({ width: width, tab: tab, type: f.type, text: f.text });
-      });
     }
     errors.forEach(function (e) { failures.push({ width: width, tab: '(page)', type: 'console-error', text: e.slice(0, 120) }); });
     await page.close();
@@ -226,6 +241,6 @@ const WIDTHS = [320, 375, 390, 414, 1280];
     console.log('\n\x1b[1mUI AUDIT SUMMARY\x1b[0m  \x1b[31m' + failures.length + ' fail\x1b[0m');
     process.exit(1);
   }
-  console.log('\n\x1b[1mUI AUDIT SUMMARY\x1b[0m  \x1b[32mPASS\x1b[0m (' + WIDTHS.length + ' widths × ' + TABS.length + ' tabs: no vertical text, no clipped cells, no clipped chart labels, help popovers on-screen without literal tags, no console errors)');
+  console.log('\n\x1b[1mUI AUDIT SUMMARY\x1b[0m  \x1b[32mPASS\x1b[0m (' + WIDTHS.length + ' widths × ' + TABS.length + ' tabs and their sub-sections: no vertical text, no clipped cells, no clipped chart labels, help popovers on-screen without literal tags, no console errors)');
   process.exit(0);
 })().catch(function (e) { console.error('UI AUDIT: unexpected error', e); server.close(); process.exit(1); });

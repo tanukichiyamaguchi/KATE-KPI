@@ -100,8 +100,15 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   const context = await browser.newContext({ timezoneId: 'Asia/Tokyo', viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
 
-  let hits = 0;
+  let hits = 0, targetHits = 0;
   await page.route('https://docs.google.com/**', function (route) {
+    // 月の売上目標（同じファイルの「目標」タブ）の取得は、予約データの再読み込み回数とは
+    // 別に数える（目標はデータの読み込みに続けて1回読む）。
+    if (route.request().url().indexOf('sheet=' + encodeURIComponent('目標')) !== -1) {
+      targetHits++;
+      route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: '月,お店\n毎月,1000000' });
+      return;
+    }
     hits++;
     route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV_BODY });
   });
@@ -119,6 +126,8 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   await page.clock.pauseAt(JST('2026-08-07T22:58:00'));
   await waitFor(function () { return hits; }, 1);
   check('起動時に1回読み込む（従来どおり）', hits, 1 * PER_LOAD);
+  await waitFor(function () { return targetHits; }, 1);
+  check('予約データに続けて「目標」タブも1回読む', targetHits, 1);
 
   // ---- next / boundary 計算（ページ内の実装をそのまま検証）-----------------
   const fmt = 'function(d){return (d.getMonth()+1)+"/"+d.getDate()+" "+d.getHours()+":"+("0"+d.getMinutes()).slice(-2);}';
