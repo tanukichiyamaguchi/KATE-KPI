@@ -5,8 +5,15 @@
  *  ・背景はグループ背景（#F2F2F7 / #000）、内容は白い角丸カード（16px）。
  *  ・カードの見出しはカードの「中」に置き、アイコン＋見出しを色付きで示す。
  *  ・数字は大きく太く（SF Rounded 系）、単位は小さく灰色で添える。
- *  ・本文の最小は 13px。補足の灰色も白地でコントラスト 5:1 以上を確保する
- *    （iOS 標準の secondaryLabel=60% 透過は読みにくいので、一段濃くしている）。
+ *  ・説明文・注記は最小 13px。スマホ幅では、表・チップ・グラフの目盛り・管理用の
+ *    カレンダーを画面に収めるため 10〜12.5px まで小さくする。
+ *  ・文字はライト／ダークとも背景に対して 4.5:1 以上（24px 以上・18.66px 以上の太字は
+ *    3:1 以上）。補足の灰色も白地で 5:1 以上（iOS 標準の secondaryLabel=60% 透過は
+ *    読みにくいので、一段濃くしている）。tests/contrast-audit.js が全画面で確かめる。
+ *  ・色の使い分け：--cat-* / --series-* は塗り（アイコン・リング・グラフ）の色。
+ *    文字にするときは、白地・黒地でも読める濃さの「-ink」（例 --cat-visits-ink）を使う。
+ *    白い文字を載せる塗りは「-fill」（例 --accent-fill）。
+ *  ・フォーカスリングは不透明な --accent-ink の 3px（カード・ページの地で 3:1 以上）。
  *  ・タブは iPhone では下部のタブバー、PC/iPad では上部中央のカプセル型。
  *  ・ライト／ダークは端末の設定に追従（data-theme を JS が付ける）。
  * トークン名（--series-* / --ink-* など）は app.js・charts.js が参照する API。
@@ -27,8 +34,9 @@
   --ink-muted: #6c6c70;                   /* 注記（白地で約5.1:1・#F2F2F7で約4.6:1） */
   --ink-faint: #8e8e93;                   /* 装飾的な文字のみ */
 
-  --accent: #007aff;                      /* systemBlue */
-  --accent-ink: #0068da;                  /* 文字としての青（白地で 4.9:1） */
+  --accent: #007aff;                      /* systemBlue（塗り・線・グラフ） */
+  --accent-ink: #0260ca;                  /* 文字としての青（白地 5.9:1・薄い青の地 #d5e4f8 で 4.6:1）。フォーカスリングも */
+  --accent-fill: #0070ec;                 /* 白い文字を載せる青（白文字 4.6:1） */
   --accent-soft: rgba(0, 122, 255, 0.12);
 
   --border: rgba(60, 60, 67, 0.18);
@@ -38,12 +46,15 @@
   --baseline: #c7c7cc;
   --track: rgba(118, 118, 128, 0.14);
 
-  --good: #34c759; --good-ink: #1f8a3b;
-  --warn: #ff9500; --warn-ink: #b85d00;
-  --bad: #ff3b30; --bad-ink: #d70015;
-  --status-good: #1f8a3b; --status-warning: #b85d00; --status-serious: #d70015; --status-critical: #c10012;
+  /* -ink＝文字の色（白地・その色の薄い地・#F2F2F7 で 4.5:1 以上）、-fill＝白い文字を載せる塗り */
+  --good: #34c759; --good-ink: #06772c; --good-fill: #198637;   /* 白地 5.7:1・緑の薄い地 4.6:1／白文字 4.7:1 */
+  --warn: #ff9500; --warn-ink: #ab5603;                         /* 白地 5.2:1・警告バナーの地 4.7:1 */
+  --bad: #ff3b30; --bad-ink: #d70015; --bad-fill: #e71916;      /* 白地 5.4:1／白文字 4.6:1 */
+  --status-good: #06772c; --status-warning: #ab5603; --status-serious: #d70015; --status-critical: #c10012;
 
-  /* カテゴリの色（カード見出しのアイコン・題名） */
+  /* カテゴリの色（カード見出しのアイコン・リング・グラフの塗り）。
+   * 見出しの文字は -ink（同じ色相のまま、白地で 4.6:1 以上になるまで暗くしたもの。カッコ内は白地の比）。
+   * -ink はカード（白）の上の文字用。ページの灰色（#F2F2F7）の上では 4.1〜4.2:1 なので、カードの外には使わない */
   --cat-sales: #ff2d55;      /* 売上（systemPink） */
   --cat-visits: #ff9500;     /* 来店・予約（systemOrange） */
   --cat-spend: #af52de;      /* 客単価（systemPurple） */
@@ -52,11 +63,19 @@
   --cat-retail: #a2845e;     /* 店販（systemBrown） */
   --cat-goal: #34c759;       /* 目標リング */
   --cat-store: #007aff;      /* お店 */
+  --cat-sales-ink: #e70a45;  /* 4.64 */   --cat-visits-ink: #ac6305; /* 4.62 */
+  --cat-spend-ink: #a749d5;  /* 4.61 */   --cat-repeat-ink: #038732; /* 4.65 */
+  --cat-new-ink: #018093;    /* 4.66 */   --cat-retail-ink: #8d704b; /* 4.61 */
+  --cat-goal-ink: #038732;   /* 4.65 */   --cat-store-ink: #0070ec;  /* 4.64 */
 
-  /* データの色 — iOS システムカラー（momo=青 / aoi=オレンジ はスタッフ固定色） */
+  /* データの色 — iOS システムカラー（momo=青 / aoi=オレンジ はスタッフ固定色）。
+   * スタッフ名の見出しなど文字に使うときは --series-N-ink（app.js が解決して --hc-ink に渡す） */
   --series-1: #007aff; --series-2: #ff9500; --series-3: #34c759;
   --series-4: #af52de; --series-5: #ff2d55; --series-6: #30b0c7;
   --series-7: #8e8e93; --series-8: #a2845e; --series-9: #5856d6;
+  --series-1-ink: #0070ec; /* 4.64 */  --series-2-ink: #ac6305; /* 4.62 */  --series-3-ink: #038732; /* 4.65 */
+  --series-4-ink: #a749d5; /* 4.61 */  --series-5-ink: #e70a45; /* 4.64 */  --series-6-ink: #018093; /* 4.66 */
+  --series-7-ink: #747479; /* 4.65 */  --series-8-ink: #8d704b; /* 4.61 */  --series-9-ink: #5856d6; /* 5.65（塗りのまま） */
 
   /* 青の濃淡（ファネル・回数別・ヒートマップ） */
   --funnel-1: #cfe4ff; --funnel-2: #94c4ff; --funnel-3: #4f9ff7; --funnel-4: #1f7ae6; --funnel-5: #0a56b5;
@@ -69,6 +88,14 @@
 
   --radius-xl: 16px; --radius-lg: 14px; --radius: 12px; --radius-sm: 9px;
   --ease: cubic-bezier(.25, .1, .25, 1);
+
+  /* 左右の余白。横向きの iPhone では、ノッチ・Dynamic Island（safe-area）より内側に入れる */
+  --gutter: clamp(16px, 4vw, 32px);
+  --gutter-l: max(var(--gutter), env(safe-area-inset-left, 0px));
+  --gutter-r: max(var(--gutter), env(safe-area-inset-right, 0px));
+  /* 上に貼り付くナビが覆う高さ（＋少しの余白）。スクロールで飛んだ先・キーボードで
+   * 移動した先がナビの下に隠れないよう scroll-padding-top に使う。PC/iPad は下の @media */
+  --chrome-h: calc(76px + env(safe-area-inset-top, 0px));
 
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
@@ -98,7 +125,8 @@
   --ink-faint: rgba(235, 235, 245, 0.45);
 
   --accent: #0a84ff;
-  --accent-ink: #4aa3ff;
+  --accent-ink: #4aa3ff;                  /* カード地 6.5:1・薄い青の地 4.8:1 */
+  --accent-fill: #0173e2;                 /* 白文字 4.6:1（#0a84ff のままだと 3.6:1） */
   --accent-soft: rgba(10, 132, 255, 0.24);
 
   --border: rgba(84, 84, 88, 0.65);
@@ -108,17 +136,25 @@
   --baseline: #48484a;
   --track: rgba(118, 118, 128, 0.3);
 
-  --good: #30d158; --good-ink: #30d158;
+  --good: #30d158; --good-ink: #30d158; --good-fill: #058730;   /* 白文字 4.7:1（#30d158 のままだと 2.0:1） */
   --warn: #ff9f0a; --warn-ink: #ffb340;
-  --bad: #ff453a; --bad-ink: #ff6961;
+  --bad: #ff453a; --bad-ink: #ff6961; --bad-fill: #e3231f;      /* 白文字 4.6:1 */
   --status-good: #30d158; --status-warning: #ffb340; --status-serious: #ff6961; --status-critical: #ff6961;
 
+  /* ダークの -ink：塗りのままでカード地（#1c1c1e）に 4.6:1 以上あるものは塗りと同じ色（カッコ内はその比） */
   --cat-sales: #ff375f; --cat-visits: #ff9f0a; --cat-spend: #bf5af2; --cat-repeat: #30d158;
   --cat-new: #40c8e0; --cat-retail: #ac8e68; --cat-goal: #30d158; --cat-store: #0a84ff;
+  --cat-sales-ink: #ff375f;  /* 4.83 */   --cat-visits-ink: #ff9f0a; /* 8.28 */
+  --cat-spend-ink: #bf5af2;  /* 4.83 */   --cat-repeat-ink: #30d158; /* 8.42 */
+  --cat-new-ink: #40c8e0;    /* 8.55 */   --cat-retail-ink: #ac8e68; /* 5.53 */
+  --cat-goal-ink: #30d158;   /* 8.42 */   --cat-store-ink: #0a84ff;  /* 4.66 */
 
   --series-1: #0a84ff; --series-2: #ff9f0a; --series-3: #30d158;
   --series-4: #bf5af2; --series-5: #ff375f; --series-6: #40c8e0;
   --series-7: #98989d; --series-8: #ac8e68; --series-9: #5e5ce6;
+  --series-1-ink: #0a84ff; /* 4.66 */  --series-2-ink: #ff9f0a; /* 8.28 */  --series-3-ink: #30d158; /* 8.42 */
+  --series-4-ink: #bf5af2; /* 4.83 */  --series-5-ink: #ff375f; /* 4.83 */  --series-6-ink: #40c8e0; /* 8.55 */
+  --series-7-ink: #98989d; /* 5.93 */  --series-8-ink: #ac8e68; /* 5.53 */  --series-9-ink: #7275fe; /* 4.61（塗り #5e5ce6 は 3.36 のため明るく） */
 
   --funnel-1: #12365e; --funnel-2: #17508a; --funnel-3: #2475cc; --funnel-4: #4d9bf5; --funnel-5: #8cc2ff;
   --seq-0: #15181d; --seq-1: #12365e; --seq-2: #17508a; --seq-3: #2475cc; --seq-4: #4d9bf5; --seq-5: #8cc2ff;
@@ -129,7 +165,9 @@
 
 /* ---- Base -----------------------------------------------------------------*/
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; scroll-padding-top: 76px; }
+/* PC/iPad はナビバー（〜54px）の下に浮いたタブ（60〜108px）が貼り付くので、その下まで空ける */
+@media (min-width: 768px) { :root { --chrome-h: calc(120px + env(safe-area-inset-top, 0px)); } }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: var(--chrome-h); }
 body {
   margin: 0; font-family: var(--font-sans); font-size: 15px; color: var(--ink-primary); background: var(--page-bg);
   min-height: 100vh; line-height: 1.5; letter-spacing: 0;
@@ -142,16 +180,18 @@ a { color: var(--accent-ink); text-decoration: none; }
 a:hover { text-decoration: underline; }
 ::selection { background: var(--accent-soft); }
 .tnum { font-variant-numeric: tabular-nums; }
-:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; border-radius: 8px; }
+/* フォーカスリング：不透明な --accent-ink（カード・ページ・ナビのガラスの地で、ライト 5.3:1 以上・ダーク 6.4:1 以上） */
+:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; border-radius: 8px; }
 svg { display: block; }
 b, strong { font-weight: 600; }
 
 /* ---- App shell ------------------------------------------------------------*/
-.app { max-width: 1180px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 32px) 120px; }
+.app { max-width: 1180px; margin: 0 auto; padding: 0 var(--gutter-r) 120px var(--gutter-l); }
+/* ナビバーは .app の左右の余白ぶん外へ広げて端まで塗り、中身は safe-area の内側に置く */
 .topbar {
   position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 12px;
-  min-height: 52px; padding: 8px clamp(16px, 4vw, 32px); padding-top: calc(8px + env(safe-area-inset-top));
-  margin: 0 calc(-1 * clamp(16px, 4vw, 32px));
+  min-height: 52px; padding: 8px var(--gutter-r) 8px var(--gutter-l); padding-top: calc(8px + env(safe-area-inset-top));
+  margin: 0 calc(-1 * var(--gutter-r)) 0 calc(-1 * var(--gutter-l));
   background: var(--glass); backdrop-filter: saturate(1.8) blur(20px); -webkit-backdrop-filter: saturate(1.8) blur(20px);
   border-bottom: 0.5px solid var(--border-strong);
 }
@@ -194,8 +234,8 @@ b, strong { font-weight: 600; }
 }
 .pill:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
 .pill:active { opacity: .45; }
-.pill.accent { background: var(--accent); color: #fff; }
-.pill.accent:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.pill.accent { background: var(--accent-fill); color: #fff; }
+.pill.accent:hover { background: color-mix(in srgb, var(--accent-fill) 88%, #000); }
 .pill svg { width: 17px; height: 17px; stroke-width: 1.8; }
 .badge-soft { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 980px; background: var(--surface-2); color: var(--ink-secondary); font-size: 12px; font-weight: 600; white-space: nowrap; flex: none; }
 .badge-soft .dot { width: 7px; height: 7px; border-radius: 980px; background: var(--good); }
@@ -242,7 +282,7 @@ b, strong { font-weight: 600; }
   transition: color .2s; font-family: var(--font-sans);
 }
 .botnav button .t-ico svg { width: 26px; height: 26px; }
-.botnav button.active { color: var(--accent); }
+.botnav button.active { color: var(--accent-ink); }   /* 11px の文字なので塗りの --accent（3.8:1）ではなく文字の青 */
 .botnav button:active { opacity: .5; }
 @media (max-width: 767px) { .botnav { display: flex; } .app { padding-bottom: 96px; } }
 .t-ico svg .fill-on { opacity: 0; transition: opacity .2s; }
@@ -291,11 +331,11 @@ b, strong { font-weight: 600; }
 
 /* iOS の入力欄 */
 .field { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border-radius: 12px; padding: 11px 13px; max-width: 560px; }
-.field:focus-within { outline: 3px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset: 1px; }
+.field:focus-within { outline: 3px solid var(--accent-ink); outline-offset: 1px; }
 .field input { flex: 1; min-width: 0; border: none; background: none; font-family: inherit; font-size: 17px; color: var(--ink-primary); outline: none; }
 .field input::placeholder { color: var(--ink-muted); }
 .field-ico { color: var(--ink-muted); flex: none; }
-.btn-ios { display: block; width: 100%; max-width: 560px; border: none; border-radius: 14px; padding: 14px; font-family: inherit; font-size: 17px; font-weight: 600; background: var(--accent); color: #fff; cursor: pointer; transition: opacity .15s; }
+.btn-ios { display: block; width: 100%; max-width: 560px; border: none; border-radius: 14px; padding: 14px; font-family: inherit; font-size: 17px; font-weight: 600; background: var(--accent-fill); color: #fff; cursor: pointer; transition: opacity .15s; }
 .btn-ios:active { opacity: .45; }
 
 .reveal { opacity: 0; transform: translateY(8px); }
@@ -306,9 +346,10 @@ b, strong { font-weight: 600; }
 .hc { background: var(--surface-1); border-radius: var(--radius-xl); padding: 14px 16px 16px; min-width: 0; }
 :root[data-theme="dark"] .hc { box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.06); }
 .hc-h { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; min-width: 0; }
+/* アイコンは塗りの色（--hc-color）、見出しの文字は読める濃さの --hc-ink（app.js が -ink を渡す。無ければ本文の色） */
 .hc-h .hc-ico { width: 22px; height: 22px; display: inline-grid; place-items: center; color: var(--hc-color, var(--accent)); flex: none; }
 .hc-h .hc-ico svg { width: 20px; height: 20px; }
-.hc-h .hc-t { font-size: 16px; font-weight: 700; color: var(--hc-color, var(--accent)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.hc-h .hc-t { font-size: 16px; font-weight: 700; color: var(--hc-ink, var(--ink-primary)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .hc-h .hc-meta { margin-left: auto; font-size: 14px; color: var(--ink-muted); white-space: nowrap; flex: none; }
 .hc-main { display: flex; align-items: center; gap: 16px; }
 .hc-main > .hc-nums { flex: 1; min-width: 0; }
@@ -338,8 +379,9 @@ b, strong { font-weight: 600; }
 @media (min-width: 900px) { .tiles.t4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .tile { background: var(--surface-1); border-radius: var(--radius-xl); padding: 12px 14px 14px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 :root[data-theme="dark"] .tile { box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.06); }
-.tile-h { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--hc-color, var(--ink-secondary)); min-width: 0; line-height: 1.35; }
-.tile-h svg { width: 17px; height: 17px; flex: none; }
+/* 見出しの文字は --hc-ink（無ければ灰色）、アイコンだけ塗りの色 --hc-color */
+.tile-h { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--hc-ink, var(--ink-secondary)); min-width: 0; line-height: 1.35; }
+.tile-h svg { width: 17px; height: 17px; flex: none; color: var(--hc-color, currentColor); }
 .tile-h span { min-width: 0; word-break: keep-all; overflow-wrap: anywhere; }
 .tile-v { font-family: var(--font-num); font-size: 28px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; margin-top: 2px; }
 .tile-v .yen { font-size: .64em; font-weight: 600; }
@@ -354,7 +396,7 @@ b, strong { font-weight: 600; }
 .me-pick { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 7px 34px 7px 14px; border-radius: 980px; background: var(--accent-soft); color: var(--accent-ink); font-size: 16px; font-weight: 700; min-height: 38px; }
 .me-pick::after { content: ''; position: absolute; right: 14px; top: 50%; width: 8px; height: 8px; border-right: 2.2px solid currentColor; border-bottom: 2.2px solid currentColor; transform: translateY(-70%) rotate(45deg); }
 .me-pick select { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; font-size: 16px; }
-.me-pick:focus-within { outline: 3px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset: 2px; }
+.me-pick:focus-within { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
 .me-dot { width: 10px; height: 10px; border-radius: 980px; flex: none; }
 .pick-staff { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .pick-staff .pill { min-height: 44px; font-size: 17px; padding: 0 22px; }
@@ -443,6 +485,11 @@ b, strong { font-weight: 600; }
 .ios-list summary { list-style: none; cursor: pointer; }
 .ios-list summary::-webkit-details-marker { display: none; }
 .ios-row, .ios-list summary { display: flex; align-items: center; gap: 10px; padding: 12px 16px 12px 0; min-height: 52px; }
+/* .ios-list は角丸のため overflow:hidden。外側のリングは切れるので、行の内側に描く。
+ * summary は左の字下げ（16px）まで広げて、内側のリングが色の印（.seg-dot）に重ならないようにする
+ * （区切り線は details の字下げのまま） */
+.ios-list summary { margin-left: -16px; padding-left: 16px; }
+.ios-list summary:focus-visible, .ios-list > .ios-row:focus-visible { outline-offset: -3px; border-radius: var(--radius-xl); }
 .ios-row .r-main, .ios-list summary .r-main { flex: 1; min-width: 0; }
 .r-title { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .r-sub { display: block; font-size: 13px; color: var(--ink-muted); margin-top: 1px; }
@@ -489,7 +536,9 @@ details[open] > summary .chev { transform: rotate(45deg); }
 
 /* ---- Staff ----------------------------------------------------------------*/
 .staff-head { display: flex; align-items: center; gap: 14px; }
-.staff-avatar { width: 52px; height: 52px; border-radius: 980px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 22px; flex: none; font-family: var(--font-num); }
+/* 頭文字の丸。塗りはスタッフ色（app.js が明るい --series-N をそのまま付ける）なので、
+ * 文字は黒（どのスタッフ色・どちらのテーマでも 3.7:1 以上。白だとオレンジで 2.2:1） */
+.staff-avatar { width: 52px; height: 52px; border-radius: 980px; display: grid; place-items: center; color: #000; font-weight: 700; font-size: 22px; flex: none; font-family: var(--font-num); }
 .staff-name { font-size: 22px; font-weight: 700; line-height: 1.25; }
 .staff-name span { font-size: 14px; color: var(--ink-muted); font-weight: 500; display: block; margin-top: 2px; line-height: 1.55; }
 .staff-name span b { color: var(--ink-secondary); }
@@ -520,8 +569,8 @@ details[open] > summary .chev { transform: rotate(45deg); }
 .segmented.full button { flex: 1; padding: 7px 6px; }
 @media (max-width: 560px) { .segmented { display: flex; width: 100%; } .segmented button { flex: 1; padding: 7px 4px; font-size: 14px; } }
 .subnav { margin: 4px 0 16px; }
-.subnav.sticky { position: sticky; top: 64px; z-index: 30; padding: 6px 0; }
-@media (min-width: 768px) { .subnav.sticky { top: 118px; } }
+/* 貼り付く切り替えは、スクロールで飛んだ先（--chrome-h）より 12px 上＝ナビ（PC はタブ）のすぐ下 */
+.subnav.sticky { position: sticky; top: calc(var(--chrome-h) - 12px); z-index: 30; padding: 6px 0; }
 
 /* ---- Table ----------------------------------------------------------------*/
 .table-wrap { overflow-x: auto; margin: 0 -6px; -webkit-overflow-scrolling: touch; }
@@ -531,6 +580,8 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; min-
 .kate-table th:first-child, .kate-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface-1); }
 .kate-table th:first-child { z-index: 3; }
 .kate-table th.sorted { color: var(--accent-ink); }
+/* 並べ替えの見出しはスクロールする枠（.table-wrap）の端に接するので、リングは内側に */
+.kate-table th:focus-visible { outline-offset: -3px; }
 .kate-table th.sorted::after { content: " ↓"; } .kate-table th.sorted.asc::after { content: " ↑"; }
 .kate-table td { padding: 11px 12px; border-bottom: 0.5px solid var(--border-strong); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .kate-table tbody tr:last-child td { border-bottom: 0; }
@@ -541,18 +592,21 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; min-
 /* ---- Daily revenue calendar（予約状況） --------------------------------------*/
 .dr-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: stretch; }
 .dr-wh { text-align: center; font-size: 12px; font-weight: 700; color: var(--ink-muted); padding-bottom: 1px; }
-.dr-wh.dr-sat { color: #2f6fc6; }
-.dr-wh.dr-sun { color: #c4384f; }
+/* 土・日の見出しはテーマに合わせた文字の色（固定色だとダークのカード地で 3.3〜3.4:1） */
+.dr-wh.dr-sat { color: var(--accent-ink); }
+.dr-wh.dr-sun { color: var(--bad-ink); }
 .dr-cell { background: var(--surface-2); border-radius: 10px; padding: 7px 5px 8px; text-align: center; min-width: 0; overflow: hidden; }
 .dr-cell.dr-empty { background: transparent; }
 .dr-date { font-size: 12px; font-weight: 700; color: #fff; background: #636366; border-radius: 6px; padding: 3px 2px; margin-bottom: 7px; white-space: nowrap; }
 .dr-cell.dr-sat .dr-date { background: #2f6fc6; }
 .dr-cell.dr-sun .dr-date { background: #c4384f; }
 .dr-cell.dr-today { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
+.dr-cell.dr-today .dr-cnt { color: var(--ink-secondary); }   /* 薄い青の地では注記の灰色が 4.5:1 に届かない */
+/* これからの日は枠線だけのマス。日付の地は過去より少し明るく、白文字で 4.6:1 以上を保つ */
 .dr-cell.dr-future { background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); }
-.dr-cell.dr-future .dr-date { background: #8e8e93; }
-.dr-cell.dr-future.dr-sat .dr-date { background: #7fa6dc; }
-.dr-cell.dr-future.dr-sun .dr-date { background: #d98d9b; }
+.dr-cell.dr-future .dr-date { background: #747479; }
+.dr-cell.dr-future.dr-sat .dr-date { background: #5176a9; }
+.dr-cell.dr-future.dr-sun .dr-date { background: #a8606e; }
 .dr-cell.dr-future .dr-rev { color: var(--ink-secondary); }
 .dr-rev { font-size: 15px; font-weight: 700; color: var(--ink-primary); font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -0.3px; }
 .dr-retail { font-size: 11.5px; font-weight: 600; color: var(--ink-secondary); margin-top: 1px; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -606,6 +660,10 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; min-
   .kate-table th, .kate-table td { padding: 6px 3px; }
   #rfmTable .seg-tag { font-size: 10px; padding: 2px 4px; }
   #rfmTable .chip { font-size: 10px; padding: 2px 2px; }
+  /* 320px では実機の字幅（かな・漢字が1文字ぶん）で「呼び戻し」の見出しが入りきらないため、
+     グループの列から少し分ける（グループ名はもともと2行に折り返す幅） */
+  #rfmTable th:nth-child(5), #rfmTable td:nth-child(5) { width: 29%; }
+  #rfmTable th:nth-child(6), #rfmTable td:nth-child(6) { width: 21%; }
   .ptable { font-size: 14px; }
   .ptable th, .ptable td { padding: 9px 3px; }
   .hc-value { font-size: 32px; }
@@ -630,7 +688,11 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; min-
 .map-chip i { width: 7px; height: 7px; border-radius: 980px; background: var(--good); }
 .sheet-input { flex: 1; min-width: 220px; height: 44px; padding: 0 13px; border-radius: 12px; border: none; background: var(--surface-2); color: var(--ink-primary); font-size: 16px; font-family: var(--font-sans); }
 .sheet-input::placeholder { color: var(--ink-muted); }
-.sheet-input:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 50%, transparent); }
+.sheet-input:focus-visible { outline: 3px solid var(--accent-ink); }
+/* 「全データをクリアしてサンプルに戻す」は長いラベルなので、狭い画面ではカードの中で折り返す
+ * （.pill は1行のまま。日本語の幅が 1em の端末では 320px でカードから約15px はみ出していた） */
+/* ラベルの長いボタン（人数・スタッフ名が入るもの）は、狭い画面ではカードの中で折り返す */
+#resetBtn, .pill.wrap { max-width: 100%; white-space: normal; text-align: center; line-height: 1.4; padding-top: 8px; padding-bottom: 8px; text-wrap: balance; word-break: auto-phrase; }
 .copy-box { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
 .copy-box code { flex: 1 1 220px; min-width: 0; display: block; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-family: var(--font-mono); font-size: 14px; color: var(--ink-primary); overflow-x: auto; white-space: nowrap; }
 details > summary.sum { cursor: pointer; font-size: 15px; color: var(--accent-ink); font-weight: 600; padding: 4px 0; }
@@ -638,7 +700,8 @@ details > summary.sum { cursor: pointer; font-size: 15px; color: var(--accent-in
 /* iOS のトースト */
 .toast { position: fixed; left: 50%; bottom: 100px; transform: translate(-50%, 16px); z-index: 95; background: var(--surface-elevated); color: var(--ink-primary); border: 0.5px solid var(--border-strong); padding: 12px 20px; border-radius: 16px; font-size: 15px; font-weight: 600; box-shadow: var(--shadow-2); opacity: 0; transition: all .3s var(--ease); pointer-events: none; max-width: 90vw; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
-.toast.err { background: var(--bad); color: #fff; border-color: transparent; } .toast.ok { background: var(--good-ink); color: #fff; border-color: transparent; }
+/* 白い文字を載せる塗りは -fill（両テーマで 4.5:1 以上。--good-ink はダークでは明るい文字色なので使わない） */
+.toast.err { background: var(--bad-fill); color: #fff; border-color: transparent; } .toast.ok { background: var(--good-fill); color: #fff; border-color: transparent; }
 
 /* ---- Misc -----------------------------------------------------------------*/
 .mini-stats { display: flex; gap: 22px; flex-wrap: wrap; }
@@ -657,7 +720,7 @@ details > summary.sum { cursor: pointer; font-size: 15px; color: var(--accent-in
   font-family: Georgia, "Times New Roman", serif; cursor: pointer; transition: background .15s, color .15s;
 }
 .help-ico::before { content: ''; position: absolute; inset: -10px; border-radius: 50%; }
-.help-ico:hover, .help-ico:focus-visible, .help-ico.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.help-ico:hover, .help-ico:focus-visible, .help-ico.active { background: var(--accent-fill); color: #fff; border-color: var(--accent-fill); }
 .help-pop {
   position: fixed; z-index: 97; max-width: 300px; padding: 12px 14px;
   background: var(--surface-elevated); color: var(--ink-primary); border: 0.5px solid var(--border-strong);
@@ -668,7 +731,10 @@ details > summary.sum { cursor: pointer; font-size: 15px; color: var(--accent-in
 
 .view { display: none; } .view.active { display: block; animation: viewIn .3s var(--ease); }
 @keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .view.active { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .view.active { animation: none; }
+  .seg-ratio i { transition: none; }   /* 顧客のグループの割合バー（JS も最終の幅で描く） */
+}
 .footer { text-align: center; color: var(--ink-muted); font-size: 13px; padding: 40px 0 12px; line-height: 1.8; }
 .footer b { color: var(--ink-secondary); font-weight: 600; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -690,9 +756,17 @@ details > summary.sum { cursor: pointer; font-size: 15px; color: var(--accent-in
 .sg-row .sg-foot { display: block; font-size: 13px; font-weight: 400; color: var(--ink-muted); margin-top: 1px; }
 /* 顧客一覧：表示件数の注記と絞り込みボタンを1行に（狭いときは折り返す） */
 .rfm-tools { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px; }
-/* スタッフ選択：人数が多いときは、ページではなくこの行の中だけを横にスクロール */
-.subnav.seg-scroll { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding: 2px 0 6px; margin-bottom: 10px; }
+/* スタッフ選択：人数が多いときは、ページではなくこの行の中だけを横にスクロール。
+ * スクロールの枠は中身を切り取るので、フォーカスリング（ボタンの外へ 5px）が欠けないよう
+ * 上下左右に 4px の内側の余白を取り、左右はその分だけ外へ広げて他の行と端を揃える。
+ * .seg-thumb は .segmented の中に絶対配置なので、スクロールしても選択中のボタンと一緒に動く。 */
+.subnav.seg-scroll {
+  overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  padding: 4px 4px 6px; margin: 4px -4px 10px; scroll-padding-inline: 8px;
+}
 .subnav.seg-scroll::-webkit-scrollbar { display: none; }
+/* 入りきるときは行いっぱいに広がり（width:100%・各ボタンが伸びる）、入りきらないときは
+ * 各ボタンが文字の幅を保ったまま、この行の中で横にスクロールする */
 .subnav.seg-scroll .segmented.full { min-width: max-content; }
 .subnav.seg-scroll .segmented.full button { flex: 1 0 auto; padding-left: 12px; padding-right: 12px; }
 /* スタッフ比較：4人以上は表を横にスクロールさせ、左の項目名の列を固定 */

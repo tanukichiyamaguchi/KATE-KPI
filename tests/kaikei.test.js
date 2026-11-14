@@ -3,7 +3,9 @@
  * (personal best / cumulative milestones / 育てた常連), plus the 2nd-review fixes
  * (GG–LL: same-day visits in the cycle, 会計明細-only next-reservation censoring,
  * 育てた常連 = 2 visits + 3rd booking, 5-visit floor for best spend, pooled
- * self-growth, 次の一手 met / met-partial / censored). Fixtures are small and
+ * self-growth, 次の一手 met / met-partial / censored), plus test-coverage gaps the
+ * same review found (MM: 次の一手 picks the metric with the largest gap to its
+ * guide; EE: the 「予約 M/D」 date is the earliest upcoming booking). Fixtures are small and
  * hand-verified in the comments below — each expected value is computed by hand,
  * not derived from the implementation. Run: node tests/kaikei.test.js */
 'use strict';
@@ -1134,6 +1136,9 @@ h('■ Fixture DD: リピート率は時間に依存せず、固定化率は分�
 //   P4 (B): 7/2 ¥10,000（1回目）・7/20 受付待ち ¥9,000（今月の予約）
 //   P5 (A): 8/5 受付待ち ¥3,000（来月の予約・来店なし）
 //   P6 (A): 4/1 ¥3,000（1回目）・7/25 受付待ち ¥4,000（今月の予約）→ 周期超過だが予約あり
+//           さらに 8/20・9/10 にも受付待ち（今月の外なので今月の数字は変わらない）。行の並びは
+//           8/20 → 7/25 → 9/10 にして、「予約 M/D」が最も早い 7/25 になることを確かめる
+//           （最も遅い予約・最初に見つけた行・最後に見つけた行を選ぶ誤りはどれも 7/25 にならない）
 //   P7 (B): 4/2 ¥3,000（1回目）・予約なし → 周期超過で呼び戻し対象
 // 来店間隔: P1 [2, 28]・P3 [23] → 店舗の中央値 23日。P6/P7 は来店1回なので 23日×1.5=34.5日超で周期超過。
 h('■ Fixture EE: 今月と先月の同じ時期・予約込み・期間ごとの数字・呼び戻し対象');
@@ -1150,7 +1155,9 @@ h('■ Fixture EE: 今月と先月の同じ時期・予約込み・期間ごと�
     rec({ staff: 'B', custKey: 'P4', name: 'P4', date: '2026-07-20', status: '受付待ち', yoyakuTotal: 9000 }),
     rec({ staff: 'A', custKey: 'P5', name: 'P5', date: '2026-08-05', status: '受付待ち', yoyakuTotal: 3000 }),
     rec({ staff: 'A', custKey: 'P6', name: 'P6', date: '2026-04-01', kaikeiTotal: 3000 }),
+    rec({ staff: 'A', custKey: 'P6', name: 'P6', date: '2026-08-20', status: '受付待ち', yoyakuTotal: 4000 }),
     rec({ staff: 'A', custKey: 'P6', name: 'P6', date: '2026-07-25', status: '受付待ち', yoyakuTotal: 4000 }),
+    rec({ staff: 'A', custKey: 'P6', name: 'P6', date: '2026-09-10', status: '受付待ち', yoyakuTotal: 4000 }),
     rec({ staff: 'B', custKey: 'P7', name: 'P7', date: '2026-04-02', kaikeiTotal: 3000 })
   ];
   const R = engine.compute(rows, { asOf: '2026-07-03' });
@@ -1210,7 +1217,7 @@ h('■ Fixture EE: 今月と先月の同じ時期・予約込み・期間ごと�
   // 呼び戻し対象: 周期超過のうち、これからの予約が無い人だけ
   function c(k) { return R.rfm.customers.find(function (x) { return x.name === k; }); }
   check('P6: 周期超過（93日 > 34.5日）', c('P6').cycleOverdue ? 1 : 0, 1);
-  check('P6: これからの予約あり（7/25）', c('P6').hasUpcoming && c('P6').nextBooking === '2026-07-25' ? 1 : 0, 1);
+  check('P6: これからの予約あり・次の予約は最も早い7/25（8/20・9/10ではない）', c('P6').hasUpcoming && c('P6').nextBooking === '2026-07-25' ? 1 : 0, 1);
   check('P6: 予約があるので呼び戻し対象にしない', c('P6').callback ? 1 : 0, 0);
   check('P7: 周期超過かつ予約なし → 呼び戻し対象', c('P7').callback ? 1 : 0, 1);
   check('P4: 予約あり・周期内 → 対象外', !c('P4').callback && c('P4').hasUpcoming ? 1 : 0, 1);
@@ -1449,6 +1456,43 @@ h('■ Fixture LL: 次の一手（met / met-partial / censored / insufficient）
   const rowsC = rowsM.filter(function (r) { return r.status !== '受付待ち'; });
   const Cs = engine.compute(rowsC, { asOf: '2026-07-03' }).staff.find(function (s) { return s.name === 'M'; });
   check('会計明細のみ → 提案しない（censored）', Cs.growthFocus.reason === 'censored' && Cs.growthFocus.key === null ? 1 : 0, 1);
+}
+
+// ============================================================================
+// Fixture MM — 次の一手は「目安との差」が最も大きい指標を提案する
+// ============================================================================
+// リピート率（目安70%）・固定化率（目安60%）のどちらも分母20人以上で目安未満のとき、差が大きいほうを選ぶ。
+// 2つのケースを合わせると、比べる向きを逆にした誤り（差の小さいほうを選ぶ）と、並べ替えを忘れた誤り
+// （候補の順＝リピート率→固定化率のまま、いつもリピート率を選ぶ）の両方で失敗する。
+h('■ Fixture MM: 次の一手は目安との差が最も大きい指標');
+{
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  // スタッフ S が5月に初回担当した n人のうち、back人が6月に2回目来店し、その中の third人が
+  // 3回目を予約（7/20 受付待ち）。基準日 7/3 → 直近3ヶ月は5・6月で、初回担当 n人が母数。
+  function focusCase(n, back, third) {
+    const rows = [];
+    for (let i = 1; i <= n; i++) {
+      const k = 'S' + pad2(i), day = pad2((i - 1) % 28 + 1);
+      rows.push(rec({ staff: 'S', custKey: k, name: k, date: '2026-05-' + day, kaikeiTotal: 5000 }));
+      if (i <= back) rows.push(rec({ staff: 'S', custKey: k, name: k, date: '2026-06-' + day, kaikeiTotal: 5000 }));
+      if (i <= third) rows.push(rec({ staff: 'S', custKey: k, name: k, date: '2026-07-20', status: '受付待ち', yoyakuTotal: 5000 }));
+    }
+    rows.push(rec({ staff: 'S', custKey: 'Z', name: 'Z', date: '2026-07-03', kaikeiTotal: 5000 }));   // 基準日
+    return engine.compute(rows, { asOf: '2026-07-03' }).staff.find(function (s) { return s.name === 'S'; });
+  }
+  // 固定化の差が大きい: 初回40人・2回目22人・3回目の予約8人
+  //   リピート率 22/40＝55%（差15ポイント）、固定化率 8/22＝36.4%（差23.6ポイント）→ 固定化率 8/22 を提案。
+  //   逆向きの比較も、並べ替えなしも、リピート率を選んでしまう
+  const byFix = focusCase(40, 22, 8);
+  check('固定化の差が大: 両方とも分母20人以上（リピート22/40・固定化8/22）', byFix.reachDen === 40 && byFix.reach2Num === 22 && byFix.fixDenom === 22 && byFix.fixNumer === 8 ? 1 : 0, 1);
+  check('固定化の差が大: 固定化率 8/22 を提案（差23.6 > 15ポイント）', byFix.growthFocus.key === 'fix' && byFix.growthFocus.num === 8 && byFix.growthFocus.den === 22 ? 1 : 0, 1);
+  // リピートの差が大きい: 初回50人・2回目25人・3回目の予約11人
+  //   リピート率 25/50＝50%（差20ポイント）、固定化率 11/25＝44%（差16ポイント）→ リピート率 25/50 を提案。
+  //   逆向きの比較は固定化率を選んでしまう。値そのものは固定化率のほうが低いので、「目安との差」ではなく
+  //   「値がいちばん低い指標」を選ぶ誤りもここで分かる
+  const byRepeat = focusCase(50, 25, 11);
+  check('リピートの差が大: 両方とも分母20人以上（リピート25/50・固定化11/25）', byRepeat.reachDen === 50 && byRepeat.reach2Num === 25 && byRepeat.fixDenom === 25 && byRepeat.fixNumer === 11 ? 1 : 0, 1);
+  check('リピートの差が大: リピート率 25/50 を提案（差20 > 16ポイント）', byRepeat.growthFocus.key === 'repeat' && byRepeat.growthFocus.num === 25 && byRepeat.growthFocus.den === 50 ? 1 : 0, 1);
 }
 
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);

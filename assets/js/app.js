@@ -313,8 +313,10 @@
   function monthJa(ym) { return (+String(ym).split('-')[1]) + '月'; }
   function mdJa(ym, d) { return (+String(ym).split('-')[1]) + '/' + d; }
   function staffColor(name) { return cvar(staffToken(name)); }
-  // 文字に使うスタッフ色（白地でも読める濃さの -ink トークン。無ければ空文字）
-  function staffInk(name) { return cvar(staffToken(name) + '-ink'); }
+  // HTML に書くスタッフ色は CSS 変数の参照（テーマを切り替えると自動で追従し、見出しの
+  // 文字色 --hc-ink も inkStyle が 'var(--series-N-ink)' として添える）。グラフ（SVG）には
+  // 実際の色が要るので staffColor() を使う。
+  function staffVar(name) { return 'var(' + staffToken(name) + ')'; }
   // --hc-color（アイコン・リングの色）に添える --hc-ink（見出しの文字色）。
   // 'var(--cat-visits)' → 'var(--cat-visits-ink)'。解決済みの色（スタッフ色）には
   // 呼び出し側が ink を渡す。どちらも無ければ出さない（CSS 側の既定の文字色になる）。
@@ -568,7 +570,7 @@
 
     var storeCol = secH('お店の今月', esc(mdJa(m.ym, 1) + '〜' + mdJa(m.ym, m.day))) +
       '<div class="stack">' +
-      monthCard(m, { id: 'hStore', who: 'store', title: 'お店の売上（実績）', icon: 'store', color: cvar('--cat-store'), kpi: 'home-store-revenue',
+      monthCard(m, { id: 'hStore', who: 'store', title: 'お店の売上（実績）', icon: 'store', color: 'var(--cat-store)', kpi: 'home-store-revenue',
         helpText: '今月1日〜集計基準日までの会計済み売上（実績）。「先月の同じ時期」は先月の1日〜同じ日までの実績です（曜日の並びは月で違うため目安です）。「予約込み」は実績に、今月これから来店予定の受付待ちの予約金額を足したもの。グラフは日ごとの累計で、実線が今月の実績、点線が予約込み、灰色が先月です。目標はスプレッドシートの「目標」タブから読み込みます。' }) +
       monthTiles(m, 'home-store') + '</div>';
 
@@ -580,7 +582,7 @@
       var regMile = milestoneProgress(st.regulars3, MILESTONES.regulars);
       meCol = secH('あなた（' + esc(me) + '）の今月', esc(mdJa(m.ym, 1) + '〜' + mdJa(m.ym, m.day))) +
         '<div class="stack">' +
-        monthCard(sm, { id: 'hMe', who: me, title: esc(me) + ' の売上（実績）', icon: 'person', color: staffColor(me), ink: staffInk(me), ringColor: staffColor(me), share: share, kpi: 'home-me-revenue',
+        monthCard(sm, { id: 'hMe', who: me, title: esc(me) + ' の売上（実績）', icon: 'person', color: staffVar(me), share: share, kpi: 'home-me-revenue',
           helpText: 'あなたが担当した今月1日〜集計基準日までの会計済み売上（実績）。比べ方はお店のカードと同じです。「担当」はお店の今月の売上（実績）に占める割合。目標はスプレッドシートの「目標」タブのあなたの列から読み込みます。' }) +
         monthTiles(sm, 'home-me') +
         '<div class="hc" style="--hc-color:var(--cat-repeat)' + inkStyle('var(--cat-repeat)') + '"><div class="hc-h"><span class="hc-ico">' + svgIco('bulb') + '</span><span class="hc-t">あなたのポイント</span></div>' +
@@ -590,7 +592,7 @@
         hcRow('育てた常連' + help(REGULARS_HELP), F.int(st.regulars3) + '人' + (regMile.maxed ? '' : '（次は' + F.int(regMile.next) + '人）')) +
         hcRow('直近3ヶ月の初回担当', F.int(st.reachDen) + '人') +
         '</div>' +
-        '<div style="margin-top:12px"><button type="button" class="pill" id="homeToStaff">' + esc(me) + ' の詳しい数字を見る ›</button></div>' +
+        '<div style="margin-top:12px"><button type="button" class="pill wrap" id="homeToStaff">' + esc(me) + ' の詳しい数字を見る ›</button></div>' +
         '</div></div>';
     } else if (state.me !== '') {
       // 未選択（または、いなくなった名前が記憶されていた）ときだけ名前を尋ねる。
@@ -598,7 +600,7 @@
       meCol = secH('あなたの今月') +
         '<div class="hc" style="--hc-color:var(--accent)' + inkStyle('var(--accent)') + '"><div class="hc-h"><span class="hc-ico">' + svgIco('person') + '</span><span class="hc-t">あなたはどなたですか？</span></div>' +
         '<div class="hc-line">名前を選ぶと、ここに<b>あなたの今月の数字</b>（売上・来店・次回予約率・目標の達成度など）が出ます。この端末で1回選べば次回からは自動で表示されます。お店の数字だけを見る端末は、上の「あなた」で「（お店だけ表示）」を選んでください。</div>' +
-        '<div class="pick-staff">' + names.map(function (n) { return '<button type="button" class="pill" data-me="' + esc(n) + '"><span class="me-dot" style="background:' + staffColor(n) + '"></span>' + esc(n) + '</button>'; }).join('') + '</div>' +
+        '<div class="pick-staff">' + names.map(function (n) { return '<button type="button" class="pill wrap" data-me="' + esc(n) + '"><span class="me-dot" style="background:' + staffColor(n) + '"></span>' + esc(n) + '</button>'; }).join('') + '</div>' +
         '</div>';
     }
 
@@ -955,7 +957,7 @@
       '育てた常連' + help(REGULARS_HELP) + ' <b data-kpi="staff-' + esc(name) + '-regulars3">' + F.int(st.regulars3) + '人</b>' + (regMile.maxed ? '' : '（次の節目 ' + F.int(regMile.next) + '人）') +
       (A.meta.completedOnly ? ' ・ 成熟母数 ' + st.matureAcquired + '人' : '') + '</span></div></div></div></div>';
     html += '<div class="col-12">' + secH('今月', esc(mdJa(m.ym, 1) + '〜' + mdJa(m.ym, m.day))) + '<div class="home-cols"><div class="stack">' +
-      monthCard(m, { id: 'sMe', who: name, title: esc(name) + ' の売上（実績）', icon: 'person', color: color, ink: staffInk(name), ringColor: color, share: share, kpi: 'staff-' + name + '-month',
+      monthCard(m, { id: 'sMe', who: name, title: esc(name) + ' の売上（実績）', icon: 'person', color: staffVar(name), share: share, kpi: 'staff-' + name + '-month',
         helpText: 'このスタッフが担当した今月1日〜集計基準日までの会計済み売上（実績）。「先月の同じ時期」は先月の1日〜同じ日まで。「予約込み」は今月これから来店予定の受付待ちの予約金額を足したもの。' }) +
       '</div><div class="stack">' + monthTiles(m, 'staff-' + name) +
       '<div class="next-hint" data-kpi="staff-' + esc(name) + '-next-hint">' + growthText(st) + '</div>' + bestHighlight(st) + '</div></div></div>';
@@ -1247,7 +1249,7 @@
       body: overdue.length
         ? '<div class="cell-list">' + overdue.map(function (c) {
             return '<div class="hc-row"><span>' + esc(c.name) + ' <span class="note-inline">（' + F.int(c.R) + '日前・' + F.int(c.F) + '回）</span></span><b>' + yen(c.M) + '</b></div>';
-          }).join('') + '</div><div style="margin-top:12px"><button type="button" class="pill" id="rfmShowCallback">一覧で候補をすべて見る（' + F.int(r.callbackCount) + '人）</button></div>'
+          }).join('') + '</div><div style="margin-top:12px"><button type="button" class="pill wrap" id="rfmShowCallback">一覧で候補をすべて見る（' + F.int(r.callbackCount) + '人）</button></div>'
         : '<div class="empty-note">呼び戻しの候補はいません。</div>' });
     html += '</div>';
 
@@ -1255,7 +1257,7 @@
     html += '<div class="grid">' + card({
       col: 'col-12', title: '顧客一覧', icon: 'person', color: 'var(--cat-store)', sub: '見出しをタップで並べ替え',
       body: '<div class="rfm-tools"><span class="note-inline" id="rfmTableNote" aria-live="polite"></span>' +
-        '<button type="button" class="pill' + (rfmCallbackOnly ? ' accent' : '') + '" id="rfmCallbackToggle" aria-pressed="' + rfmCallbackOnly + '">' + (noBook ? '周期を過ぎた方だけ表示' : '呼び戻し候補だけ表示') + '（' + F.int(r.callbackCount) + '人）</button>' +
+        '<button type="button" class="pill wrap' + (rfmCallbackOnly ? ' accent' : '') + '" id="rfmCallbackToggle" aria-pressed="' + rfmCallbackOnly + '">' + (noBook ? '周期を過ぎた方だけ表示' : '呼び戻し候補だけ表示') + '（' + F.int(r.callbackCount) + '人）</button>' +
         '</div><div class="table-wrap tall"><table class="kate-table" id="rfmTable"></table></div>'
     }) + '</div>';
 
@@ -2577,7 +2579,9 @@
     var mq = global.matchMedia && global.matchMedia('(prefers-color-scheme: dark)');
     setTheme(mq && mq.matches ? 'dark' : 'light');
     // OSのライト/ダーク切り替えにリアルタイム追従（チャート色も再描画）
-    if (mq && mq.addEventListener) mq.addEventListener('change', function (e) { setTheme(e.matches ? 'dark' : 'light'); flush(true); });
+    // 画面の色の一部（スタッフの色・グラフの線）は描くときに実際の色へ置き換えているため、
+    // 切り替えたらビューごと描き直す（グラフを描き直すだけでは、見出しの色などが前のテーマのまま残る）。
+    if (mq && mq.addEventListener) mq.addEventListener('change', function (e) { setTheme(e.matches ? 'dark' : 'light'); preserveInputs(renderAll); });
 
     injectNavIcons();
     applySources();   // no sources loaded yet → falls back to the bundled sample data

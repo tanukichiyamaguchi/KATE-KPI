@@ -13,10 +13,13 @@
  *   5. page-level horizontal overflow, and buttons/chips sticking out of
  *      their card (e.g. a long pill label at 320px).
  *
- * Two scenarios: (a) the bundled sample (2 staff) with the owner area locked;
+ * Three scenarios: (a) the bundled sample (2 staff) with the owner area locked;
  * (b) a linked sheet with 6 staff, some with long names, and the owner area
  * unlocked — the staff selector and the data tab's admin buttons must still
- * fit a 320px phone.
+ * fit a 320px phone; (c) the same as (b) with glyph widths close to a real
+ * iPhone (Inter ≈ SF Pro for Latin/digits, IPAGothic = 1em kana/kanji like
+ * Hiragino). This container's default Japanese fallback (IPAPGothic) is about
+ * 11% narrower than a phone's, which hid a button sticking out at 320px.
  *
  * Run: node tests/ui-audit.js  (wired into `npm test`).
  * Requires playwright-core + a Chromium binary (PW_CHROMIUM env var, or the
@@ -73,7 +76,8 @@ function sixStaffCsv() {
 }
 const SCENARIOS = [
   { name: 'サンプル', widths: WIDTHS, linked: false },
-  { name: '6人・管理画面あり', widths: [320, 375, 390, 1280], linked: true }
+  { name: '6人・管理画面あり', widths: [320, 375, 390, 1280], linked: true },
+  { name: '6人・管理画面あり・実機に近い字幅', widths: [320, 375], linked: true, deviceFont: true }
 ];
 
 (async () => {
@@ -93,6 +97,14 @@ const SCENARIOS = [
         if (linked) localStorage.setItem('kate-sheet-url', 'https://docs.google.com/spreadsheets/d/AUDIT6/edit#gid=0');
       } catch (e) {}
     }, sc.linked);
+    if (sc.deviceFont) {
+      // index.html の <head> に字体の指定を差し込む（最初の描画から効かせるため、HTML そのものを書き換える）
+      await page.route('**/index.html', async function (route) {
+        const resp = await route.fetch();
+        const body = (await resp.text()).replace('</head>', "<style>*, *::before, *::after { font-family: 'Inter', 'IPAGothic', sans-serif !important; }</style></head>");
+        await route.fulfill({ response: resp, body: body });
+      });
+    }
     if (sc.linked) {
       // 連携中のシート（6人）。「目標」タブは無い（gviz が1枚目を返す）扱い。
       await page.route('https://docs.google.com/**', function (route) { return route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: SIX }); });
