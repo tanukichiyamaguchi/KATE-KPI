@@ -74,24 +74,65 @@
   // y軸（目盛り線と数値）を描く。0 を含むすべての目盛りに数値を付ける。
   // 金額・件数の軸は、軸の最大が10万未満なら「7,500」「10,000」と桁区切りで、10万以上なら
   // 「25万」「150万」と万で書く（同じ軸に「1万」と「7,500」が混ざらないように）。
+  // autoFmt は棒の上の数値（labelFmt）の書式選び。目盛りは下の axisFmt を使う。
   function autoFmt(scale, fmt) {
     if (fmt && fmt !== fmtCompact) return fmt;
     return scale.max >= 1e5 ? fmtCompact : fmtInt;
   }
+  // 目盛りの数値の書式（drawYAxis と axisPad で共通）。万・億と桁区切りの使い分けは autoFmt と
+  // 同じだが、小数は目盛りの間隔（step）が必要とする桁まで書く: 125,000 は「12.5万」、
+  // 1.25億・12.5億もそのまま。切りのいい値は「10万」「125万」「2500万」のまま（末尾の0は付けない）。
+  // 以前は棒の上の数値と同じ fmtCompact（10万以上は整数の万に丸める）を使っていたため、
+  // 125,000 の目盛りが「13万」になり、最後の間隔だけ +3万 に見えていた（fmtCompact は棒の上の
+  // 数値用にそのまま）。% など呼び出し側が渡した書式（fmtCompact 以外）はそのまま使う。
+  function axisFmt(scale, fmt) {
+    if (fmt && fmt !== fmtCompact) return fmt;
+    var big = scale.max >= 1e5;
+    return function (v) {
+      var a = Math.abs(v);
+      var unit = big && a >= 1e8 ? 1e8 : (big && a >= 1e4 ? 1e4 : 1);
+      var d = fracDigits(scale.step / unit);
+      if (unit === 1) return v.toLocaleString('ja-JP', { minimumFractionDigits: 0, maximumFractionDigits: d });
+      return String(+(v / unit).toFixed(d)) + (unit === 1e8 ? '億' : '万');
+    };
+  }
+  // q を小数で正確に書くのに要る桁数（0〜3）。目盛りの間隔は 1・2・2.5・5 ×10^n なので、
+  // 万・億の単位でも高々2桁で足りる（2.5万 → 1桁、2500万 を億で → 0.25億 の2桁）。
+  function fracDigits(q) {
+    for (var d = 0; d < 3; d++) {
+      var s = q * Math.pow(10, d);
+      if (Math.abs(s - Math.round(s)) <= 1e-9 * Math.max(1, Math.abs(s))) return d;
+    }
+    return 3;
+  }
+  // 棒の上の数値の書式。autoFmt と同じく、軸の最大が10万以上のグラフは fmtCompact（万・億）、
+  // 未満は桁区切り。万のグラフに1万未満の棒があっても「8,000」とは書かず「0.8万」と書き、
+  // 1枚のグラフの中で万と桁区切りを混ぜない（fmtCompact そのものは変えない）。
+  function labelFmt(scale, fmt) {
+    var f = autoFmt(scale, fmt);
+    if (f !== fmtCompact) return f;
+    return function (v) {
+      if (Math.abs(v) >= 1e4) return fmtCompact(v);
+      var d = 1;
+      while (d < 4 && Math.round(Math.abs(v) / 1e4 * Math.pow(10, d)) === 0) d++;
+      return String(+(v / 1e4).toFixed(d)) + '万';
+    };
+  }
   function drawYAxis(svg, scale, padL, w, padR, yat, yFmt) {
-    yFmt = autoFmt(scale, yFmt);
+    yFmt = axisFmt(scale, yFmt);
     tickValues(scale).forEach(function (yv) {
       var y = yat(yv);
       svg.appendChild(svgEl('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: yv === 0 ? ink.axis() : ink.grid(), 'stroke-width': 1 }));
       var lab = svgEl('text', { x: padL - 8, y: y + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': AXIS_FONT });
       lab.setAttribute('font-variant-numeric', 'tabular-nums');
-      lab.textContent = (yFmt || fmtCompact)(yv); svg.appendChild(lab);
+      lab.textContent = yFmt(yv); svg.appendChild(lab);
     });
   }
-  // y軸の数値の最大幅から左の余白を決める（「150万」「10,000」などで長さが変わるため）
+  // y軸の数値の最大幅から左の余白を決める（「150万」「12.5万」「10,000」などで長さが変わるため）。
+  // 目盛りと同じ axisFmt で測る。
   function axisPad(scale, yFmt, min) {
-    yFmt = autoFmt(scale, yFmt);
-    var longest = tickValues(scale).reduce(function (m, v) { return Math.max(m, String((yFmt || fmtCompact)(v)).length); }, 1);
+    yFmt = axisFmt(scale, yFmt);
+    var longest = tickValues(scale).reduce(function (m, v) { return Math.max(m, String(yFmt(v)).length); }, 1);
     return Math.max(min || 30, Math.round(longest * AXIS_FONT * 0.62) + 14);
   }
   function niceMax(v) { return niceScale(v).max; }
@@ -297,23 +338,54 @@
   function stripUnit(text) {
     return String(text).replace(/^[¥$€]/, '').replace(/(件|人|回)$/, '');
   }
-  // Centered value label above a bar. If the natural text would be wider than
-  // maxWidth, it's compressed via SVG textLength (not wrapped) so it never
-  // overflows the bar it sits above — used for per-bar/per-cluster totals,
-  // which get cramped on narrow mobile bars once there are 2+ series.
-  // 文字を縮めるのは元の幅の 80% まで。それより狭い棒（スマホで2本並ぶ月など）は
-  // 数字をつぶして読めなくするより、出さない方がよい（触れば吹き出しで値が出る）。
-  function fitValueLabel(svg, x, y, text, maxWidth, fontSize) {
-    var t = svgEl('text', { x: x, y: y, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': fontSize, 'font-weight': 700 });
-    t.setAttribute('font-variant-numeric', 'tabular-nums');
-    t.textContent = stripUnit(text);
-    svg.appendChild(t);
-    if (maxWidth > 0 && t.getComputedTextLength) {
-      var natural = t.getComputedTextLength();
-      if (natural > maxWidth / 0.8) { svg.removeChild(t); return null; }
-      if (natural > maxWidth) { t.setAttribute('textLength', maxWidth); t.setAttribute('lengthAdjust', 'spacingAndGlyphs'); }
+  // 棒の上の数値ラベル（グラフ1枚ぶん）をまとめて描く。items: [{ x, y, text }]（棒の中央・
+  // 文字のベースライン・数値の文字列）、room: 数字1つに使える横幅（同じグラフの棒はどれも同じ
+  // 幅なので全部共通）、fontSize: 基本の文字の大きさ。
+  // 以前は1本ずつ「入らなければ消す」と決めていたため、桁の多い数字（＝背の高い棒）から消えて、
+  // 低い棒にだけ数字が残っていた。今はグラフ1枚につき1回だけ決める:
+  //   1. 一番長い数字も、横に 80% まで縮めれば room に収まる → 全部そのまま描く
+  //      （room を超える数字だけ textLength で縮める・つぶして読めなくはしない）。
+  //   2. 収まらない → このグラフの数値ラベルを全部同じ大きさまで小さくする（最小 10px）。
+  //   3. 10px でも収まらない → このグラフの数値ラベルは全部出さない（触れば吹き出しで値が出る）。
+  // 1本だけ消したり、1本だけ別の書式にしたりはしない（書式は labelFmt でグラフごとに1つ）。
+  // 結果は svg の data-value-labels（full / reduced / none）と data-value-font（px）に残す。
+  var VALUE_SQUEEZE = 0.8, VALUE_FONT_MIN = 10;
+  function drawValueLabels(svg, items, room, fontSize) {
+    if (!items.length) return null;
+    var nodes = items.map(function (it) {
+      var t = svgEl('text', { x: it.x, y: it.y, 'text-anchor': 'middle', fill: ink.primary(), 'font-size': fontSize, 'font-weight': 700, 'class': 'kate-vlabel' });
+      t.setAttribute('font-variant-numeric', 'tabular-nums');
+      t.textContent = stripUnit(it.text);
+      svg.appendChild(t);
+      return t;
+    });
+    var state = 'full';
+    if (room > 0 && nodes[0].getComputedTextLength) {
+      var limit = room / VALUE_SQUEEZE;
+      var widest = function () { return nodes.reduce(function (m, t) { return Math.max(m, t.getComputedTextLength()); }, 0); };
+      var wMax = widest();
+      if (wMax > limit) {
+        // 文字の幅は大きさにほぼ比例するので、まず比例で見積もり、0.5px 刻みで測り直しながら下げる
+        var f = Math.min(fontSize - 0.5, Math.max(VALUE_FONT_MIN, Math.floor(fontSize * limit / wMax * 2) / 2));
+        for (; f >= VALUE_FONT_MIN; f -= 0.5) {
+          nodes.forEach(function (t) { t.setAttribute('font-size', f); });
+          if (widest() <= limit) break;
+        }
+        if (f < VALUE_FONT_MIN) {
+          nodes.forEach(function (t) { svg.removeChild(t); });
+          svg.setAttribute('data-value-labels', 'none');
+          svg.setAttribute('data-value-font', 0);
+          return 'none';
+        }
+        state = 'reduced'; fontSize = f;
+      }
+      nodes.forEach(function (t) {
+        if (t.getComputedTextLength() > room) { t.setAttribute('textLength', room); t.setAttribute('lengthAdjust', 'spacingAndGlyphs'); }
+      });
     }
-    return t;
+    svg.setAttribute('data-value-labels', state);
+    svg.setAttribute('data-value-font', fontSize);
+    return state;
   }
 
   // ============================ COLUMNS (grouped / stacked) =================
@@ -331,6 +403,17 @@
     var yat = function (v) { return padT + plotH - (v / maxV) * plotH; };
     var band = plotW / ng;
     var GAP = 2;
+    // 棒の太さ（どの月も同じ）。積み上げは1本、横並びは系列の数だけ並べる。
+    var barW = Math.min(28, band * 0.62);
+    var innerW = band * 0.72, bw = Math.min(26, innerW / series.length - GAP);
+    // 棒の上の数値ラベル: 書式も、数字1つに使える横幅も、文字の大きさもグラフ1枚で1つ。
+    // 積み上げ・単系列は帯の幅まで使える（数字を縮めずに読めるように）。複数系列の横並びは
+    // 隣の棒の数字とぶつからないよう、棒1本ぶんの幅まで。
+    var fmtLabel = labelFmt(scale, opts.totalFmt || opts.valueFmt || fmtCompact);
+    var oneBar = opts.stacked || series.length === 1;
+    var labelRoom = oneBar ? Math.max((opts.stacked ? barW : bw) + 8, band - 4) : bw + GAP + 2;
+    var labelFont = oneBar ? VALUE_FONT : 10.5;
+    var labels = [];
 
     drawYAxis(svg, scale, padL, w, padR, yat, opts.yFmt);
 
@@ -339,7 +422,7 @@
       var t = svgEl('text', { x: cx, y: h - 10, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': AXIS_FONT });
       t.textContent = glabel; svg.appendChild(t);
       if (opts.stacked) {
-        var barW = Math.min(28, band * 0.62), x = cx - barW / 2, acc = 0;
+        var x = cx - barW / 2, acc = 0;
         series.forEach(function (s, si) {
           var v = Math.max(0, s.values[gi]); if (v <= 0) return;
           var y0 = yat(acc), y1 = yat(acc + v); acc += v;
@@ -352,13 +435,11 @@
           animateAttr(rect, 'y', y0, y1, 700, gi * 40 + si * 30);
           bindBarTip(rect, svg, w, glabel, s, si, v, opts);
         });
-        if (acc > 0) {
-          fitValueLabel(svg, cx, yat(acc) - 7, autoFmt(scale, opts.totalFmt || opts.valueFmt || fmtCompact)(acc), Math.max(barW + 8, band - 4), VALUE_FONT);
-        }
+        if (acc > 0) labels.push({ x: cx, y: yat(acc) - 7, text: fmtLabel(acc) });
       } else {
-        var innerW = band * 0.72, bw = Math.min(26, innerW / series.length - GAP);
-        // すべての棒に数値ラベルを表示する（狭い棒でも fitValueLabel が棒幅に
-        // 収まるよう自動圧縮するため、はみ出さない）。
+        // 数値ラベルは、すべての棒に付けるか（入らなければグラフ全体で同じだけ小さくする）、
+        // このグラフでは全部付けないかのどちらか。1本ずつ消すことはしない（drawValueLabels）。
+        // ごく細い棒（5px 未満）のグラフには付けない。
         var showBarLabels = bw >= 5;
         series.forEach(function (s, si) {
           var v = Math.max(0, s.values[gi]);
@@ -368,14 +449,11 @@
           animateAttr(rect, 'height', 0, rectH, 700, gi * 40 + si * 40);
           animateAttr(rect, 'y', padT + plotH, y1, 700, gi * 40 + si * 40);
           bindBarTip(rect, svg, w, glabel, s, si, v, opts);
-          if (showBarLabels && v > 0) {
-            // 単系列は棒の幅を超えて帯の幅まで使える（数字を縮めずに読めるように）
-            var room = series.length === 1 ? Math.max(bw + 8, band - 4) : bw + GAP + 2;
-            fitValueLabel(svg, x + bw / 2, y1 - 6, autoFmt(scale, opts.totalFmt || opts.valueFmt || fmtCompact)(v), room, series.length === 1 ? VALUE_FONT : 10.5);
-          }
+          if (showBarLabels && v > 0) labels.push({ x: x + bw / 2, y: y1 - 6, text: fmtLabel(v) });
         });
       }
     });
+    drawValueLabels(svg, labels, labelRoom, labelFont);
     enableDragReveal(svg);
     // 見込み(opacity付き)の重畳シリーズは、実績シリーズと同色で凡例上は見分けが
     // つかず単なる重複行になるため、凡例には含めない（薄色である旨は help() 側で
@@ -416,9 +494,12 @@
     // tooltip. Prevents adjacent labels merging into unreadable text on narrow
     // (mobile) screens.
     var showSubLabels = !!opts.subLabels && (clusterBand / clusterSize) >= 24;
-    // Per-bar totals: 全ての棒に数値を表示する（fitValueLabel が棒幅に収まるよう
-    // 圧縮するため、狭い棒でもはみ出さない）。ごく僅かな幅のみ描画を省く。
+    // 棒ごとの合計の数値: すべての棒に付けるか（入らなければグラフ全体で同じだけ小さくする）、
+    // このグラフでは全部付けないかのどちらか。1本ずつ消すことはしない（drawValueLabels）。
+    // 1本あたりの幅がごく僅か（10px 未満）なグラフには付けない。
     var showTotals = (clusterBand / clusterSize) >= 10;
+    var fmtLabel = labelFmt(scale, opts.totalFmt || opts.valueFmt || fmtCompact);
+    var labels = [];
     function colorFor(s, si, bi) { return (typeof s.color === 'function' ? s.color(bi) : s.color) || seriesColor(si); }
     groups.forEach(function (glabel, ci) {
       var clusterCx = padL + clusterBand * ci + clusterBand / 2;
@@ -449,11 +530,10 @@
           animateAttr(rect, 'y', y0, y1, 700, ci * 40 + si * 20);
           bindBarTip(rect, svg, w, glabel + (opts.subLabels ? ' ・ ' + opts.subLabels[bi] : ''), s, si, v, opts, color);
         });
-        if (showTotals && acc > 0) {
-          fitValueLabel(svg, bx + barW / 2, yat(acc) - 6, autoFmt(scale, opts.totalFmt || opts.valueFmt || fmtCompact)(acc), barW + innerGap, 10.5);
-        }
+        if (showTotals && acc > 0) labels.push({ x: bx + barW / 2, y: yat(acc) - 6, text: fmtLabel(acc) });
       }
     });
+    drawValueLabels(svg, labels, barW + innerGap, 10.5);
     enableDragReveal(svg);
     if (!opts.hideLegend && series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: (typeof s.color === 'function' ? s.color(0) : s.color) || seriesColor(si) }; }));
   }
@@ -594,6 +674,57 @@
     container.appendChild(wrap);
   }
 
+  // ---- 色とコントラスト（WCAG 2）------------------------------------------
+  // "#rgb" "#rrggbb" "#rrggbbaa" "rgb()" "rgba()" を [r, g, b, a] にする。それ以外の書き方
+  // （色名・hsl() など）はブラウザ（canvas）に正規化させる。読めなければ null。
+  function parseColor(s) {
+    s = String(s == null ? '' : s).trim();
+    var m = /^#([0-9a-f]+)$/i.exec(s);
+    if (m) {
+      var hx = m[1];
+      if (hx.length === 3 || hx.length === 4) hx = hx.replace(/./g, '$&$&');
+      if (hx.length !== 6 && hx.length !== 8) return null;
+      return [parseInt(hx.slice(0, 2), 16), parseInt(hx.slice(2, 4), 16), parseInt(hx.slice(4, 6), 16), hx.length === 8 ? parseInt(hx.slice(6, 8), 16) / 255 : 1];
+    }
+    m = /^rgba?\(([^)]*)\)$/i.exec(s);
+    if (m) {
+      var p = m[1].split(/[\s,\/]+/).filter(Boolean);
+      if (p.length < 3) return null;
+      var num = function (x, full) { return /%$/.test(x) ? parseFloat(x) / 100 * full : parseFloat(x); };
+      var rgba = [num(p[0], 255), num(p[1], 255), num(p[2], 255), p.length > 3 ? num(p[3], 1) : 1];
+      return rgba.every(function (x) { return isFinite(x); }) ? rgba : null;
+    }
+    if (s && typeof document !== 'undefined' && document.createElement) {
+      try {
+        var g = document.createElement('canvas').getContext('2d');
+        if (g) {
+          g.fillStyle = '#010203'; g.fillStyle = s; var n1 = g.fillStyle;
+          g.fillStyle = '#040506'; g.fillStyle = s; var n2 = g.fillStyle;
+          if (n1 === n2 && n1 !== s) return parseColor(n1);   // 読めない色だと置いた色のまま残る
+        }
+      } catch (e) { /* canvas の無い環境 */ }
+    }
+    return null;
+  }
+  function relLuminance(c) {
+    var v = [c[0], c[1], c[2]].map(function (x) { x = Math.max(0, Math.min(255, x)) / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
+    return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+  }
+  function contrastRatio(a, b) { var x = relLuminance(a), y = relLuminance(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+  // 色 fg を不透明度 alpha で背景 bg に重ねた色（ブラウザの合成と同じく sRGB のまま混ぜる）
+  function blendOver(fg, alpha, bg) {
+    var a = Math.max(0, Math.min(1, alpha * (fg[3] == null ? 1 : fg[3])));
+    return [0, 1, 2].map(function (i) { return fg[i] * a + bg[i] * (1 - a); });
+  }
+  // 背景 bg（[r,g,b]）の上で読みやすい文字色: ふだんの文字色 primary と、その反対側の白／黒の
+  // うち、コントラスト比の高い方。白と黒のどちらかは、どんな背景に対しても 4.58:1 以上になる。
+  function readableInk(bg, primary) {
+    var p = parseColor(primary);
+    if (!bg || !p) return primary;
+    var other = relLuminance(p) > 0.18 ? '#000000' : '#ffffff';
+    return contrastRatio(bg, parseColor(other)) > contrastRatio(bg, p) ? other : primary;
+  }
+
   // ============================ HEATMAP (F×R) ==============================
   // opts: { matrix:[[]], rowLabels, colLabels, height, hueVar, cellLabel }
   function heatmap(container, opts) {
@@ -603,18 +734,27 @@
     var padL = 40, padT = 22;
     var max = Math.max.apply(null, m.reduce(function (a, r) { return a.concat(r); }, [0])) || 1;
     var base = opts.hue || cssVar('--series-1', '#2a78d6');
-    var darkTheme = document.documentElement.getAttribute('data-theme') === 'dark';
+    // マスの数字の色は、マスの実際の色（base を fill-opacity でカードの地 --surface-1 に重ねた色）
+    // に対して WCAG のコントラスト比が高い方（ふだんの文字色か、その反対の白／黒）を選ぶ。
+    // ライト・ダークのどちらでも、どの色相でも 4.5:1 以上になる。以前は「濃さ 0.5 を超えたら
+    // ライトは白・ダークは黒」と決め打ちしていたため、ライトの中くらいの青に白い数字（約2.9:1）が
+    // 乗っていた。色が読めないときだけ、ふだんの文字色のまま。
+    var baseRgb = parseColor(base), surfaceRgb = parseColor(ink.surface()), inkText = ink.primary();
     opts.colLabels.forEach(function (cl, c) { var t = svgEl('text', { x: padL + c * cell + cell / 2, y: padT - 8, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': cell < 30 ? 10.5 : AXIS_FONT }); t.textContent = cl; svg.appendChild(t); });
     opts.rowLabels.forEach(function (rl, r) { var t = svgEl('text', { x: padL - 8, y: padT + r * cell + cell / 2 + 4, 'text-anchor': 'end', fill: ink.muted(), 'font-size': AXIS_FONT }); t.textContent = rl; svg.appendChild(t); });
     for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) {
       (function (r, c) {
         var v = m[r][c], intensity = v / max;
         var x = padL + c * cell, y = padT + r * cell;
-        var rect = svgEl('rect', { x: x + 1.5, y: y + 1.5, width: cell - 3, height: cell - 3, rx: 6, fill: base, 'fill-opacity': v === 0 ? 0.05 : (0.14 + intensity * 0.82) });
+        var alpha = v === 0 ? 0.05 : (0.14 + intensity * 0.82);
+        var rect = svgEl('rect', { x: x + 1.5, y: y + 1.5, width: cell - 3, height: cell - 3, rx: 6, fill: base, 'fill-opacity': alpha });
         svg.appendChild(rect);
         if (!noAnim()) { rect.style.opacity = 0; rect.getBoundingClientRect(); rect.style.transition = 'opacity .5s ease ' + ((r + c) * 45) + 'ms'; rect.style.opacity = 1; }
-        // 濃いマスの文字色: ライトでは濃い青の上なので白、ダークでは明るい青の上なので黒（どちらも読みやすい側）
-        if (v > 0) { var t = svgEl('text', { x: x + cell / 2, y: y + cell / 2 + 4.5, 'text-anchor': 'middle', fill: intensity > 0.5 ? (darkTheme ? '#000' : '#fff') : ink.primary(), 'font-size': cell < 30 ? 11.5 : 13, 'font-weight': 600 }); t.textContent = v; svg.appendChild(t); }
+        if (v > 0) {
+          var txtFill = baseRgb && surfaceRgb ? readableInk(blendOver(baseRgb, alpha, surfaceRgb), inkText) : inkText;
+          var t = svgEl('text', { x: x + cell / 2, y: y + cell / 2 + 4.5, 'text-anchor': 'middle', fill: txtFill, 'font-size': cell < 30 ? 11.5 : 13, 'font-weight': 600 });
+          t.textContent = v; svg.appendChild(t);
+        }
         function show(clientX) { rect.setAttribute('stroke', base); rect.setAttribute('stroke-width', 2); var box = svg.getBoundingClientRect(); showTip('<div class="kate-tip-row"><span>' + esc(opts.rowLabels[r]) + ' × ' + esc(opts.colLabels[c]) + '</span><b>' + v + esc(opts.unit || '人') + '</b></div>', clientX, box.top + y); }
         rect.__showTip = show;
         rect.__clearHi = function () { rect.removeAttribute('stroke'); };
@@ -750,16 +890,33 @@
     svg.style.display = 'block';
     if (opts.aria) svg.setAttribute('aria-label', opts.aria);
     var color = opts.color || seriesColor(0);
+    // 弧の端は丸い（round）ので、両端に太さの半分ずつ丸い端が付き、見える弧は線（dash）の長さより
+    // 太さ1本分長くなる。以前は線の長さを f·C にしていたため、どの値でも弧が太さ1本分（大きさ100・
+    // 太さ13で約4.8%）長く、95% 前後で輪が閉じて 100% と見分けがつかなかった。
+    //  ・0 < f < 1: 線を太さ1本分短くし（f·C − 太さ）、始点を太さの半分だけ時計回りに回して、丸い端
+    //    まで含めた弧がちょうど 12時〜f·360° になるようにする（f がごく小さいときは点になる）。
+    //  ・f ≥ 1（目標達成）: 継ぎ目のない閉じた輪。
+    // 予約込み（extra）の薄い弧も同じ関数で描く。
     function arc(frac, op) {
       var f = Math.max(0, Math.min(1, frac || 0));
+      var full = f >= 1;
+      var len = full ? C : Math.max(0.01, f * C - sw);
+      var rot = full ? -90 : -90 + (sw / 2) / r * 180 / Math.PI;
       var c = svgEl('circle', { cx: cx, cy: cy, r: r, fill: 'none', stroke: color, 'stroke-width': sw, 'stroke-linecap': 'round',
-        'stroke-dasharray': C, 'stroke-dashoffset': C, transform: 'rotate(-90 ' + cx + ' ' + cy + ')' });
+        transform: 'rotate(' + rot + ' ' + cx + ' ' + cy + ')' });
       if (op != null) c.setAttribute('stroke-opacity', op);
       svg.appendChild(c);
-      var target = C * (1 - f);
-      if (f <= 0) { c.setAttribute('stroke-dashoffset', C); c.setAttribute('stroke-width', 0); return c; }
-      if (noAnim()) c.setAttribute('stroke-dashoffset', target);
-      else { c.getBoundingClientRect(); c.style.transition = 'stroke-dashoffset 1s cubic-bezier(.22,.61,.36,1)'; requestAnimationFrame(function () { c.setAttribute('stroke-dashoffset', target); }); }
+      if (f <= 0) { c.setAttribute('stroke-width', 0); return c; }
+      // 隙間を 2C にして、円の終点で次の線が始まらない（12時に点が出ない）ようにする
+      var dash = len + ' ' + 2 * C;
+      if (noAnim()) { if (!full) c.setAttribute('stroke-dasharray', dash); return c; }
+      // 伸びるアニメーション: 長さ len の線を dashoffset len（見えない）→ 0 へ
+      c.setAttribute('stroke-dasharray', dash);
+      c.setAttribute('stroke-dashoffset', len);
+      c.getBoundingClientRect(); c.style.transition = 'stroke-dashoffset 1s cubic-bezier(.22,.61,.36,1)';
+      requestAnimationFrame(function () { c.setAttribute('stroke-dashoffset', 0); });
+      // 満タンは描き終えたら線の区切りを外し、継ぎ目のない輪にする
+      if (full) c.addEventListener('transitionend', function () { c.removeAttribute('stroke-dasharray'); c.removeAttribute('stroke-dashoffset'); c.style.transition = ''; });
       return c;
     }
     svg.appendChild(svgEl('circle', { cx: cx, cy: cy, r: r, fill: 'none', stroke: color, 'stroke-opacity': 0.16, 'stroke-width': sw }));
@@ -792,7 +949,9 @@
     lineArea: lineArea, columns: columns, columnClusters: columnClusters, donut: donut, funnel: funnel, heatmap: heatmap,
     hbars: hbars, scatter: scatter, gauge: gauge, meter: meter, sparkline: sparkline, countUp: countUp, ring: ring,
     fmt: { int: fmtInt, yen: fmtYen, compact: fmtCompact, pct: fmtPct }, seriesColor: seriesColor, cssVar: cssVar,
-    _scale: { niceScale: niceScale, tickValues: tickValues },
+    // テスト用（tests/charts.test.js）。アプリからは使わない。
+    _scale: { niceScale: niceScale, tickValues: tickValues, axisFmt: axisFmt, labelFmt: labelFmt },
+    _color: { parse: parseColor, contrast: contrastRatio, blend: blendOver, readableInk: readableInk },
     setInstant: function (b) { instant = !!b; }
   };
 })(typeof window !== 'undefined' ? window : globalThis);

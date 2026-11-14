@@ -437,7 +437,9 @@
     return wb.SheetNames[0];
   }
 
-  var api = { parseFile: parseFile, parseCSV: parseCSV, fromAOA: fromAOA, fromKaikei: fromKaikei, mergeSources: mergeSources, decodeBuffer: decodeBuffer, HEADER_MAP: HEADER_MAP };
+  // isYoyakuHeader / isKaikeiHeader は targets.js が「目標」タブの代わりに1枚目（予約データ・
+  // 会計明細）が返ってきたかの判定に使う（見出しの判定をここ1か所にそろえるため）。
+  var api = { parseFile: parseFile, parseCSV: parseCSV, fromAOA: fromAOA, fromKaikei: fromKaikei, mergeSources: mergeSources, decodeBuffer: decodeBuffer, HEADER_MAP: HEADER_MAP, isYoyakuHeader: isYoyakuHeader, isKaikeiHeader: isKaikeiHeader };
   global.KATE = global.KATE || {};
   global.KATE.ingest = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
