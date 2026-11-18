@@ -349,7 +349,9 @@
       for (var i = 1; i < v.length; i++) { var g = dayDiff(v[i], v[i - 1]); if (g > 0) { gaps.push(g); ownGaps.push(g); } }
       custOwnCycle[c.key] = ownGaps.length ? median(ownGaps) : null;
     });
-    var visitCycleMedianDays = median(gaps);
+    // 別の日に2回来店した方がまだいない（開店直後・連携したばかり）ときは、周期そのものが無い。
+    // 0日として扱うと、全員が来店の翌日から「周期超過＝呼び戻し候補」になるため null にする。
+    var visitCycleMedianDays = gaps.length ? median(gaps) : null;
 
     // ---- Churn (visited customers with no next effective reservation) -------
     var churned = visitedCusts.filter(function (c) { return c.Fres < 2; });
@@ -1093,7 +1095,7 @@
       var nb = nextBookingByCust[c.key] || null;
       return {
         name: c.name, R: c.R, F: c.Fvis, M: c.M, Rp: Rp, Fp: Fp, Mp: Mp, seg: segment(Rp, Fp),
-        daysSince: c.R, ownCycle: round(ownCycle, 1), cycleOverdue: cycleOverdue,
+        daysSince: c.R, ownCycle: ownCycle == null ? null : round(ownCycle, 1), cycleOverdue: cycleOverdue,
         hasUpcoming: !!nb,
         nextBooking: nb ? ym(nb) + '-' + String(nb.getDate()).padStart(2, '0') : null,
         callback: cycleOverdue && !nb

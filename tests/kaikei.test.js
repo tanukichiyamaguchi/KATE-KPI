@@ -1319,6 +1319,25 @@ h('■ Fixture GG: 同じ日の2件は周期に数えない');
 }
 
 // ============================================================================
+// 別の日に2回来店した方が1人もいない（開店直後・連携直後）: お店全体の周期が無い。
+// 以前は周期 0日 として扱い、全員が来店の翌日から「周期超過＝呼び戻し候補」になっていた。
+// U1 は同じ日に2件（別の日の2回目ではない）、U2・U3 は1回だけ。
+h('■ Fixture GG2: 別の日に2回来店した方がいない → 周期なし・呼び戻し候補なし');
+{
+  const rows = [
+    rec({ staff: 'A', custKey: 'U1', name: 'U1', date: '2026-07-01', kaikeiTotal: 5000 }),
+    rec({ staff: 'B', custKey: 'U1', name: 'U1', date: '2026-07-01', kaikeiTotal: 3000 }),
+    rec({ staff: 'A', custKey: 'U2', name: 'U2', date: '2026-07-02', kaikeiTotal: 5000 }),
+    rec({ staff: 'A', custKey: 'U3', name: 'U3', date: '2026-07-10', kaikeiTotal: 5000 })
+  ];
+  const R = engine.compute(rows, { asOf: '2026-07-20' });
+  check('お店全体の来店周期は null（0日にしない）', R.store.visitCycleMedianDays === null ? 1 : 0, 1);
+  check('全員 ownCycle は null', R.rfm.customers.every(function (c) { return c.ownCycle === null; }) ? 1 : 0, 1);
+  check('周期超過は0人', R.rfm.customers.filter(function (c) { return c.cycleOverdue; }).length, 0);
+  check('呼び戻し候補は0人', R.rfm.callbackCount, 0);
+}
+
+// ============================================================================
 // Fixture HH — 会計明細のみ: 次回予約率は月末から30日経った月の来店だけで数える
 // ============================================================================
 // これからの予約が無いデータ（会計明細）。基準日 7/3。

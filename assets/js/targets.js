@@ -168,11 +168,13 @@
     var who = matchStaff(raw.toLowerCase(), staff);
     if (who != null) return { key: 'staff', name: who, taxIncl: taxIncl, label: norm(label) };
     // スタッフ名に当てはまらない見出しは、注記と「の売上目標」などを除いて、お店の列か判定する
-    var base = raw.replace(NOTE_RE, '')                       // （税抜）などの注記
-      .replace(TAX_WORD_RE, '')
-      .replace(/(の)?(売上)?(目標)?(金額)?$/g, '')
-      .replace(/さん$/, '');
-    if (!base) return null;
+    var core = raw.replace(NOTE_RE, '').replace(TAX_WORD_RE, '');   // （税抜）などの注記を除く
+    var base = core.replace(/(の)?(売上)?(目標)?(金額)?$/g, '').replace(/さん$/, '');
+    if (!base) {
+      // 「売上目標」「目標」「目標金額」だけの見出しは、誰の列とも書いていないのでお店の目標の列とみなす
+      if (/^(売上)?(目標)?(金額)?$/.test(core) && core) return { key: 'store', name: 'お店', taxIncl: taxIncl, label: norm(label) };
+      return core ? { key: 'unknown', name: core, taxIncl: taxIncl, label: norm(label) } : null;
+    }
     if (STORE_RE.test(base)) return { key: 'store', name: 'お店', taxIncl: taxIncl, label: norm(label) };
     if (STORE_SUM_RE.test(base)) return { key: 'store', name: 'お店', taxIncl: taxIncl, label: norm(label), sum: true };
     return { key: 'unknown', name: base, taxIncl: taxIncl, label: norm(label) };

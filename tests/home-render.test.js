@@ -303,6 +303,33 @@ function rec(o) {
     await o.ctx.close();
   }
 
+  console.log('\n\x1b[1m■ 目標ちょうどの実績は 100%（税抜換算・税込換算の浮動小数の誤差で 99% にしない）\x1b[0m');
+  {
+    // 税込 ¥8,800 × 10件 → 税抜は 8,800÷1.1 の合計 = 79,999.99999999999（画面は ¥80,000）。
+    // 目標 80,000（税抜）→ 税込表示では 80,000×1.1 = 88,000.00000000001（画面は ¥88,000）。
+    const rows = [];
+    for (let i = 1; i <= 10; i++) rows.push(rec({ custKey: 'E' + i, name: 'E' + i, date: '2026-07-' + String(i).padStart(2, '0'), kaikeiTotal: 8800, yoyakuTotal: 8800 }));
+    const o = await open(browser, { me: 'S', data: recordsCsv(rows), targets: '月,お店,S\n毎月,80000,80000' });
+    const p = o.page;
+    const ach = async function () {
+      return p.evaluate(function () {
+        var me = document.querySelector('[data-kpi="home-me-revenue"]'), ring = document.querySelector('#hMeRing');
+        var row = me ? Array.prototype.filter.call(me.querySelectorAll('.hc-row'), function (r) { return /達成率/.test(r.textContent); })[0] : null;
+        return { row: row ? row.querySelector('b').textContent.trim() : null, ring: ring ? ring.textContent.replace(/\s+/g, '') : null, value: me ? me.querySelector('.hc-value').textContent.trim() : null };
+      });
+    };
+    const ex = await ach();
+    // check() は === で比べるので、配列は JSON の文字列にして比べる
+    check('税抜: 実績 ¥80,000・達成率 100%・リングも 100%', JSON.stringify([ex.value, ex.row, /^100%/.test(ex.ring || '')]), JSON.stringify(['¥80,000', '100%', true]));
+    await p.click('#taxLabelIncl');
+    await p.waitForTimeout(400);
+    const inc = await ach();
+    check('税込: 実績 ¥88,000・達成率 100%・リングも 100%', JSON.stringify([inc.value, inc.row, /^100%/.test(inc.ring || '')]), JSON.stringify(['¥88,000', '100%', true]));
+    check('コンソールエラーなし', o.errors.length, 0);
+    if (o.errors.length) console.log('    ' + o.errors.join('\n    '));
+    await o.ctx.close();
+  }
+
   await browser.close();
   server.close();
   console.log('\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m' + pass + ' pass\x1b[0m · \x1b[31m' + fail + ' fail\x1b[0m');

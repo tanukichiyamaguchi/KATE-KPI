@@ -390,6 +390,21 @@
 
   // ============================ COLUMNS (grouped / stacked) =================
   // opts: { groups:[label], series:[{name,color?,values:[]}], stacked?, height, valueFmt, totalFmt?, yFmt }
+  // 横軸の項目名（月など）が帯の幅に入らないときは、k 個おきに残して間引く（最後の項目は
+  // 必ず残す）。13ヶ月以上を狭い画面で並べると「10月11月12月」のように重なっていたため。
+  // 棒そのものと、触れたときの説明（月の名前つき）はそのまま。
+  function thinAxisLabels(nodes, band) {
+    if (nodes.length < 2) return;
+    var widthOf = function (t) {
+      if (t.getComputedTextLength) { var wl = t.getComputedTextLength(); if (wl > 0) return wl; }
+      var fs = parseFloat(t.getAttribute('font-size')) || AXIS_FONT;
+      return String(t.textContent).split('').reduce(function (a, ch) { return a + (/[\x00-\x7f]/.test(ch) ? 0.6 : 1) * fs; }, 0);
+    };
+    var widest = nodes.reduce(function (m, t) { return Math.max(m, widthOf(t)); }, 0);
+    if (widest + 4 <= band) return;
+    var k = Math.ceil((widest + 4) / band), last = nodes.length - 1;
+    nodes.forEach(function (t, i) { if ((last - i) % k !== 0) t.parentNode.removeChild(t); });
+  }
   function columns(container, opts) {
     var w = width(container), h = opts.height || 260;
     var groups = opts.groups, series = opts.series, ng = groups.length;
@@ -417,10 +432,11 @@
 
     drawYAxis(svg, scale, padL, w, padR, yat, opts.yFmt);
 
+    var axisLabels = [];
     groups.forEach(function (glabel, gi) {
       var cx = padL + band * gi + band / 2;
       var t = svgEl('text', { x: cx, y: h - 10, 'text-anchor': 'middle', fill: ink.muted(), 'font-size': AXIS_FONT });
-      t.textContent = glabel; svg.appendChild(t);
+      t.textContent = glabel; svg.appendChild(t); axisLabels.push(t);
       if (opts.stacked) {
         var x = cx - barW / 2, acc = 0;
         series.forEach(function (s, si) {
@@ -453,6 +469,7 @@
         });
       }
     });
+    thinAxisLabels(axisLabels, band);
     drawValueLabels(svg, labels, labelRoom, labelFont);
     enableDragReveal(svg);
     // 見込み(opacity付き)の重畳シリーズは、実績シリーズと同色で凡例上は見分けが
@@ -501,11 +518,12 @@
     var fmtLabel = labelFmt(scale, opts.totalFmt || opts.valueFmt || fmtCompact);
     var labels = [];
     function colorFor(s, si, bi) { return (typeof s.color === 'function' ? s.color(bi) : s.color) || seriesColor(si); }
+    var clusterLabels = [];
     groups.forEach(function (glabel, ci) {
       var clusterCx = padL + clusterBand * ci + clusterBand / 2;
       var groupInnerW = barW * clusterSize + innerGap * (clusterSize - 1);
       var t = svgEl('text', { x: clusterCx, y: h - (showSubLabels ? 26 : 12), 'text-anchor': 'middle', fill: ink.muted(), 'font-size': AXIS_FONT, 'font-weight': 600 });
-      t.textContent = glabel; svg.appendChild(t);
+      t.textContent = glabel; svg.appendChild(t); clusterLabels.push(t);
       for (var k = 0; k < clusterSize; k++) {
         var bi = ci * clusterSize + k;
         var bx = clusterCx - groupInnerW / 2 + k * (barW + innerGap);
@@ -533,6 +551,7 @@
         if (showTotals && acc > 0) labels.push({ x: bx + barW / 2, y: yat(acc) - 6, text: fmtLabel(acc) });
       }
     });
+    thinAxisLabels(clusterLabels, clusterBand);
     drawValueLabels(svg, labels, barW + innerGap, 10.5);
     enableDragReveal(svg);
     if (!opts.hideLegend && series.length >= 2) legend(container, series.map(function (s, si) { return { label: s.name, color: (typeof s.color === 'function' ? s.color(0) : s.color) || seriesColor(si) }; }));

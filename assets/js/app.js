@@ -103,11 +103,28 @@
   // 緑（--series-3）は「固定化率」の線（--cat-repeat）と並ぶため最後に回し、灰色
   // （--series-7）は「お店全体」「先月」に使うので割り当てない。
   var STAFF_EXTRA = ['--series-4', '--series-6', '--series-5', '--series-9', '--series-8', '--series-3'];
+  // 割り当ての順は、そのスタッフの最初の記録の日付順（同じ日なら名前順）。データの行の
+  // 並び（新しい予約が上に来る）で決めると、予約が入るたびに色が入れ替わってしまうため。
+  // 新しく入った方は最後に加わるので、それまでのスタッフの色は変わらない。
+  var extraOrderMemo = { A: null, list: [] };
+  function extraStaffOrder() {
+    var A = state.analytics;
+    if (extraOrderMemo.A === A) return extraOrderMemo.list;
+    var names = (A && A.meta && A.meta.staffNames) || [], first = {};
+    (state.data || []).forEach(function (r) {
+      var d = r && r.date ? String(r.date) : '';
+      if (d && r.staff && (first[r.staff] == null || d < first[r.staff])) first[r.staff] = d;
+    });
+    var list = names.filter(function (n) { return !STAFF_COLOR[n]; }).sort(function (a, b) {
+      var fa = first[a] || '9999', fb = first[b] || '9999';
+      return fa < fb ? -1 : fa > fb ? 1 : (a < b ? -1 : a > b ? 1 : 0);
+    });
+    extraOrderMemo = { A: A, list: list };
+    return list;
+  }
   function staffToken(name) {
     if (STAFF_COLOR[name]) return STAFF_COLOR[name];
-    var names = (state.analytics && state.analytics.meta && state.analytics.meta.staffNames) || [];
-    var others = names.filter(function (n) { return !STAFF_COLOR[n]; });
-    var i = others.indexOf(name);
+    var i = extraStaffOrder().indexOf(name);
     return i === -1 ? '--series-6' : STAFF_EXTRA[i % STAFF_EXTRA.length];
   }
   // Per-staff monotonic ordinal ramp (new -> 2nd -> 3rd -> 4th+), same identity
@@ -346,6 +363,10 @@
   }
   // 目標の達成率（%表示）。100%に届いていないのに四捨五入で「100%」と出さない。
   function achPct(frac) { var v = Math.round(frac * 100); return frac < 1 ? Math.min(v, 99) : v; }
+  // 達成の割合は、画面に出す円単位の金額どうしで計算する。税抜換算（÷1.1 の合計）や
+  // 税込換算（×1.1）の浮動小数の誤差で、実績と目標が同じ金額なのに 0.9999… になり
+  // 「99%」・閉じないリングになるのを防ぐ。
+  function achFrac(amount, goal) { var g = Math.round(goal); return g > 0 ? Math.round(amount) / g : 0; }
   function secH(title, sub, link) {
     return '<div class="sec-h"><h2>' + title + '</h2>' + (link || (sub ? '<span class="sec-sub">' + sub + '</span>' : '')) + '</div>';
   }
@@ -363,6 +384,8 @@
     var t = state.targets;
     // 連携が外れた後に遅れて届いた「目標」を、サンプルデータの上に出さない
     if (!state.sheetUrl && !state.sheetUrlKaikei) return null;
+    // 連携先のデータを読めずサンプルデータを表示しているあいだは、実際の目標を重ねない
+    if (state.source === 'サンプルデータ') return null;
     if (!t || t.status !== 'ok' || !t.parsed || !global.KATE.targets) return null;
     return global.KATE.targets.pick(t.parsed, ym, who, state.taxExcluded ? 0.1 : 0);
   }
@@ -393,6 +416,12 @@
     if (scroller && act && scroller.scrollWidth > scroller.clientWidth) {
       scroller.scrollLeft = Math.max(0, act.offsetLeft - (scroller.clientWidth - act.offsetWidth) / 2);
     }
+    // キーボードでフォーカスを移したとき、一部だけ見えているボタンは行の中で全体が見える位置へ
+    // （ブラウザは、少しでも見えている要素へのフォーカスでは横にスクロールしない）
+    if (scroller) seg.addEventListener('focusin', function (e) {
+      var b = e.target.closest && e.target.closest('button[data-k]');
+      if (b && scroller.scrollWidth > scroller.clientWidth) b.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
     seg.addEventListener('click', function (e) {
       var b = e.target.closest('button[data-k]'); if (!b || b.classList.contains('active')) return;
       var k = b.dataset.k, hadFocus = seg.contains(document.activeElement);
@@ -412,6 +441,20 @@
       ? 'データに今日より後の予約が入っていないため、予約込みの見込みは出せません（予約データを出力する期間に、これからの日付を含めてください）。'
       : '会計明細には予約が含まれないため、予約込みの見込みは出せません（予約データを連携すると表示されます）。';
   }
+  // 累計グラフの線の説明。実際に描く線（予約込み・目標ペース・先月は条件しだい）だけを書く。
+  function cumLegendText(tracked, hasTgt, hasPrev) {
+    var parts = ['実線が今月の実績'];
+    if (tracked) parts.push(hasTgt ? '同じ色の点線が予約込み' : '点線が予約込み');
+    if (hasTgt) parts.push(tracked ? '別の色の点線が目標ペース' : '点線が目標ペース');
+    if (hasPrev) parts.push('灰色が先月');
+    return 'グラフは日ごとの累計で、' + parts.join('、') + 'です。';
+  }
+  // 割合の%表示（担当の割合など）。0%と100%は、本当に0・1のときだけ出す。
+  function sharePct(frac) {
+    var v = Math.round(frac * 100);
+    if (frac > 0 && frac < 1) v = Math.min(Math.max(v, 1), 99);
+    return v + '%';
+  }
   function monthCard(m, o) {
     var cur = m.cur, ps = m.prevSame, pf = m.prevFull, hasPrev = pf.visits > 0;
     var tgt = targetFor(m.ym, o.who), tracked = bookedTracked(m);
@@ -420,7 +463,7 @@
       ? '<div class="hc-line">先月の同じ時期より ' + delta(cur.rev, ps.rev, 'yen') + '</div>' +
         '<div class="hc-line muted">先月 ' + mdJa(m.prevYm, 1) + '〜' + mdJa(m.prevYm, m.prevDay) + '：' + yen(ps.rev) + '</div>'
       : '<div class="hc-line muted">先月のデータがありません</div>';
-    if (o.share != null) lines += '<div class="hc-line">お店の今月の売上のうち <b>' + pct(o.share * 100, 0) + '</b> を担当</div>';
+    if (o.share != null) lines += '<div class="hc-line">お店の今月の売上のうち <b>' + sharePct(o.share) + '</b> を担当</div>';
     // 会計明細だけ（予約が記録されていない）なら「残りの予約 0件・¥0」とは書かない
     var rows = tracked
       ? hcRow('予約込みの見込み', yen(m.withBooked)) + hcRow(monthJa(m.ym) + 'の残りの予約', F.int(m.booked.count) + '件・' + yen(m.booked.rev))
@@ -430,14 +473,14 @@
       var pace = Math.round(tgt.amount * m.day / m.daysInMonth), gap = Math.round(cur.rev) - pace;
       rows += hcRow('今月の目標' + (tgt.source === 'default' ? '（毎月の目標）' : ''), yen(tgt.amount)) +
         (tracked
-          ? hcRow('達成率（実績 ／ 予約込み）', achPct(cur.rev / tgt.amount) + '% ／ ' + achPct(m.withBooked / tgt.amount) + '%')
-          : hcRow('達成率（実績）', achPct(cur.rev / tgt.amount) + '%')) +
+          ? hcRow('達成率（実績 ／ 予約込み）', achPct(achFrac(cur.rev, tgt.amount)) + '% ／ ' + achPct(achFrac(m.withBooked, tgt.amount)) + '%')
+          : hcRow('達成率（実績）', achPct(achFrac(cur.rev, tgt.amount)) + '%')) +
         hcRow('目標ペース（' + m.day + '日目の目安 ' + yen(pace) + '）', '<span class="dlt ' + (gap >= 0 ? 'up' : 'down') + '">' + (gap >= 0 ? '＋' : '−') + yen(Math.abs(gap)) + '</span>');
     }
     if (hasPrev) rows += hcRow('先月（' + monthJa(m.prevYm) + '）の売上', yen(pf.rev));
     return '<div class="hc" style="--hc-color:' + o.color + inkStyle(o.color, o.ink) + '" data-kpi="' + esc(o.kpi) + '">' +
       '<div class="hc-h"><span class="hc-ico">' + svgIco(o.icon) + '</span><span class="hc-t">' + o.title + '</span>' +
-      help(o.helpText + (tracked ? '' : '（' + noBookingReason() + '）')) + '</div>' +
+      help(o.helpText + cumLegendText(tracked, !!tgt, hasPrev) + (tracked ? '' : noBookingReason())) + '</div>' +
       '<div class="hc-main"><div class="hc-nums"><div class="hc-value">' + yenHtml(cur.rev) + '</div>' + lines + '</div>' + ring + '</div>' +
       '<div class="hc-chart chart-box" id="' + o.id + 'Cum"></div>' +
       '<div class="hc-foot">' + rows + '</div></div>';
@@ -445,7 +488,7 @@
   function drawMonthCard(m, o) {
     var tgt = targetFor(m.ym, o.who), tracked = bookedTracked(m);
     if (tgt) draw(o.id + 'Ring', function (el) {
-      var ach = m.cur.rev / tgt.amount, withB = m.withBooked / tgt.amount;
+      var ach = achFrac(m.cur.rev, tgt.amount), withB = achFrac(m.withBooked, tgt.amount);
       C.ring(el, { value: ach, extra: tracked ? withB : null, color: o.ringColor || cvar('--cat-goal'), size: 100,
         label: achPct(ach) + '%', sub: '目標', aria: '目標の達成率 ' + achPct(ach) + '%' + (tracked ? '（予約込み ' + achPct(withB) + '%）' : '') });
     });
@@ -559,6 +602,9 @@
     var last = st.monthly.filter(function (x) { return x.actual > 0 && x.m < state.analytics.meta.currentYm; }).slice(-1)[0];
     return '<div class="next-hint hint-good">' + svgInline('star') + ' <b>' + (last ? monthJa(last.m) : mo) + 'は自己ベストを更新しました</b>：' + out.join('・') + '</div>';
   }
+  // 来店周期（お店全体の中央値）。別の日に2回来店した方がいないときは null（周期が無い）。
+  function cycleValue(d) { return d == null ? '—' : F.int(d) + '<span class="u">日</span>'; }
+  function cycleSub(d) { return d == null ? '別の日に2回来店した方がまだいません' : '来店の間隔の中央値'; }
   function svgInline(name) { return '<span style="display:inline-block;width:18px;height:18px;vertical-align:-3px;color:var(--good-ink)">' + svgIco(name) + '</span>'; }
 
   function renderHome() {
@@ -571,7 +617,7 @@
     var storeCol = secH('お店の今月', esc(mdJa(m.ym, 1) + '〜' + mdJa(m.ym, m.day))) +
       '<div class="stack">' +
       monthCard(m, { id: 'hStore', who: 'store', title: 'お店の売上（実績）', icon: 'store', color: 'var(--cat-store)', kpi: 'home-store-revenue',
-        helpText: '今月1日〜集計基準日までの会計済み売上（実績）。「先月の同じ時期」は先月の1日〜同じ日までの実績です（曜日の並びは月で違うため目安です）。「予約込み」は実績に、今月これから来店予定の受付待ちの予約金額を足したもの。グラフは日ごとの累計で、実線が今月の実績、点線が予約込み、灰色が先月です。目標はスプレッドシートの「目標」タブから読み込みます。' }) +
+        helpText: '今月1日〜集計基準日までの会計済み売上（実績）。「先月の同じ時期」は先月の1日〜同じ日までの実績です（曜日の並びは月で違うため目安です）。「予約込み」は実績に、今月これから来店予定の受付待ちの予約金額を足したもの。目標はスプレッドシートの「目標」タブから読み込みます。' }) +
       monthTiles(m, 'home-store') + '</div>';
 
     var meCol = null;
@@ -693,7 +739,7 @@
           help: '来店されたお客様1人あたりの累計売上（実績）。「予測」は今の客単価が続くと仮定し、1回〜5回到達率の合計（期待来店回数）を掛けた見込み。',
           value: yenHtml(s.ltv.current), sub: '予測 ' + yen(s.ltv.predicted) + '（期待来店 ' + s.ltv.expectedVisits + '回）' }) +
         tile({ icon: 'clock', color: 'var(--cat-new)', label: '来店周期', kpi: 'store-cycle',
-          help: '同じお客様の来店と来店の間隔（日数）の中央値。', value: F.int(s.visitCycleMedianDays) + '<span class="u">日</span>', sub: '来店の間隔の中央値' }) +
+          help: '同じお客様の来店と来店の間隔（日数）の中央値。同じ日の2件目は間隔に数えません。', value: cycleValue(s.visitCycleMedianDays), sub: cycleSub(s.visitCycleMedianDays) }) +
         '</div></div>';
       html += card({
         col: 'col-12', title: '月ごとの数字' , icon: 'yen', color: 'var(--cat-sales)',
@@ -741,7 +787,7 @@
       var fLast = s.funnel[s.funnel.length - 1] || { n: 1 };
       html += card({
         col: 'col-5', title: '定着・リピート', icon: 'repeat', color: 'var(--cat-repeat)',
-        sub: '来店されたお客様 ' + F.int(s.customers) + '人が母数。来店周期の中央値 <b>' + s.visitCycleMedianDays + '日</b>',
+        sub: '来店されたお客様 ' + F.int(s.customers) + '人が母数。来店周期の中央値 <b>' + (s.visitCycleMedianDays == null ? '—（別の日に2回来店した方がまだいません）' : s.visitCycleMedianDays + '日') + '</b>',
         body: '<div class="cell-list"><div id="mRepeat" data-kpi="repeat-rate"></div><div id="mNext" data-kpi="next-reserve-rate"></div><div id="mFix" data-kpi="fixation-rate"></div></div>'
       });
       html += card({
@@ -914,9 +960,12 @@
   // 40件と75件のように食い違って見えていた。ここでは期間を必ず見出しに書く。
   function renderStaff() {
     var A = state.analytics, names = A.meta.staffNames;
+    // 自動で決めた表示（あなた／あなたがいなければ比較）は state.staffSel に記憶しない。
+    // 起動直後はサンプルデータで1度描くため、そこで「比較」を記憶すると、連携したシートに
+    // だけいる「あなた」（新しく入った方など）のデータが届いても比較のままになっていた。
+    // 記憶するのは、利用者が上の切り替えで選んだときだけ。
     var sel = state.staffSel;
     if (sel !== '__compare' && names.indexOf(sel) === -1) sel = currentMe() || '__compare';
-    state.staffSel = sel;
     var segItems = names.map(function (n) { return [n, n]; }).concat([['__compare', '比較']]);
     var head = '<div class="view-title">スタッフ</div><div class="view-lead">' +
       (sel === '__compare' ? 'スタッフの数字を同じ物差し（直近3ヶ月）で並べています。' : esc(sel) + ' の数字です。期間はそれぞれの見出しに書いてあります。') +
@@ -1220,9 +1269,9 @@
         : tile({ icon: 'reservations', color: 'var(--cat-visits)', label: '次の予約あり', value: F.int(upcoming) + '<span class="u">人</span>', sub: r.total ? '来店されたお客様の ' + pct(upcoming / r.total * 100, 0) : '' ,
             help: 'これからの来店予定（受付待ち・集計基準日より後）の予約が入っているお客様。' })) +
       tile({ icon: 'phone', color: 'var(--cat-sales)', label: '呼び戻し候補', value: F.int(r.callbackCount) + '<span class="u">人</span>', sub: noBook ? '周期を過ぎた方（予約の有無は不明）' : '周期を過ぎて、次の予約なし',
-        help: '最終来店からの日数が、そのお客様の来店周期（来店2回以上の方は本人の間隔の中央値、1回の方はお店全体の中央値。同じ日の2件目は間隔に数えません）の1.5倍を超えていて、<b>これからの予約が入っていない</b>お客様。すでに次の予約が入っている方は、周期を過ぎていても候補に入れません。' +
+        help: '最終来店からの日数が、そのお客様の来店周期（来店2回以上の方は本人の間隔の中央値、1回の方はお店全体の中央値。同じ日の2件目は間隔に数えません。お店全体でも別の日に2回来店した方がまだいないときは、周期が無いので判定しません）の1.5倍を超えていて、<b>これからの予約が入っていない</b>お客様。すでに次の予約が入っている方は、周期を過ぎていても候補に入れません。' +
           (noBook ? '<br>いまのデータは' + noBookWhy + '。そのため、すでに次の予約を入れている方を見分けられず、周期を過ぎた方をすべて候補にしています。' : '') }) +
-      tile({ icon: 'clock', color: 'var(--cat-new)', label: '来店周期', value: F.int(A.store.visitCycleMedianDays) + '<span class="u">日</span>', sub: '来店の間隔の中央値' }) +
+      tile({ icon: 'clock', color: 'var(--cat-new)', label: '来店周期', value: cycleValue(A.store.visitCycleMedianDays), sub: cycleSub(A.store.visitCycleMedianDays) }) +
       '</div>';
 
     html += secH('9つのグループ' + help('R（最終来店からの日数）・F（来店回数）をそれぞれ5段階の点数にして、その組み合わせでグループを決めます（区分の境目は元のKPIワークブックの固定値）。行をタップすると、平均の R・F・M が開きます。'), '価値の高い順');
@@ -1278,6 +1327,9 @@
       toggleBtn.classList.toggle('accent', on);
       toggleBtn.setAttribute('aria-pressed', on);
       buildRfmTable();
+      // 絞り込みを切り替えたら、表の中のスクロールは先頭へ（前の一覧の途中から始まらないように）
+      var wrap = $('#rfmTable') && $('#rfmTable').closest('.table-wrap');
+      if (wrap) wrap.scrollTop = 0;
     }
     toggleBtn.addEventListener('click', function () { setCallbackOnly(!rfmCallbackOnly); });
     var showCb = $('#rfmShowCallback');
@@ -1310,25 +1362,33 @@
           ? '「周期超過」＝最終来店からの日数が、そのお客様の来店周期の1.5倍を超えている方。会計明細だけのデータでは次の予約の有無が見えないため、予約が入っている方も含みます。それ以外は本人の来店周期の目安を表示。'
           : '「対象」＝最終来店からの日数が、そのお客様の来店周期の1.5倍を超えていて、これからの予約が無い方。「予約」＝次の予約が入っている方（日付つき）。それ以外は本人の来店周期の目安を表示。' }
     ];
+    // 見出しは列見出し（th）のまま並べ替えの状態（aria-sort）を持ち、並べ替えは中の <button> で行う。
+    // 説明（ⓘ）のボタンは並べ替えのボタンの外に置く（ボタンの中にボタンを入れない）。
     var thead = '<thead><tr>' + cols.map(function (c) {
-      return '<th data-k="' + c.k + '" tabindex="0" role="button" aria-label="' + c.label + (c.unit ? ' ' + c.unit : '') + 'で並べ替え"' +
+      return '<th scope="col" data-k="' + c.k + '"' +
         (rfmSort.key === c.k ? ' aria-sort="' + (rfmSort.dir > 0 ? 'ascending' : 'descending') + '" class="sorted' + (rfmSort.dir > 0 ? ' asc' : '') + '"' : '') + '>' +
-        c.label + (c.unit ? ' <span class="th-unit">' + c.unit + '</span>' : '') + (c.help ? help(c.help) : '') + '</th>';
+        '<button type="button" class="th-sort" aria-label="' + c.label + (c.unit ? ' ' + c.unit : '') + 'で並べ替え">' +
+        c.label + (c.unit ? ' <span class="th-unit">' + c.unit + '</span>' : '') + '</button>' + (c.help ? help(c.help) : '') + '</th>';
     }).join('') + '</tr></thead>';
     var tbody = '<tbody>' + rows.map(function (c) {
       var col = cvar(SEG_COLOR[c.seg] || '--series-6');
       var cb = c.callback ? '<span class="chip down">' + (noBook ? '周期超過' : '対象') + '</span>'
         : c.hasUpcoming ? '<span class="chip info">予約 ' + esc(mdJa(c.nextBooking.slice(0, 7), +c.nextBooking.slice(8, 10))) + '</span>'
-        : '<span class="note-inline">目安 ' + c.ownCycle + '日</span>';
+        : '<span class="note-inline">' + (c.ownCycle == null ? '周期なし' : '目安 ' + c.ownCycle + '日') + '</span>';
       return '<tr><td>' + esc(c.name) + '</td><td>' + c.R + '</td><td>' + c.F + '</td><td><span class="full-num">' + F.int(c.M) + '</span><span class="compact-num">' + F.compact(c.M) + '</span></td>' +
         '<td style="text-align:left"><span class="seg-tag"><i style="background:' + col + '"></i>' + esc(c.seg) + '</span></td>' +
         '<td style="text-align:left">' + cb + '</td></tr>';
     }).join('') + '</tbody>';
     var table = $('#rfmTable'); table.innerHTML = thead + tbody;
-    Array.prototype.forEach.call(table.querySelectorAll('th'), function (th) {
-      function sort() { var k = th.dataset.k; if (rfmSort.key === k) rfmSort.dir *= -1; else { rfmSort.key = k; rfmSort.dir = k === 'name' ? 1 : -1; } buildRfmTable(); var nth = document.querySelector('#rfmTable th[data-k="' + k + '"]'); if (nth) nth.focus(); }
-      th.addEventListener('click', sort);
-      th.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); } });
+    Array.prototype.forEach.call(table.querySelectorAll('th[data-k] .th-sort'), function (btn) {
+      btn.addEventListener('click', function () {
+        var k = btn.closest('th').dataset.k;
+        if (rfmSort.key === k) rfmSort.dir *= -1; else { rfmSort.key = k; rfmSort.dir = k === 'name' ? 1 : -1; }
+        buildRfmTable();
+        // 描き直した同じ列の並べ替えボタンへフォーカスを戻す（k は固定の列名なのでセレクタに使える）
+        var nb = document.querySelector('#rfmTable th[data-k="' + k + '"] .th-sort');
+        if (nb) nb.focus({ preventScroll: true });
+      });
     });
   }
 
@@ -1427,7 +1487,7 @@
         '</div>';
     }
     html += card({
-      col: 'col-12', title: '年商' + taxTagD + help('選んだ期間の「会計済み売上（実績）」の合計。既定は基準日の年の1月1日〜12月31日で、年のボタンや開始・終了日で任意の期間に絞り込めます。受付待ちの予約がある期間では、その見込み額と合計見込みも下に併記します。施術売上＝売上－店販売上。営業日数＝会計が1件以上あった日数。平均月間売上＝売上÷会計のあった月数、平均日間売上＝売上÷営業日数（どちらも「お店」タブ（売上・予約）の「月ごとの数字」と同じ分母なので、休業日や未来の月で薄まりません）。金額は税抜。'),
+      col: 'col-12', title: '年商' + taxTagD + help('選んだ期間の「会計済み売上（実績）」の合計。既定は基準日の年の1月1日〜12月31日で、年のボタンや開始・終了日で任意の期間に絞り込めます。受付待ちの予約がある期間では、その見込み額と合計見込みも下に併記します。施術売上＝売上－店販売上。営業日数＝会計が1件以上あった日数。平均月間売上＝売上÷会計のあった月数、平均日間売上＝売上÷営業日数（どちらも「お店」タブ（売上・予約）の「月ごとの数字」と同じ分母なので、休業日や未来の月で薄まりません）。' + (state.taxExcluded ? '金額は税抜。' : '金額は税込。')),
       sub: '既定は1月1日〜12月31日。期間は下のボタン・日付で絞り込めます',
       body: '<div id="annualCard">' +
         '<div class="note-inline" id="annualPeriod" style="margin-bottom:10px"></div>' +
@@ -1444,7 +1504,7 @@
         '</div>'
     });
     html += card({
-      col: 'col-12', title: '予約状況（日別）' + taxTagD + help('集計基準日までの過去30日は「会計済みの売上（実績）と客数」、基準日の翌日からの30日は「受付待ちの予約金額（見込み）と予約件数」を、地続きの1つのカレンダーで表示。店販売上がある日は売上の下に（ ）で店販売上金額を併記。未来の日は枠線で区別しています。土曜は青、日曜は赤、最新日（基準日）はアクセント枠。金額は税抜。'),
+      col: 'col-12', title: '予約状況（日別）' + taxTagD + help('集計基準日までの過去30日は「会計済みの売上（実績）と客数」、基準日の翌日からの30日は「受付待ちの予約金額（見込み）と予約件数」を、地続きの1つのカレンダーで表示。店販売上がある日は売上の下に（ ）で店販売上金額を併記。未来の日は枠線で区別しています。土曜は青、日曜は赤、最新日（基準日）はアクセント枠。' + (state.taxExcluded ? '金額は税抜。' : '金額は税込。')),
       sub: '過去30日の実績（人）＋ 今後1ヶ月の予約（件）　※（ ）内は店販売上',
       body: dailyRevGrid(A.store.dailyRevenue.concat(A.store.upcomingReservations))
     });
@@ -1725,6 +1785,16 @@
   }
 
   // ---- 月の売上目標（targets.js）: 状態表示と書き方 -------------------------
+  // 「目標」タブの取得エラー（sheets.js の文言）→ 短い原因（句点なし）
+  function targetsErrCause(msg) {
+    msg = String(msg || '');
+    var code = /HTTP (\d{3})/.exec(msg);
+    if (code) return '通信エラー HTTP ' + code[1];
+    if (/遮断/.test(msg)) return '接続が遮断されました';
+    if (/CSVを取得できません/.test(msg)) return '表ではなく別のページが返されました';
+    if (/拒否/.test(msg)) return '読み取りが拒否されました';
+    return '取得に失敗しました';
+  }
   function targetsStatusHtml() {
     var t = state.targets || {}, link = state.sheetUrl || state.sheetUrlKaikei;
     var ok = function (msg) { return '<span class="status-line" style="color:var(--status-good)"><i style="background:var(--status-good)"></i>' + msg + '</span>'; };
@@ -1739,8 +1809,9 @@
     }
     if (t.status === 'loading') return '「目標」タブを読み込み中…';
     if (t.status === 'unsupported') return warn('連携URLが「ウェブに公開」形式のため、「目標」タブを指定して読めません。通常の編集URL（<code>/spreadsheets/d/…/edit</code>）で連携すると読めるようになります。');
-    // 同じファイルの予約データは読めているので、共有設定ではなく一時的な通信の問題のことが多い
-    if (t.status === 'error') return warn('「目標」タブを読み込めませんでした：' + esc(t.message || '') + '。一時的な通信の問題のことがあります。次の自動更新か「今すぐ更新」で、もう一度読み込みます。');
+    // 目標は、同じファイルのデータ本体を読めた後にだけ読む。共有設定は合っているので、
+    // sheets.js の「共有設定をご確認ください」などの案内はここでは出さない（原因だけ短く）。
+    if (t.status === 'error') return warn('「目標」タブを読み込めませんでした（' + esc(targetsErrCause(t.message)) + '）。同じファイルの' + slotMeta(state.sheetUrl ? 'yoyaku' : 'kaikei').label + 'は読めているため、一時的な問題のことがあります。次の自動更新か「今すぐ更新」で、もう一度読み込みます。');
     if (t.status === 'missing') {
       var why = {
         'wrong-sheet': '「目標」という名前のタブが見つかりません',
@@ -1764,7 +1835,7 @@
       if (P.conflicts && P.conflicts.length) notes.push(warn('同じ相手の目標の列が2つあり、金額が違います（' + esc(P.conflicts.map(function (c) { return c.row + '行目：' + c.labels.join('・'); }).join('／')) + '）。左側の列の金額を使っています。'));
       if (P.ignored && P.ignored.length) notes.push('「お店」の列があるため、「' + esc(P.ignored.join('」「')) + '」の列はお店の目標として使っていません。');
       if (P.unknown && P.unknown.length) notes.push(warn('スタッフ名と一致しない列は無視しました：' + esc(P.unknown.join('・'))));
-      if (t.lastError) notes.push(warn('最新の「目標」タブを読み込めなかったため（' + esc(t.lastError) + '）、' + esc(ymdhmJa(t.fetchedAt)) + 'に読み込んだ目標を表示しています。次の自動更新でもう一度読み込みます。'));
+      if (t.lastError) notes.push(warn('最新の「目標」タブを読み込めなかったため（' + esc(targetsErrCause(t.lastError)) + '）、' + esc(ymdhmJa(t.fetchedAt)) + 'に読み込んだ目標を表示しています。次の自動更新でもう一度読み込みます。'));
       // 目標の行が1つも読めなかったときは「読み込み済み」の緑にしない
       var head = P.rowsRead
         ? ok('読み込み済み（' + esc(ymdhmJa(t.fetchedAt)) + '）。' + esc(monthJa(ym)) + 'の目標：' + parts.join('・') + (state.taxExcluded ? '（税抜）' : '（税込）'))
@@ -2017,9 +2088,14 @@
     return best;   // 20260809 形式の数値 / データが無ければ null
   }
   function ymdNumJa(n) { var s = String(n); return +s.slice(0, 4) + '年' + (+s.slice(4, 6)) + '月' + (+s.slice(6, 8)) + '日'; }
+  // 連携の世代。リセット・連携解除のたびに進める。読み込み中だった応答が後から届いても、
+  // 世代が変わっていれば捨てる（解除したはずの連携が、遅れて届いた応答で復活しないように）。
+  var linkGen = { yoyaku: 0, kaikei: 0 };
   function linkSheet(url, slot, opts) {
     opts = opts || {};
     if (!url) return;
+    var gen = linkGen[slot];
+    var stale = function () { return gen !== linkGen[slot]; };
     if (!opts.silent) toast('スプレッドシートを読み込み中…');
     var usedKind = null;   // どの経路の内容を採用したか（export / gviz / pub）
     var triedKinds = [], fetched = false, routeErrors = [];
@@ -2029,6 +2105,7 @@
     global.KATE.sheets.fetchAllCsv(url, {
       onAttempt: function (u, kind) { if (kind && triedKinds.indexOf(kind) === -1) triedKinds.push(kind); }
     }).then(function (res) {
+      if (stale()) return;
       if (res.ok.length) fetched = true;   // 取得は成功。ここから先は「中身の解釈」
       // 取れた経路をすべて解釈し、**いちばん新しい内容**を採用する。
       // /export が CORS で読めない環境でも gviz の内容が届き、逆に gviz が古い
@@ -2119,7 +2196,9 @@
       var A = applySources({ preserveInput: true });
       // 月の売上目標は、予約データと同じファイルの「目標」タブから読む（予約データが
       // 無く会計明細だけ連携している場合はそちらのファイル）。データと同じ間隔で読み直す。
-      if (format === 'yoyaku' || !state.sheetUrl) loadTargets();
+      // 予約データ用に保存したURLが会計明細の内容を返した（会計明細に振り分けた）場合も、
+      // 目標を読むファイル（targetsLink）そのものを読めたので、目標を読む。
+      if (format === 'yoyaku' || !state.sheetUrl || url === targetsLink()) loadTargets();
       var reroute = format !== slot ? '（' + slotMeta(format).label + 'の形式を検出したため、そちらに読み込みました）' : '';
       var warn = A.meta.undatedRows ? '（うち' + F.int(A.meta.undatedRows) + '件は日付を読み取れず除外）' : '';
       if (!opts.silent) {
@@ -2142,6 +2221,7 @@
         }
       }
     }).catch(function (err) {
+      if (stale()) return;
       console.warn('sheet load failed', err);
       // silent（起動時の自動読み込み）でも記録して画面に出す。黙って失敗すると
       // サンプルデータのまま表示され、実データだと誤認されるため。
@@ -2159,6 +2239,7 @@
     });
   }
   function unlinkSheet(slot) {
+    linkGen[slot]++;   // 読み込み中だったこの連携の応答は使わない
     if (slot === 'kaikei') { state.sheetUrlKaikei = null; try { localStorage.removeItem('kate-sheet-url-kaikei'); } catch (e) {} }
     else { state.sheetUrl = null; try { localStorage.removeItem('kate-sheet-url'); } catch (e) {} }
     state.sources[slot] = null;
@@ -2166,8 +2247,11 @@
     // 直してください」という消せない警告が、もう存在しない連携について出続ける。
     delete state.sheetErrors[slot];
     applySources();
-    // 目標を読むファイルが変わった（または無くなった）ときだけ、目標を消して読み直す
-    if (!targetsLink()) clearTargets();
+    // 目標を読むファイルが変わった（または無くなった）ときだけ、目標を消して読み直す。
+    // 残った連携のデータを読めていない（サンプルデータ表示の）ときは読まない。データを
+    // 読めた時点で、linkSheet から続けて読み込む。
+    var remain = state.sheetUrl ? 'yoyaku' : 'kaikei';
+    if (!targetsLink() || !state.sources[remain]) clearTargets();
     else if (!state.targets || state.targets.link !== targetsLink()) loadTargets();
     route('data', true); toast(slotMeta(slot).label + 'の連携を解除しました', 'ok');
   }
@@ -2185,6 +2269,7 @@
     }).catch(function (err) { console.error(err); toast('⚠ ' + (err.message || '読み込みに失敗しました'), 'err'); });
   }
   function resetAll() {
+    linkGen.yoyaku++; linkGen.kaikei++;   // 読み込み中だった連携の応答は使わない
     state.sources = { yoyaku: null, kaikei: null };
     state.sheetUrl = null; state.sheetUrlKaikei = null;
     state.sheetErrors = {};   // 連携ごとクリアするので、失敗表示も残さない
@@ -2365,6 +2450,33 @@
   // 入力中の合言葉）が消える。夜間の自動更新の失敗など、ユーザーの操作と無関係な
   // タイミングで再描画が起きても入力を失わないよう、id を持つ入力欄の値と
   // カーソル位置を保存して復元する。
+  // ビューを同じ構造のまま描き直すとき（OSのライト／ダーク切り替え）に、操作中の状態を
+  // 戻す。描き直すとボタンや表が作り直され、フォーカスは <body> に落ち、開いていた
+  // <details> は閉じ、表の中のスクロール位置も先頭に戻ってしまうため。
+  // 同じデータ・同じ構造の描き直しなので、要素は「id」か「ビューの中で何番目か」で対応づける。
+  var FOCUSABLE = 'a[href], button, input, select, textarea, summary, [tabindex]';
+  var SCROLLERS = '.table-wrap, .subnav.seg-scroll';
+  function preserveViewState(fn) {
+    var root = $('#view-' + state.view);
+    if (!root) { preserveInputs(fn); return; }
+    var ae = document.activeElement, focus = null;
+    if (ae && ae !== document.body && root.contains(ae)) {
+      focus = ae.id ? { id: ae.id } : { idx: Array.prototype.indexOf.call(root.querySelectorAll(FOCUSABLE), ae), tag: ae.tagName };
+    }
+    var opened = Array.prototype.map.call(root.querySelectorAll('details'), function (d) { return d.open; });
+    var scrolls = Array.prototype.map.call(root.querySelectorAll(SCROLLERS), function (n) { return [n.scrollTop, n.scrollLeft]; });
+    preserveInputs(fn);
+    root = $('#view-' + state.view);
+    if (!root) return;
+    var ds = root.querySelectorAll('details');
+    if (ds.length === opened.length) Array.prototype.forEach.call(ds, function (d, i) { d.open = opened[i]; });
+    var sc = root.querySelectorAll(SCROLLERS);
+    if (sc.length === scrolls.length) Array.prototype.forEach.call(sc, function (n, i) { n.scrollTop = scrolls[i][0]; n.scrollLeft = scrolls[i][1]; });
+    if (focus && (!document.activeElement || document.activeElement === document.body)) {
+      var t = focus.id ? document.getElementById(focus.id) : root.querySelectorAll(FOCUSABLE)[focus.idx];
+      if (t && (focus.id || t.tagName === focus.tag)) { try { t.focus({ preventScroll: true }); } catch (e) {} }
+    }
+  }
   function preserveInputs(fn) {
     var root = $('#view-' + state.view), snap = [];
     if (root) {
@@ -2581,7 +2693,8 @@
     // OSのライト/ダーク切り替えにリアルタイム追従（チャート色も再描画）
     // 画面の色の一部（スタッフの色・グラフの線）は描くときに実際の色へ置き換えているため、
     // 切り替えたらビューごと描き直す（グラフを描き直すだけでは、見出しの色などが前のテーマのまま残る）。
-    if (mq && mq.addEventListener) mq.addEventListener('change', function (e) { setTheme(e.matches ? 'dark' : 'light'); preserveInputs(renderAll); });
+    // 描き直しても、フォーカス・開いている項目・表の中のスクロール位置は保つ（preserveViewState）。
+    if (mq && mq.addEventListener) mq.addEventListener('change', function (e) { setTheme(e.matches ? 'dark' : 'light'); preserveViewState(renderAll); });
 
     injectNavIcons();
     applySources();   // no sources loaded yet → falls back to the bundled sample data

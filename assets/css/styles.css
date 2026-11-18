@@ -582,6 +582,9 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; min-
 .kate-table th.sorted { color: var(--accent-ink); }
 /* 並べ替えの見出しはスクロールする枠（.table-wrap）の端に接するので、リングは内側に */
 .kate-table th:focus-visible { outline-offset: -3px; }
+/* 並べ替えのボタン（見出しの文字そのもの。見た目は見出しのまま） */
+.kate-table th .th-sort { appearance: none; -webkit-appearance: none; background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; letter-spacing: inherit; line-height: inherit; text-align: inherit; white-space: inherit; word-break: inherit; overflow-wrap: inherit; cursor: pointer; border-radius: 4px; }
+.kate-table th .th-sort:focus-visible { outline-offset: 2px; }
 .kate-table th.sorted::after { content: " ↓"; } .kate-table th.sorted.asc::after { content: " ↑"; }
 .kate-table td { padding: 11px 12px; border-bottom: 0.5px solid var(--border-strong); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .kate-table tbody tr:last-child td { border-bottom: 0; }
@@ -734,11 +737,12 @@ details > summary.sum { cursor: pointer; font-size: 15px; color: var(--accent-in
 @media (prefers-reduced-motion: reduce) {
   .view.active { animation: none; }
   .seg-ratio i { transition: none; }   /* 顧客のグループの割合バー（JS も最終の幅で描く） */
+  .segmented .seg-thumb { transition: none; }   /* 切り替えの白い下地（描き直すたびに左端から滑ってこない） */
 }
 .footer { text-align: center; color: var(--ink-muted); font-size: 13px; padding: 40px 0 12px; line-height: 1.8; }
 .footer b { color: var(--ink-secondary); font-weight: 600; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.status-line { display: inline-flex; align-items: flex-start; gap: 7px; font-size: 14px; font-weight: 500; line-height: 1.55; }
+.status-line { display: inline-flex; align-items: flex-start; gap: 7px; font-size: 14px; font-weight: 500; line-height: 1.55; max-width: 100%; overflow-wrap: anywhere; }
 .status-line i { width: 8px; height: 8px; border-radius: 980px; margin-top: 7px; flex: none; }
 
 /* 補足の灰色文字（どこでも使える） */

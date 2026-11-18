@@ -393,7 +393,7 @@ function pageAudit(opts) {
     await ring(p, scope, 'スタッフ選択（横スクロールの行）', '#staffSeg button');
     await go(p, 'rfm');
     await ring(p, scope, '顧客グループの行（overflow:hidden の中）', '.view.active .ios-list summary');
-    await ring(p, scope, '表の並べ替え見出し（スクロールの中）', '#rfmTable th[data-k]');
+    await ring(p, scope, '表の並べ替え見出し（スクロールの中）', '#rfmTable th[data-k] .th-sort');
     await ring(p, scope, 'カード内のボタン', '#rfmCallbackToggle');
     await go(p, 'data');
     await ring(p, scope, 'URLの入力欄（.sheet-input）', '#sheetUrlYoyaku');
