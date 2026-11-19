@@ -59,7 +59,10 @@
   var NUMERIC = { start: 1, end: 1, dur: 1, yoyakuTotal: 1, payPlanned: 1, kaikeiTotal: 1, usedGift: 1, usedPoint: 1, shohanAmount: 1 };
 
   function clean(s) { return String(s == null ? '' : s).replace(/^﻿/, '').trim(); }
-  function normName(s) { return clean(s).replace(/[\s　]/g, ''); }
+  // 名寄せのキー。NFKC で半角カナ（ﾔﾏﾀﾞ）→全角（ヤマダ）、全角英数→半角にそろえてから
+  // 空白を除く。予約データと会計明細でカナの幅が違うと、同じお客様が別人として
+  // 数えられ、リピート・RFM・2データの結合がずれるため。
+  function normName(s) { return clean(s).normalize('NFKC').replace(/[\s　]/g, ''); }
 
   function isoIf(y, mo, day) {   // return ISO only for a real in-range calendar date
     if (y < 1900 || y > 2200 || mo < 1 || mo > 12 || day < 1 || day > 31) return null;
@@ -434,7 +437,9 @@
     return wb.SheetNames[0];
   }
 
-  var api = { parseFile: parseFile, parseCSV: parseCSV, fromAOA: fromAOA, fromKaikei: fromKaikei, mergeSources: mergeSources, decodeBuffer: decodeBuffer, HEADER_MAP: HEADER_MAP };
+  // isYoyakuHeader / isKaikeiHeader は targets.js が「目標」タブの代わりに1枚目（予約データ・
+  // 会計明細）が返ってきたかの判定に使う（見出しの判定をここ1か所にそろえるため）。
+  var api = { parseFile: parseFile, parseCSV: parseCSV, fromAOA: fromAOA, fromKaikei: fromKaikei, mergeSources: mergeSources, decodeBuffer: decodeBuffer, HEADER_MAP: HEADER_MAP, isYoyakuHeader: isYoyakuHeader, isKaikeiHeader: isKaikeiHeader };
   global.KATE = global.KATE || {};
   global.KATE.ingest = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

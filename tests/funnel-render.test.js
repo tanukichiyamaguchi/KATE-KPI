@@ -76,7 +76,9 @@ async function open(browser, width, height, inject) {
   await page.route('**/assets/js/sample-data.js*', function (route) {
     route.fulfill({ status: 200, contentType: 'text/javascript', body: SAMPLE_JS + inject });
   });
-  await page.goto('http://127.0.0.1:' + server.address().port + '/index.html', { waitUntil: 'networkidle' });
+  await page.goto('http://127.0.0.1:' + server.address().port + '/index.html#overview', { waitUntil: 'networkidle' });
+  // ファネルは「お店」タブの「リピート」区分にある
+  await page.click('#storeSeg button[data-k="repeat"]');
   await page.waitForTimeout(400);
   return { page: page, errors: errors };
 }

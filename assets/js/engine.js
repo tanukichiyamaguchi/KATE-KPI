@@ -217,6 +217,11 @@
     // 母数がこれ未満の月は率を出さない（null＝グラフ上は点を描かない）。
     // 人数そのもの（cohortN/fix2N など）は保持するので、内訳は失われない。
     var MIN_RATE_DENOM = 5;
+    // 目安（オーナー設定の固定値）: リピート率70%・固定化率60%。画面の目安線と
+    // 「次の一手」の判定の両方がこの値を使う（meta.guide として画面に渡す）。
+    var GUIDE = { repeat: 0.7, fix: 0.6 };
+    // 「次の一手」で提案の対象にする率の、最小の分母（人）。
+    var FOCUS_MIN_DENOM = 20;
     function custMature(c) {
       if (hasFuture) return true;
       return !!(c.firstVisitDate && dayDiff(asOf, c.firstVisitDate) >= REPEAT_MATURITY_DAYS);
@@ -327,21 +332,33 @@
       var eff = nextByCust[r.custKey]; if (!eff) return false;
       return eff.some(function (d) { return d > r.date; });
     }
-    var nextReserveCount = visitedRows.filter(function (r) { return r.date && visitGotNext(r); }).length;
-    var nextReserveRate = actualVisits ? nextReserveCount / actualVisits : 0;
+    // これからの予約が無いデータ（会計明細だけ・今日までの予約データ）では、月末から30日
+    // 経っていない月の来店は「次の来店がまだ来ていないだけ」で次回予約なしに数えられる
+    // （右打ち切り）。月ごとの数字・ホームと同じく、その月の来店を分子・分母から除く。
+    // 予約データ（これからの予約あり）では monthImmature が常に false なので値は変わらない。
+    var nextMature = visitedRows.filter(function (r) { return !(r.date && monthImmature(r.ym)); });
+    var nextReserveCount = nextMature.filter(function (r) { return r.date && visitGotNext(r); }).length;
+    var nextReserveDen = nextMature.length;
+    var nextReserveCensored = nextReserveDen < actualVisits;
+    var nextReserveRate = nextReserveDen ? nextReserveCount / nextReserveDen : (nextReserveCensored ? null : 0);
 
     // ---- Visit cycle (median gap between consecutive visits) ----------------
     // Also keep each customer's OWN median gap (for the M27 callback list below) —
     // a customer with only one visit ever has no gap of their own, so they fall
     // back to the store-wide median.
+    // 間隔は「別の日の来店」どうしで測る（0日の間隔は数えない）。同じ日に会計が2件
+    // ある方（まつげとまゆげを別々に予約した場合など）は、0日の間隔が入ると自分の
+    // 周期が0日になり、来店の翌日から「周期超過＝呼び戻し候補」になってしまうため。
     var gaps = [], custOwnCycle = {};
     visitedCusts.forEach(function (c) {
       var v = byCust[c.key].filter(function (r) { return r.isVisited && r.date; }).map(function (r) { return r.date; }).sort(function (a, b) { return a - b; });
       var ownGaps = [];
-      for (var i = 1; i < v.length; i++) { var g = dayDiff(v[i], v[i - 1]); gaps.push(g); ownGaps.push(g); }
+      for (var i = 1; i < v.length; i++) { var g = dayDiff(v[i], v[i - 1]); if (g > 0) { gaps.push(g); ownGaps.push(g); } }
       custOwnCycle[c.key] = ownGaps.length ? median(ownGaps) : null;
     });
-    var visitCycleMedianDays = median(gaps);
+    // 別の日に2回来店した方がまだいない（開店直後・連携したばかり）ときは、周期そのものが無い。
+    // 0日として扱うと、全員が来店の翌日から「周期超過＝呼び戻し候補」になるため null にする。
+    var visitCycleMedianDays = gaps.length ? median(gaps) : null;
 
     // ---- Churn (visited customers with no next effective reservation) -------
     var churned = visitedCusts.filter(function (c) { return c.Fres < 2; });
@@ -414,11 +431,14 @@
         spendActual: vis.length ? Math.round(revActual / vis.length) : null,
         new: newByMonth[mo] || 0,
         cancel: conf.length ? canc.length / conf.length : null,
-        nextRes: vis.length ? nextCnt / vis.length : null
+        // 会計明細のみのデータでは、月末から30日経っていない月の次回予約率は右打ち切り
+        // で0%に寄るため null にする（スタッフの月次推移と同じ扱い。予約データでは無関係）。
+        nextRes: monthImmature(mo) || !vis.length ? null : nextCnt / vis.length,
+        nextResImmature: monthImmature(mo)
       };
     });
 
-    // ---- 直近30日の日次売上（概要タブ・会計済み実績）---------------------------
+    // ---- 直近30日の日次売上（お店タブ・会計済み実績）---------------------------
     // asOf を最終日として過去30日ぶんの「会計済み売上（実績）」と客数（会計件数）を
     // 日別に。受付待ちの見込みは含めない＝確定した実績カレンダー。金額は r.kaikei が
     // 税抜/税込設定を織り込み済みなので、上位の税設定にそのまま追従する。
@@ -562,6 +582,99 @@
     var retailPeriods = retail.hasAmount ? {
       last3: retailBucket(last3Months), prevMonth: retailBucket([prevYm]), currentMonth: retailBucket([currentYm])
     } : null;
+
+    // ---- 今月（月初〜基準日）と「先月の同じ時期」「先月」の比較（ホーム画面用） ----
+    // 「今月はいまどうなっているか」を、先月の同じ日数ぶんと同じ物差しで比べる。
+    //  ・今月       ＝ 基準日(asOf)の月の 1日〜asOf の会計済み（実績のみ）
+    //  ・先月の同じ時期 ＝ 先月の 1日〜同じ日（先月の日数が足りなければ月末まで）
+    //  ・先月       ＝ 先月まるごと（確定）
+    //  ・予約込み   ＝ 今月の実績 ＋ 今月中の受付待ち（基準日より後）の予約金額
+    // 曜日の並びは月ごとに違うため、厳密な同条件ではない（画面の説明に明記する）。
+    // match(r) で行を絞ると、店舗全体にもスタッフ個人にも同じ定義で使える。
+    var asOfDay = asOf.getDate();
+    var curDim = daysInMonth(currentYm), prevDim = daysInMonth(prevYm);
+    var prevCut = Math.min(asOfDay, prevDim);
+    function sliceStats(vis) {
+      var rev = 0, nextN = 0, nextD = 0, newV = 0, retailAmt = 0, days = {};
+      vis.forEach(function (r) {
+        rev += r.kaikei; retailAmt += r.shohanAmt;
+        if (r._ord === 1) newV++;
+        // 次回予約取得率: 会計明細のみ（これからの予約が見えないデータ）では、直近の
+        // 来店は「次の来店がまだ来ていない」だけで0%に寄る（右打ち切り）。スタッフの
+        // 月次推移（staffMonthly）・比較表（avgRecent）と同じく、月末から30日経って
+        // いない月（monthImmature）の来店は分子・分母の両方から外す。予約データでは
+        // monthImmature は常に false なので何も変わらない。
+        if (!monthImmature(r.ym)) { nextD++; if (visitGotNext(r)) nextN++; }
+        days[r.date.getTime()] = 1;   // 日付そのもので数える（複数月をまとめても同じ日を重複させない）
+      });
+      return {
+        rev: rev, visits: vis.length,
+        spend: vis.length ? Math.round(rev / vis.length) : null,     // 実績客単価（会計済み売上 ÷ 来店件数）
+        newVisits: newV,                                             // 新規（その顧客の1回目の来店）
+        nextNum: nextN, nextDen: nextD,
+        nextRate: nextD ? nextN / nextD : null,                      // 次回予約取得率（全体の定義と同じ）
+        nextCensored: nextD < vis.length,                            // 直近の月の来店を「再来待ち」で除いた（会計明細のみ）
+        retail: retailAmt, bizDays: Object.keys(days).length         // 店販売上・営業日数（会計のあった日）
+      };
+    }
+    function monthToDate(match) {
+      var curVis = visitedRows.filter(function (r) { return r.date && r.ym === currentYm && match(r); });
+      var prevAll = visitedRows.filter(function (r) { return r.date && r.ym === prevYm && match(r); });
+      var prevSame = prevAll.filter(function (r) { return r.date.getDate() <= prevCut; });
+      var fut = futureRows.filter(function (r) { return r.date && r.ym === currentYm && match(r); });
+      // 日別の累計（グラフ用）。cur＝実績の累計（基準日まで・以降は null）、
+      // withBooked＝実績＋受付待ちの予約の累計（月末まで）、prev＝先月の実績の累計。
+      var curByDay = {}, bookByDay = {}, prevByDay = {};
+      curVis.forEach(function (r) { var d = r.date.getDate(); curByDay[d] = (curByDay[d] || 0) + r.kaikei; });
+      fut.forEach(function (r) { var d = r.date.getDate(); bookByDay[d] = (bookByDay[d] || 0) + r.yoyaku; });
+      prevAll.forEach(function (r) { var d = r.date.getDate(); prevByDay[d] = (prevByDay[d] || 0) + r.kaikei; });
+      var cumCur = [], cumBook = [], cumPrev = [], acc = 0, accB = 0, accP = 0;
+      for (var d = 1; d <= curDim; d++) {
+        acc += curByDay[d] || 0; accB += (curByDay[d] || 0) + (bookByDay[d] || 0);
+        cumCur.push(d <= asOfDay ? acc : null);
+        cumBook.push(accB);
+      }
+      for (var p = 1; p <= prevDim; p++) { accP += prevByDay[p] || 0; cumPrev.push(accP); }
+      var bookedRev = fut.reduce(function (s, r) { return s + r.yoyaku; }, 0);
+      var cur = sliceStats(curVis);
+      return {
+        ym: currentYm, day: asOfDay, daysInMonth: curDim,
+        prevYm: prevYm, prevDay: prevCut, prevDaysInMonth: prevDim,
+        cur: cur, prevSame: sliceStats(prevSame), prevFull: sliceStats(prevAll),
+        // tracked: データに「これからの予約」が1件でもあるか（全体で判定）。会計明細
+        // だけのデータには予約が入らないため、0件・¥0 を「残りの予約なし」と読ませない。
+        // スタッフ個人が0件なのは本当に0件なので、個人単位ではなく全体で判定する。
+        booked: { rev: bookedRev, count: fut.length, tracked: hasFuture },
+        withBooked: cur.rev + bookedRev,   // 予約込み（実績＋今月中の受付待ち）
+        daily: { cur: cumCur, withBooked: cumBook, prev: cumPrev }
+      };
+    }
+    var storeMonth = monthToDate(function () { return true; });
+
+    // ---- 期間ごとの数字（直近3ヶ月・先月・今月）をひとつの物差しで ----------------
+    // スタッフ画面の「月ごとの数字」表で使う。以前はスタッフカードに「全期間（集計
+    // 途中の今月を含む）」の平均と、比較表の「直近3ヶ月」の平均が同じラベルで並び、
+    // 同じ「平均来店/月」が 40件 と 75件 のように食い違って見えていた。ここでは
+    // 期間を必ず明示し、すべて会計済み（実績）だけで数える。
+    //  ・last3 ＝ 今月を含まない確定3ヶ月（お店の「月ごとの数字」と同じ）。「/月」は来店のあった月数で割る
+    //  ・prev  ＝ 先月（確定）
+    //  ・cur   ＝ 今月の1日〜基準日（集計途中）
+    function periodSummary(match) {
+      function agg(monthList) {
+        var vis = visitedRows.filter(function (r) { return r.date && monthList.indexOf(r.ym) !== -1 && match(r); });
+        var s = sliceStats(vis);
+        var mCount = uniqCount(vis, function (r) { return r.ym; });
+        s.months = mCount;
+        s.revPerMonth = mCount ? Math.round(s.rev / mCount) : null;
+        s.visitsPerMonth = mCount ? round(s.visits / mCount, 1) : null;
+        s.newPerMonth = mCount ? round(s.newVisits / mCount, 1) : null;
+        s.retailPerMonth = mCount ? Math.round(s.retail / mCount) : null;
+        s.revPerDay = s.bizDays ? Math.round(s.rev / s.bizDays) : null;
+        return s;
+      }
+      return { last3Months: last3Months.slice(), last3: agg(last3Months), prev: agg([prevYm]), cur: agg([currentYm]) };
+    }
+    var storePeriods = periodSummary(function () { return true; });
 
     // ---- Cohort (first-visit month → 2nd-visit reach) -----------------------
     // A cohort month whose customers haven't yet had 45 days to return is dropped
@@ -764,23 +877,60 @@
         var lastV = valueFn(list[list.length - 1]);
         return list.slice(0, -1).every(function (r) { return valueFn(r) < lastV; });
       }
+      // 平均単価（客単価）は1件ごとの平均なので、来店が5件未満の月は1〜2件の高額会計で
+      // 「自己ベスト」になってしまう。率と同じく MIN_RATE_DENOM 件以上の月だけで比べる。
+      // 「更新」は直近の確定月そのものが対象になっているときだけ（除外された月を
+      // 飛ばして、もっと前の月を「直近」と扱わない）。
+      var spendMonths = confirmedActive.filter(function (r) { return r.actual >= MIN_RATE_DENOM; });
+      var latestConfirmed = confirmedActive[confirmedActive.length - 1];
       var personalBest = {
         confirmedMonths: confirmedActive.length,
         visits: pickBest(confirmedActive, function (r) { return r.actual; }),
         rev: pickBest(confirmedActive, function (r) { return r.revActual; }),
-        spend: pickBest(confirmedActive, function (r) { return r.spend || 0; }),
+        spend: pickBest(spendMonths, function (r) { return r.spend || 0; }),
         retail: anyRetail ? pickBest(confirmedActive, function (r) { return r.retailAmount || 0; }) : null,   // 月間店販売上（金額）
         latestIsBest: {
           visits: isLatestBest(confirmedActive, function (r) { return r.actual; }),
           rev: isLatestBest(confirmedActive, function (r) { return r.revActual; }),
-          spend: isLatestBest(confirmedActive, function (r) { return r.spend || 0; }),
+          spend: !!latestConfirmed && spendMonths[spendMonths.length - 1] === latestConfirmed && isLatestBest(spendMonths, function (r) { return r.spend || 0; }),
           retail: anyRetail && isLatestBest(confirmedActive, function (r) { return r.retailAmount || 0; })
         }
       };
-      // 育てた常連: customers this staff first served who went on to become regulars
-      // (Fres>=3, reservation-based — see Fres above). A career-cumulative count,
-      // so it deliberately spans all-time, not just the last 3 months.
-      var regulars3 = visitedCusts.filter(function (c) { return c.firstVisitStaff === name && c.Fres >= 3; }).length;
+
+      // 自分の推移（スタッフ画面）: 確定した月（今月を除く）を前半・後半に分けて比べる。
+      // 客単価・次回予約率は「件数で重み付けした平均」（Σ分子 ÷ Σ分母）にし、来店5件
+      // 未満の月は除く（README の「プール平均」と同じ考え方。月ごとの率を単純平均すると、
+      // 来店1件の月が大きな月と同じ重みになり、平均も向きもその1件に引っぱられる）。
+      // 来店/月 は月ごとの件数の平均（件数そのものなので重み付けは不要）。
+      // 対象の月が2ヶ月に満たないときは null（画面は「データを集めています」）。
+      function trendOf(list, numFn, denFn) {
+        if (list.length < 2) return null;
+        function pool(l) {
+          var n = 0, d = 0;
+          l.forEach(function (r) { n += numFn(r); d += denFn(r); });
+          return { num: n, den: d, v: d ? n / d : null };
+        }
+        var all = pool(list);
+        var h = Math.floor(list.length / 2);
+        var ea = pool(list.slice(0, h)).v, la = pool(list.slice(list.length - h)).v;
+        // 前半が0（次回予約率0%など）のときは比率にできないので、後半が上なら上向き
+        var rel = ea ? (la - ea) / Math.abs(ea) : (la > 0 ? 1 : 0);
+        return { avg: all.v, num: all.num, den: all.den, months: list.length, first: list[0].m, last: list[list.length - 1].m,
+          early: ea, late: la, dir: rel > 0.03 ? 'up' : rel < -0.03 ? 'down' : 'flat' };
+      }
+      var sgSpendMonths = confirmedActive.filter(function (r) { return r.res >= MIN_RATE_DENOM; });
+      var sgNextMonths = confirmedActive.filter(function (r) { return r.nextRes != null && r.visN >= MIN_RATE_DENOM; });
+      var selfGrowth = {
+        spend: trendOf(sgSpendMonths, function (r) { return r.rev; }, function (r) { return r.res; }),
+        visits: trendOf(confirmedActive, function (r) { return r.actual; }, function () { return 1; }),
+        nextRes: trendOf(sgNextMonths, function (r) { return r.nextCnt; }, function (r) { return r.visN; })
+      };
+      // 育てた常連: このスタッフが初回を担当し、実際に2回来店して3回目のご予約
+      // （受付待ちを含む・キャンセルは数えない）まで進んだお客様の人数。固定化率の
+      // 分子（Fvis>=2 かつ Fres>=3）と同じ基準。以前は Fres>=3 だけで数えていたため、
+      // 1回来店して予約が2件入っているだけの方まで「常連」に数えていた。
+      // キャリア累計なので、直近3ヶ月に限らず全期間で数える。
+      var regulars3 = visitedCusts.filter(function (c) { return c.firstVisitStaff === name && c.Fvis >= 2 && c.Fres >= 3; }).length;
 
       // 月別リピート率・固定化率の推移（獲得月コホート）。その月にこのスタッフが
       // 初回担当した顧客を母数に、リピート率＝2回目予約到達(Fres>=2)の割合、
@@ -819,16 +969,48 @@
       var reach2Num = acqRecent.filter(function (c) { return c.Fres >= 2; }).length;
       var reach3Num = acqRecent.filter(function (c) { return c.Fres >= 3; }).length;
       var reach4Num = acqRecent.filter(function (c) { return c.Fres >= 4; }).length;
+
+      // 次の一手（伸びしろの提案）: 目安との差がいちばん大きい指標を1つだけ選ぶ。
+      // 対象は「その率の分母」が FOCUS_MIN_DENOM 人以上の指標だけ。以前は画面側で
+      // 「直近3ヶ月の初回担当が20人以上か」しか見ていなかったため、固定化率の分母
+      // （実際に2回来店した人）が1人しかいなくても「常連化が0%」と提案していた
+      // （サンプルの aoi：0人 ÷ 1人）。分母が小さい率は1人の結果で0%や100%に振れる。
+      var focusCands = [], focusPending = [];
+      if (reachDen >= FOCUS_MIN_DENOM) focusCands.push({ key: 'repeat', value: reach2Num / reachDen, target: GUIDE.repeat, num: reach2Num, den: reachDen });
+      else focusPending.push({ key: 'repeat', den: reachDen, need: FOCUS_MIN_DENOM });
+      if (fix2Visit >= FOCUS_MIN_DENOM) focusCands.push({ key: 'fix', value: fix3Reserve / fix2Visit, target: GUIDE.fix, num: fix3Reserve, den: fix2Visit });
+      else focusPending.push({ key: 'fix', den: fix2Visit, need: FOCUS_MIN_DENOM });
+      var focusGap = focusCands.filter(function (c) { return c.target - c.value > 0; })
+        .sort(function (a, b) { return (b.target - b.value) - (a.target - a.value); });
+      // judged＝実際に判定した指標、pending＝分母が足りず判定していない指標。
+      // 「目安を達成」は判定した指標についてだけ言える。リピート率だけ判定できて
+      // 固定化率は分母不足（2回来店した方が20人未満）という状態はよくある（2回目は
+      // 予約が先に入り、実際の来店は数週間あと）ため、そのときは 'met-partial' を返し、
+      // 画面は「固定化率も達成」とは書かない。
+      var judged = focusCands.map(function (c) { return c.key; });
+      // 会計明細のみ（これからの予約が見えない）では、直近に初回だったお客様はまだ
+      // 再来する時間がなく、リピート率・固定化率が実態より大きく低く出る（サンプルの
+      // aoi は 1人 ÷ 69人＝1%）。その数字で「ここが伸びしろ」と提案すると誤った指示に
+      // なるため、提案は出さない（'censored'）。
+      var growthFocus = !hasFuture ? { key: null, reason: 'censored', judged: [], pending: [] }
+        : !focusCands.length ? { key: null, reason: 'insufficient', judged: judged, pending: focusPending }
+        : !focusGap.length ? { key: null, reason: focusPending.length ? 'met-partial' : 'met', judged: judged, pending: focusPending }
+        : { key: focusGap[0].key, value: focusGap[0].value, target: focusGap[0].target, num: focusGap[0].num, den: focusGap[0].den, judged: judged, pending: focusPending };
       return {
         name: name, avg: avg, avgRecent: avgRecent, acquired: acqAll.length, matureAcquired: acqMature.length, acqRecentN: acqRecent.length,
         reach2: reach(2), reach3: reach(3), reach4: reach(4), fixationRate: fixationRate, retail: retail, monthly: mrows, composition: comp,
         // 分母分子（人）: リピート率/育成力ファネル = reachNum/reachDen、固定化率 = fixNumer/fixDenom
         reachDen: reachDen, reach2Num: reach2Num, reach3Num: reach3Num, reach4Num: reach4Num,
         fixDenom: fix2Visit, fixNumer: fix3Reserve,
-        personalBest: personalBest, regulars3: regulars3,
+        personalBest: personalBest, regulars3: regulars3, selfGrowth: selfGrowth,
         revPeriods: periodStats(staffVis),
         utilization: utilizationMonthly(mrows),
-        repeatFixMonthly: repeatFixMonthly
+        repeatFixMonthly: repeatFixMonthly,
+        growthFocus: growthFocus,
+        // ホーム・スタッフ画面用: 今月（月初〜基準日）と先月の同じ時期／先月の比較、
+        // 期間ごとの数字（直近3ヶ月・先月・今月）。店舗全体の store.month / store.periods と同じ定義。
+        month: monthToDate(function (r) { return r.staff === name; }),
+        periods: periodSummary(function (r) { return r.staff === name; })
       };
     });
 
@@ -838,11 +1020,14 @@
     byDow[0] = [];
     var dayOfWeek = [1, 2, 3, 4, 5, 6, 0].map(function (d) {
       var vis = visitedRows.filter(function (r) { return r.dow === d && r.date; });
-      var nextCnt = vis.filter(function (r) { return visitGotNext(r); }).length;
+      // 次回予約率だけは、打ち切りの月（上の nextMature と同じ）の来店を除いて数える
+      var visN = vis.filter(function (r) { return !monthImmature(r.ym); });
+      var nextCnt = visN.filter(function (r) { return visitGotNext(r); }).length;
       var spend = vis.length ? Math.round(vis.reduce(function (s, r) { return s + r.kaikei; }, 0) / vis.length) : 0;
       var acqOnDay = visitedCusts.filter(function (c) { return c.firstVisitDow === d; });
       var ltvDay = acqOnDay.length ? Math.round(acqOnDay.reduce(function (s, c) { return s + c.M; }, 0) / acqOnDay.length) : 0;
-      return { d: WEEK[d], visits: vis.length, nextRes: vis.length ? nextCnt / vis.length : 0, spend: spend, ltv: ltvDay };
+      return { d: WEEK[d], visits: vis.length, nextRes: visN.length ? nextCnt / visN.length : (vis.length ? null : 0),
+        nextNum: nextCnt, nextDen: visN.length, nextCensored: visN.length < vis.length, spend: spend, ltv: ltvDay };
     });
 
     // ---- Trend: monthly cohort (repeat + LTV) -------------------------------
@@ -901,13 +1086,29 @@
     // ---- 呼び戻しリスト (M27・P4-5) --------------------------------------------
     // 最終来店からの経過日数が、本人の来店周期（無ければ店舗全体の中央値）の
     // 1.5倍を超えている顧客に「周期超過」フラグを立てる。
+    // 呼び戻しの対象は「周期超過」かつ「これからの予約（受付待ち・基準日より後）が
+    // 入っていない」お客様。以前は周期超過だけで判定していたため、すでに次の予約を
+    // 入れているお客様まで呼び戻しの候補に出ていた（サンプルでは周期超過144人中1人。
+    // お客様の照合は名前ではなく顧客キー custKey で行う。サンプルは同姓同名の別人が
+    // 多く、名前で数えると18人と過大に出る）。
+    // 周期超過そのもの（cycleOverdue）は従来どおりの意味で残し、予約の有無は
+    // hasUpcoming / nextBooking として別に持たせる。
+    var nextBookingByCust = {};
+    futureRows.forEach(function (r) {
+      var cur = nextBookingByCust[r.custKey];
+      if (r.date && (!cur || r.date < cur)) nextBookingByCust[r.custKey] = r.date;
+    });
     var rfmCusts = visitedCusts.map(function (c) {
       var Rp = rScore(c.R), Fp = fScore(c.Fvis), Mp = mScore(c.M);
       var ownCycle = custOwnCycle[c.key] != null ? custOwnCycle[c.key] : visitCycleMedianDays;
       var cycleOverdue = c.R != null && ownCycle != null && c.R > ownCycle * 1.5;
+      var nb = nextBookingByCust[c.key] || null;
       return {
         name: c.name, R: c.R, F: c.Fvis, M: c.M, Rp: Rp, Fp: Fp, Mp: Mp, seg: segment(Rp, Fp),
-        daysSince: c.R, ownCycle: round(ownCycle, 1), cycleOverdue: cycleOverdue
+        daysSince: c.R, ownCycle: ownCycle == null ? null : round(ownCycle, 1), cycleOverdue: cycleOverdue,
+        hasUpcoming: !!nb,
+        nextBooking: nb ? ym(nb) + '-' + String(nb.getDate()).padStart(2, '0') : null,
+        callback: cycleOverdue && !nb
       };
     }).sort(function (a, b) { return b.M - a.M; });
 
@@ -944,7 +1145,13 @@
         totalRows: rows.length,
         undatedRows: rows.filter(function (r) { return !r.date; }).length,   // rows whose 来店日 couldn't be parsed
         completedOnly: !hasFuture,   // 会計明細など、これからの予約が無い（＝直近月は打ち切り）
+        // 予約の状態（受付待ち・キャンセル）の行がデータにあるか。false＝会計明細だけ
+        // （予約そのものが記録されていない）。completedOnly だが true の場合は、予約データは
+        // あるが今日より後の予約が入っていない（出力した期間が今日までなど）。
+        hasReservationRows: cancel.hasInfo,
         taxExcluded: TAX_RATE > 0, taxRate: TAX_RATE,   // 金額を税抜換算したか（UIの「税抜」表記用）
+        currentYm: currentYm, prevYm: prevYm, last3Months: last3Months.slice(),
+        guide: { repeat: GUIDE.repeat, fix: GUIDE.fix }, minRateDenom: MIN_RATE_DENOM,
         generatedAt: options.now || null
       },
       store: {
@@ -955,17 +1162,18 @@
         avgSpendActual: Math.round(avgSpendActual),
         customers: baseN,
         repeatRate: round(repeatRate * 100, 1), fixationRate: round(fixationRate * 100, 1),
-        nextReserveRate: round(nextReserveRate * 100, 1), visitCycleMedianDays: visitCycleMedianDays,
+        nextReserveRate: nextReserveRate == null ? null : round(nextReserveRate * 100, 1), visitCycleMedianDays: visitCycleMedianDays,
         // 分母・分子（UI 明示用）: リピート率 = 2回予約到達 ÷ 来店客、固定化率 =
         // 実来店2回目&3回予約 ÷ 実来店2回目、次回予約取得率 = 次回確保来店 ÷ 来店。
         repeatNumer: funnel[1] ? funnel[1].people : 0, repeatDenom: baseN,
         fixNumer: fix3Reserve, fixDenom: fix2Visit,
-        nextReserveNumer: nextReserveCount, nextReserveDenom: actualVisits,
+        nextReserveNumer: nextReserveCount, nextReserveDenom: nextReserveDen, nextReserveCensored: nextReserveCensored,
         maturity: { applied: !hasFuture, days: REPEAT_MATURITY_DAYS, matureCustomers: matureN, totalCustomers: baseN },
         funnel: funnel, churn: churn, cancel: cancel, route: route, retail: retail,
         ltv: { current: Math.round(ltv.current), predicted: Math.round(ltv.predicted), expectedVisits: round(ltv.expectedVisits, 2), observedVisits: round(ltv.observedVisits, 2) },
         monthly: monthly, cohort: cohort, visitCountBreakdown: visitCountBreakdown, newMix: newMix, composition: composition, revenueMix: revenueMix, serviceRetailMonthly: serviceRetailMonthly,
         revPeriods: revPeriods, retailPeriods: retailPeriods,
+        month: storeMonth, periods: storePeriods,
         dailyRevenue: dailyRevenue, upcomingReservations: upcomingReservations, dailyAll: dailyAll
       },
       staff: staff,
@@ -974,7 +1182,11 @@
         menuTop: menuTop, nextResMenuRatio: nextResMenuRatio, couponRatio: couponRatio,
         hourDow: hourDow, hourLabels: HOURS.map(function (h) { return h + '時'; })
       },
-      rfm: { total: rfmTotal, segments: segments, map: map, customers: rfmCusts },
+      rfm: {
+        total: rfmTotal, segments: segments, map: map, customers: rfmCusts,
+        callbackCount: rfmCusts.filter(function (c) { return c.callback; }).length,
+        overdueWithBooking: rfmCusts.filter(function (c) { return c.cycleOverdue && c.hasUpcoming; }).length
+      },
       _segmentsMeta: SEGMENTS
     };
   }

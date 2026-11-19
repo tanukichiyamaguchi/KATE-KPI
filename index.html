@@ -5,15 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<meta name="description" content="KATE stage LASH 蒲田西口店 — 予約データを入れるだけで、店舗の状況がひと目でわかるKPIダッシュボード。">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="description" content="KATE stage LASH 蒲田西口店 — お店とスタッフの「今月」がひと目でわかるKPIダッシュボード。">
 <title>KATE stage LASH 蒲田西口店 · KPIダッシュボード</title>
-<link rel="stylesheet" href="assets/css/styles.css?v=1.2.57">
+<link rel="stylesheet" href="assets/css/styles.css?v=1.3.0">
 </head>
 <body>
 <div class="app">
-  <!-- Top bar -->
+  <!-- Navigation bar（iOS のナビゲーションバー：ロゴ・最終読込・税抜／税込） -->
   <header class="topbar">
-    <a class="brand" href="#overview" aria-label="KATE stage LASH 蒲田西口店 ダッシュボード">
+    <a class="brand" href="#home" aria-label="KATE stage LASH 蒲田西口店 ホーム">
       <span class="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 700 300" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
           <path d="M 222 196 C 198 126 250 56 306 62 C 352 67 350 148 296 180 C 266 197 222 191 240 158 C 250 192 262 228 273 264"/>
@@ -22,23 +24,26 @@
       </span>
       <span class="brand-text">
         <span class="wordmark" lang="en" aria-hidden="true"><b>KATE</b><i>stage</i><b>LASH</b></span>
-        <span class="brand-sub">蒲田西口店 ダッシュボード</span>
+        <span class="brand-sub">蒲田西口店</span>
       </span>
     </a>
     <div class="topbar-actions">
-      <span class="asof" id="asof" title="集計基準日"></span>
+      <span class="asof" id="asof" title="この画面がデータを読み込んだ日時"></span>
       <span class="badge-soft badge-data" id="dataBadge"><span class="dot"></span><span id="dataBadgeText">サンプルデータ</span></span>
-      <span class="taxsw" title="金額の税抜・税込を切り替え"><span class="taxsw-lab" id="taxLabelExcl">税抜</span><span class="switch"><input type="checkbox" id="taxToggle" role="switch" aria-label="税込表示に切り替え"><span class="switch-track"><span class="switch-thumb"></span></span></span><span class="taxsw-lab" id="taxLabelIncl">税込</span></span>
+      <div class="taxseg" role="radiogroup" aria-label="金額の表示（税抜・税込）">
+        <button type="button" role="radio" id="taxLabelExcl" aria-checked="true">税抜</button>
+        <button type="button" role="radio" id="taxLabelIncl" aria-checked="false" tabindex="-1">税込</button>
+      </div>
     </div>
   </header>
 
-  <!-- Desktop tabs -->
+  <!-- Desktop tabs（iPad のタブバー風・上部中央） -->
   <div class="tabs-wrap">
     <nav class="tabs" role="tablist" aria-label="ダッシュボード ビュー" id="tabs">
-      <button class="tab active" role="tab" id="tab-overview" data-view="overview" aria-controls="view-overview" aria-selected="true"><span class="t-ico" data-ico="overview"></span>概要</button>
+      <button class="tab active" role="tab" id="tab-home" data-view="home" aria-controls="view-home" aria-selected="true"><span class="t-ico" data-ico="home"></span>ホーム</button>
+      <button class="tab" role="tab" id="tab-overview" data-view="overview" aria-controls="view-overview" aria-selected="false" tabindex="-1"><span class="t-ico" data-ico="store"></span>お店</button>
       <button class="tab" role="tab" id="tab-staff" data-view="staff" aria-controls="view-staff" aria-selected="false" tabindex="-1"><span class="t-ico" data-ico="staff"></span>スタッフ</button>
-      <button class="tab" role="tab" id="tab-trend" data-view="trend" aria-controls="view-trend" aria-selected="false" tabindex="-1"><span class="t-ico" data-ico="trend"></span>傾向</button>
-      <button class="tab" role="tab" id="tab-rfm" data-view="rfm" aria-controls="view-rfm" aria-selected="false" tabindex="-1"><span class="t-ico" data-ico="rfm"></span>顧客 RFM</button>
+      <button class="tab" role="tab" id="tab-rfm" data-view="rfm" aria-controls="view-rfm" aria-selected="false" tabindex="-1"><span class="t-ico" data-ico="rfm"></span>顧客</button>
       <button class="tab" role="tab" id="tab-data" data-view="data" aria-controls="view-data" aria-selected="false" tabindex="-1"><span class="t-ico" data-ico="data"></span>データ</button>
       <span class="tab-underline" id="tabUnderline"></span>
     </nav>
@@ -48,25 +53,25 @@
     <!-- シートを読み込めなかったときの警告。ビューの外に置くことで、タブを
          切り替えても消えず、再描画で入力途中の値を壊すこともない。 -->
     <div id="sheetAlert" role="status" aria-live="polite"></div>
-    <section class="view active" id="view-overview" role="tabpanel" aria-labelledby="tab-overview"></section>
+    <section class="view active" id="view-home" role="tabpanel" aria-labelledby="tab-home"></section>
+    <section class="view" id="view-overview" role="tabpanel" aria-labelledby="tab-overview"></section>
     <section class="view" id="view-staff" role="tabpanel" aria-labelledby="tab-staff"></section>
-    <section class="view" id="view-trend" role="tabpanel" aria-labelledby="tab-trend"></section>
     <section class="view" id="view-rfm" role="tabpanel" aria-labelledby="tab-rfm"></section>
     <section class="view" id="view-data" role="tabpanel" aria-labelledby="tab-data"></section>
   </main>
 
   <footer class="footer">
-    <div><b lang="en">KATE stage LASH</b> 蒲田西口店 · 予約ベースKPIダッシュボード</div>
+    <div><b lang="en">KATE stage LASH</b> 蒲田西口店 · <span class="nowrap">予約ベースKPIダッシュボード</span></div>
     <div>予約データはブラウザ内でのみ処理され、どこにも送信されません。</div>
   </footer>
 </div>
 
-<!-- Mobile bottom navigation -->
+<!-- Tab bar（iPhone の下部タブバー） -->
 <nav class="botnav" aria-label="主要ナビゲーション" id="botnav">
-  <button data-view="overview" class="active" aria-label="概要"><span class="t-ico" data-ico="overview"></span>概要</button>
+  <button data-view="home" class="active" aria-label="ホーム"><span class="t-ico" data-ico="home"></span>ホーム</button>
+  <button data-view="overview" aria-label="お店"><span class="t-ico" data-ico="store"></span>お店</button>
   <button data-view="staff" aria-label="スタッフ"><span class="t-ico" data-ico="staff"></span>スタッフ</button>
-  <button data-view="trend" aria-label="傾向"><span class="t-ico" data-ico="trend"></span>傾向</button>
-  <button data-view="rfm" aria-label="顧客RFM"><span class="t-ico" data-ico="rfm"></span>顧客</button>
+  <button data-view="rfm" aria-label="顧客"><span class="t-ico" data-ico="rfm"></span>顧客</button>
   <button data-view="data" aria-label="データ"><span class="t-ico" data-ico="data"></span>データ</button>
 </nav>
 
@@ -74,13 +79,14 @@
 <input type="file" id="fileYoyaku" accept=".csv,.xlsx,.xls" style="display:none">
 <input type="file" id="fileKaikei" accept=".csv,.xlsx,.xls" style="display:none">
 
-<script src="assets/js/vendor/xlsx.mini.min.js?v=1.2.57"></script>
-<script src="assets/js/sample-data.js?v=1.2.57"></script>
-<script src="assets/js/engine.js?v=1.2.57"></script>
-<script src="assets/js/ingest.js?v=1.2.57"></script>
-<script src="assets/js/sheets.js?v=1.2.57"></script>
-<script src="assets/js/crypto.js?v=1.2.57"></script>
-<script src="assets/js/charts.js?v=1.2.57"></script>
-<script src="assets/js/app.js?v=1.2.57"></script>
+<script src="assets/js/vendor/xlsx.mini.min.js?v=1.3.0"></script>
+<script src="assets/js/sample-data.js?v=1.3.0"></script>
+<script src="assets/js/engine.js?v=1.3.0"></script>
+<script src="assets/js/ingest.js?v=1.3.0"></script>
+<script src="assets/js/sheets.js?v=1.3.0"></script>
+<script src="assets/js/targets.js?v=1.3.0"></script>
+<script src="assets/js/crypto.js?v=1.3.0"></script>
+<script src="assets/js/charts.js?v=1.3.0"></script>
+<script src="assets/js/app.js?v=1.3.0"></script>
 </body>
 </html>

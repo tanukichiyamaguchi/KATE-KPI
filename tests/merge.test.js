@@ -230,5 +230,29 @@ h('■ Fixture 8: 「データ更新日時」列（シート側の同期完了�
   check('見出しの前後空白があってもスタンプを読める', p7.sheetUpdatedAt && p7.sheetUpdatedAt.getHours(), 5);
 }
 
+// ============================================================================
+// Fixture 9 — フリガナの全角／半角の違いで同じお客様が別人にならない
+// ============================================================================
+h('■ Fixture 9: フリガナの全角・半角（NFKC）をそろえて名寄せする');
+{
+  const csv = [
+    'ステータス,来店日,フリガナ,お名前,会計時合計金額',
+    '会計済み,2026/06/01,ヤマダ ハナコ,山田花子,5000',
+    '会計済み,2026/07/01,ﾔﾏﾀﾞ ﾊﾅｺ,山田花子,6000',
+    '会計済み,2026/07/02,ヤマダ　ハナコ,山田花子,7000'
+  ].join('\n');
+  const p9 = ingest.fromAOA(ingest.parseCSV(csv));
+  check('全角カナ → k:ヤマダハナコ', p9.records[0].custKey, 'k:ヤマダハナコ');
+  check('半角カナ → 同じ k:ヤマダハナコ', p9.records[1].custKey, 'k:ヤマダハナコ');
+  check('全角スペース区切り → 同じ k:ヤマダハナコ', p9.records[2].custKey, 'k:ヤマダハナコ');
+
+  // 予約データ（全角）と会計明細（半角）の結合でも同一人物として突合される
+  const y9 = [yrec({ kana: 'タナカミサキ', name: '田中美咲', date: '2026-06-15', start: 1300, kaikeiTotal: 4800 })];
+  const k9 = [krec({ kana: 'ﾀﾅｶﾐｻｷ', name: '田中美咲', date: '2026-06-15', _time: 140000, kaikeiTotal: 4800, shohan: 'omeme', shohanAmount: 3300 })];
+  const m9 = ingest.mergeSources(y9, k9);
+  check('半角カナの会計明細も結合される', m9.report.matched, 1);
+  check('結合後に店販が付く', m9.records[0].shohanAmount, 3300);
+}
+
 console.log(`\n\x1b[1mSUMMARY\x1b[0m  \x1b[32m${pass} pass\x1b[0m · \x1b[31m${fail} fail\x1b[0m`);
 process.exit(fail > 0 ? 1 : 0);
