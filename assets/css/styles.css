@@ -749,6 +749,7 @@ details > summary.sum { cursor: pointer; font-size: 15px; color: var(--accent-in
 }
 .footer { text-align: center; color: var(--ink-muted); font-size: 13px; padding: 40px 0 12px; line-height: 1.8; }
 .footer b { color: var(--ink-secondary); font-weight: 600; }
+.footer .nowrap { white-space: nowrap; }   /* 「ダッシュボー／ド」と1文字だけ次の行に送らない */
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .status-line { display: inline-flex; align-items: flex-start; gap: 7px; font-size: 14px; font-weight: 500; line-height: 1.55; max-width: 100%; overflow-wrap: anywhere; }
 .status-line i { width: 8px; height: 8px; border-radius: 980px; margin-top: 7px; flex: none; }
