@@ -74,10 +74,26 @@ function sixStaffCsv() {
   });
   return recordsCsv(rows);
 }
+// 3人のスタッフ（momo の担当分を2人に振り分け）。3人の比較表は画面に収める形と
+// 横スクロールの形を、実際に入りきるかで切り替える（入りきらない幅で数字が重ならないこと）。
+function threeStaffCsv() {
+  const rows = sampleRows().map(function (r) {
+    if (r.staff === 'momo') {
+      var h = 0; String(r.custKey).split('').forEach(function (ch) { h = (h * 31 + ch.charCodeAt(0)) >>> 0; });
+      if (h % 3 === 0) r.staff = '高橋ゆきの';
+    }
+    return r;
+  });
+  return recordsCsv(rows);
+}
+// 会計済みの行だけ（これからの予約が無いデータ）。次回予約率に「※」と表の下の注記が付く。
+function completedOnlyCsv() { return recordsCsv(sampleRows().filter(function (r) { return r.status === '会計済み'; })); }
 const SCENARIOS = [
   { name: 'サンプル', widths: WIDTHS, linked: false },
   { name: '6人・管理画面あり', widths: [320, 375, 390, 1280], linked: true },
-  { name: '6人・管理画面あり・実機に近い字幅', widths: [320, 375], linked: true, deviceFont: true }
+  { name: '6人・管理画面あり・実機に近い字幅', widths: [320, 375], linked: true, deviceFont: true },
+  { name: '3人・実機に近い字幅', widths: [320, 375, 390, 414], linked: true, deviceFont: true, csv: 'three' },
+  { name: '会計済みのみ・実機に近い字幅', widths: [320, 375, 390], linked: true, deviceFont: true, csv: 'completed' }
 ];
 
 (async () => {
@@ -86,7 +102,7 @@ const SCENARIOS = [
   const browser = await chromium.launch({ executablePath: EXEC });
   const failures = [];
 
-  const SIX = sixStaffCsv();
+  const CSV = { six: sixStaffCsv(), three: threeStaffCsv(), completed: completedOnlyCsv() };
   for (const sc of SCENARIOS) for (const width of sc.widths) {
     // スマホ幅は実機に近い高さ（640px）にする。説明ポップオーバーが画面下に
     // はみ出す不具合は、高さが十分だと再現しないため。
@@ -106,8 +122,8 @@ const SCENARIOS = [
       });
     }
     if (sc.linked) {
-      // 連携中のシート（6人）。「目標」タブは無い（gviz が1枚目を返す）扱い。
-      await page.route('https://docs.google.com/**', function (route) { return route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: SIX }); });
+      // 連携中のシート（6人／3人／会計済みのみ）。「目標」タブは無い（gviz が1枚目を返す）扱い。
+      await page.route('https://docs.google.com/**', function (route) { return route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', body: CSV[sc.csv || 'six'] }); });
       // 管理用のロックと共有リンクを無効にして、データタブの管理画面（長いボタン）も表示する
       await page.route('**/data/owner-lock.json', function (route) { return route.fulfill({ status: 404, body: '' }); });
       await page.route('**/data/shared-link.json', function (route) { return route.fulfill({ status: 404, body: '' }); });

@@ -218,7 +218,10 @@
     if (!helpPopEl) { helpPopEl = document.createElement('div'); helpPopEl.className = 'help-pop'; helpPopEl.setAttribute('role', 'status'); document.body.appendChild(helpPopEl); }
     helpPopEl.innerHTML = helpHtml(btn.dataset.help);
     var r = btn.getBoundingClientRect();
-    var left = Math.max(8, Math.min(window.innerWidth - 268, r.left + r.width / 2 - 130));
+    // 左右は画面の端ではなく、本文と同じ余白（.app の左右の padding。iPhone の横向きでは
+    // ノッチ・ダイナミックアイランドを避けた幅）の内側に収める
+    var g = C.edgeGutters();
+    var left = Math.max(g.l, Math.min(window.innerWidth - g.r - 260, r.left + r.width / 2 - 130));
     helpPopEl.style.left = left + 'px';
     // 画面の中に収める: 基本は ? の下。下に入りきらなければ ? の上、上にも入らなければ
     // 画面内に押し込む（長い説明文がスマホで下にはみ出し、スクロールすると閉じてしまって
@@ -455,6 +458,15 @@
     if (frac > 0 && frac < 1) v = Math.min(Math.max(v, 1), 99);
     return v + '%';
   }
+  // これからの予約がデータに無い理由。会計明細だけのデータと、今日までの期間で出力した
+  // 予約データ（未来の行が無い）の両方がある。打ち切り（再来待ち）や「提案しない」の理由は
+  // ここから作る（予約データを連携しているのに「会計明細のみ」「予約データを連携すると」と
+  // 書かないように）。tag: 短い注記／why: 「〜ない」で終わる理由（後ろに「ため」を付ける）／fix: 直し方
+  function noFutureCause() {
+    return state.analytics.meta.hasReservationRows
+      ? { tag: '今後の予約がデータに無いため', why: 'データに今日より後の予約が入っていない', fix: '予約データを出力する期間に、これからの日付を含めると表示されます' }
+      : { tag: '会計明細のみのため', why: '会計明細だけのデータには「これからの予約」が含まれない', fix: '予約データを連携すると表示されます' };
+  }
   function monthCard(m, o) {
     var cur = m.cur, ps = m.prevSame, pf = m.prevFull, hasPrev = pf.visits > 0;
     var tgt = targetFor(m.ym, o.who), tracked = bookedTracked(m);
@@ -464,7 +476,7 @@
         '<div class="hc-line muted">先月 ' + mdJa(m.prevYm, 1) + '〜' + mdJa(m.prevYm, m.prevDay) + '：' + yen(ps.rev) + '</div>'
       : '<div class="hc-line muted">先月のデータがありません</div>';
     if (o.share != null) lines += '<div class="hc-line">お店の今月の売上のうち <b>' + sharePct(o.share) + '</b> を担当</div>';
-    // 会計明細だけ（予約が記録されていない）なら「残りの予約 0件・¥0」とは書かない
+    // これからの予約がデータに無い（会計明細だけ・今日までの予約データ）なら「残りの予約 0件・¥0」とは書かない
     var rows = tracked
       ? hcRow('予約込みの見込み', yen(m.withBooked)) + hcRow(monthJa(m.ym) + 'の残りの予約', F.int(m.booked.count) + '件・' + yen(m.booked.rev))
       : hcRow('予約込みの見込み', '—') + '<div class="hc-line muted">' + noBookingReason() + '</div>';
@@ -534,11 +546,11 @@
         delta: cmp(delta(cur.newVisits, ps.newVisits, 'count', '人'), '先月同時期 ' + F.int(ps.newVisits) + '人') }) +
       tile({ icon: 'repeat', color: 'var(--cat-repeat)', label: '次回予約率', kpi: kpiPrefix + '-next',
         help: (cens
-          ? '来店のうち、その後の予約・来店が入っている割合。会計明細だけのデータには「これからの予約」が含まれないため、月末から30日経っていない月（今月を含む）の来店は、まだ次の来店が来ていないだけで0%に寄ってしまいます。そのため、その月の率は出さず「再来待ち」と表示します。'
+          ? '来店のうち、その後の予約・来店が入っている割合。' + noFutureCause().why + 'ため、月末から30日経っていない月（今月を含む）の来店は、まだ次の来店が来ていないだけで0%に寄ってしまいます。そのため、その月の率は出さず「再来待ち」と表示します。'
           : '今月の来店のうち、その後の予約（今後の受付待ちを含む・キャンセルは除く）が入っている割合。月の途中は件数が少なく大きく振れるため、5件未満のあいだは率を出しません。比べる先月は月全体の値で、先月も5件未満なら比べません（先月の来店は、その後に予約を入れる時間が今月より長くあったぶん高めに出やすい点にご注意ください）。'),
         value: nextShown ? pct(cur.nextRate * 100, 0) : '—',
         sub: cur.nextDen ? F.int(cur.nextNum) + '件 ÷ ' + F.int(cur.nextDen) + '件' + (nextShown ? '' : '（5件未満）')
-          : cur.nextCensored ? '再来待ち（会計明細のみのため）' : '来店なし',
+          : cur.nextCensored ? '再来待ち（' + noFutureCause().tag + '）' : '来店なし',
         delta: nextDelta }) +
       '</div>';
   }
@@ -587,7 +599,7 @@
       return '<b>次の一手</b>：' + jd.map(function (k) { return L[k]; }).join('・') + 'は目安（' + jd.map(function (k) { return pct(G[k] * 100, 0); }).join('・') + '）を達成しています。' +
         (g.pending || []).map(pendText).join('。') + '。';
     }
-    if (g.reason === 'censored') return '<b>次の一手</b>：会計明細だけのデータでは、最近のお客様がこの先ご予約を入れたかが見えず、リピート率・固定化率が実際より低く出るため、伸びしろの提案は出していません（予約データを連携すると表示されます）。';
+    if (g.reason === 'censored') { var nf = noFutureCause(); return '<b>次の一手</b>：' + nf.why + 'ため、最近のお客様がこの先ご予約を入れたかが見えず、リピート率・固定化率が実際より低く出ます。そのため、伸びしろの提案は出していません（' + nf.fix + '）。'; }
     return '<b>次の一手</b>：お客様の人数がそろうと、伸びしろの提案が表示されます。' + (g.pending && g.pending.length ? g.pending.map(pendText).join('。') + '。' : '（判定には、その率の対象が20人以上必要です）');
   }
   function bestHighlight(st) {
@@ -676,10 +688,10 @@
   }
   var REGULARS_HELP = 'あなたが初回を担当したお客様のうち、実際に2回来店して、3回目のご予約（これからの予約を含む・キャンセルは数えない）まで進んだ方の人数。固定化率の「3回目到達」と同じ基準で、全期間の累計です。';
 
-  // 会計明細のみのデータで、次回予約率の直近の月を除いていることの説明（予約データでは空）
+  // これからの予約がデータに無いとき、次回予約率の直近の月を除いていることの説明（それ以外は空）
   function nextCensHelp() {
     return state.analytics.meta.completedOnly
-      ? '会計明細だけのデータには「これからの予約」が含まれないため、月末から30日経っていない月の来店は、次の来店がまだ来ていないだけで0%に寄ります。その月の来店は次回予約率から除き、すべて除かれた期間は「再来待ち」と表示します。'
+      ? noFutureCause().why + 'ため、月末から30日経っていない月の来店は、次の来店がまだ来ていないだけで0%に寄ります。その月の来店は次回予約率から除き、すべて除かれた期間は「再来待ち」と表示します。'
       : '';
   }
   // ---- 期間の表（直近3ヶ月・先月・今月）: お店・スタッフ共通 -----------------
@@ -699,9 +711,11 @@
       { label: '客単価', v: function (b) { return b.spend; }, f: ptYen },
       { label: '新規', v: function (b, k) { return k === 'last3' ? b.newPerMonth : b.newVisits; }, f: function (v) { return F.int(v) + '人'; } },
       { label: '次回予約率', v: function (b) { return b.nextDen >= MIN_DEN ? b.nextRate : null; }, f: function (v) { return pct(v * 100, 0); },
-        // 会計明細のみのデータでは、月末から30日経っていない月の来店を「再来待ち」として除く
+        // これからの予約がデータに無いときは、月末から30日経っていない月の来店を「再来待ち」として除く。
+        // セルには「※」だけを付け、説明は表の下に置く（セルに文を入れると、その列だけが広がって
+        // スマホでは行の見出しが1文字ずつ縦に並んでいた）。
         sub: function (b) {
-          if (b.nextDen) return F.int(b.nextNum) + '/' + F.int(b.nextDen) + '件' + (b.nextCensored ? '・直近の月を除く' : '');
+          if (b.nextDen) return F.int(b.nextNum) + '/' + F.int(b.nextDen) + '件' + (b.nextCensored ? '※' : '');
           return b.nextCensored ? '再来待ち' : '';
         } }
     ];
@@ -715,7 +729,10 @@
           var v = r.v(b, c.k);
           return '<td' + (c.k === 'cur' ? ' class="cur"' : '') + '>' + (v == null ? '—' : r.f(v)) + (r.sub && r.sub(b) ? '<small>' + r.sub(b) + '</small>' : '') + '</td>';
         }).join('') + '</tr>';
-      }).join('') + '</tbody></table></div>';
+      }).join('') + '</tbody></table></div>' +
+      (cols.some(function (c) { var b = P[c.k]; return b && b.visits && b.nextDen && b.nextCensored; })
+        ? '<p class="pt-note">※ 次回予約率は、月末から30日経っていない直近の月の来店を除いています（' + noFutureCause().why + 'ため、その月の来店は次の来店がまだ来ていないだけで低く出ます）。</p>'
+        : '');
   }
 
   // ============================ お店（旧「概要」＋「傾向」） ==================
@@ -797,7 +814,7 @@
       });
       html += card({
         col: 'col-6', title: '月ごとのリピート率（初回月別）', icon: 'repeat', color: 'var(--cat-repeat)', tag: '%',
-        sub: '初回来店した月ごとの2回目到達　※印は集計途中の今月' + help('初回来店した月ごとにお客様をグループにし、そのうち何%が2回目の予約に到達したか。' + (A.meta.completedOnly ? '会計明細のみのデータでは将来の予約が見えないため、獲得から45日経っていない直近の月は表示しません。' : '予約ベースなので集計途中の今月（※印）も測定でき、月末までに多少上下します。') + '母数5人未満の月は表示しません。'),
+        sub: '初回来店した月ごとの2回目到達　※印は集計途中の今月' + help('初回来店した月ごとにお客様をグループにし、そのうち何%が2回目の予約に到達したか。' + (A.meta.completedOnly ? noFutureCause().why + 'ため、獲得から45日経っていない直近の月は表示しません。' : '予約ベースなので集計途中の今月（※印）も測定でき、月末までに多少上下します。') + '母数5人未満の月は表示しません。'),
         body: chartBox('cTCohortR', 230)
       });
       html += card({
@@ -809,7 +826,7 @@
     } else {
       html += card({
         col: 'col-12', title: '曜日別', icon: 'reservations', color: 'var(--cat-visits)',
-        sub: '来店の多い曜日と、次回予約・客単価・LTV の曜日差' + help('曜日ごとに来店数・次回予約率・客単価・LTVを集計。次回予約率はその曜日の来店のうち次の予約・来店があった割合。LTVはその曜日に初回来店したお客様の累計売上の平均。'),
+        sub: '来店の多い曜日と、次回予約・客単価・LTV の曜日差' + help('曜日ごとに来店数・次回予約率・客単価・LTVを集計。次回予約率はその曜日の来店のうち次の予約・来店があった割合。LTVはその曜日に初回来店したお客様の累計売上の平均。' + nextCensHelp()),
         body: '<div class="segmented" id="dowSeg" role="group" aria-label="曜日別に表示する指標" style="margin-bottom:6px">' +
           [['visits', '来店数'], ['nextRes', '次回予約率'], ['spend', '客単価'], ['ltv', 'LTV']].map(function (o) { return '<button type="button" data-m="' + o[0] + '" aria-pressed="' + (o[0] === trendMetric ? 'true' : 'false') + '"' + (o[0] === trendMetric ? ' class="active"' : '') + '>' + o[1] + '</button>'; }).join('') +
           '<span class="seg-thumb" id="dowThumb"></span></div>' + chartBox('cDow', 250)
@@ -885,7 +902,14 @@
     } else if (seg === 'repeat') {
       var G = A.meta.guide || { repeat: 0.7, fix: 0.6 };
       draw('mRepeat', function (el) { C.meter(el, { label: 'リピート率（2回目到達）', help: '来店されたお客様のうち、2回目の予約（来店・今後の予約を含む）に到達した人の割合。キャンセルのみで次の予約が入っていない場合は到達扱いにせず、キャンセル後に別の予約を取っていれば到達として数えます。', value: s.repeatRate / 100, display: pct(s.repeatRate), target: G.repeat, sub: frac(s.repeatNumer, s.repeatDenom, '人') + ' ・ 目安 ' + pct(G.repeat * 100, 0) }); });
-      draw('mNext', function (el) { C.meter(el, { label: '次回予約取得率', help: '来店（会計済み）のうち、その後に何らかの予約・来店（キャンセルは除く）があった割合。来店ごとに1件として集計。', value: s.nextReserveRate / 100, display: pct(s.nextReserveRate), sub: frac(s.nextReserveNumer, s.nextReserveDenom, '件') }); });
+      // これからの予約がデータに無いときは、直近の月（月末から30日経っていない）の来店を除く（月ごとの数字と同じ）。
+      // 全部除かれたら「—（再来待ち）」。
+      draw('mNext', function (el) {
+        var nr = s.nextReserveRate;
+        C.meter(el, { label: '次回予約取得率', help: '来店（会計済み）のうち、その後に何らかの予約・来店（キャンセルは除く）があった割合。来店ごとに1件として集計。' + nextCensHelp(),
+          value: nr == null ? 0 : nr / 100, display: nr == null ? '—' : pct(nr),
+          sub: nr == null ? '再来待ち（' + noFutureCause().tag + '）' : frac(s.nextReserveNumer, s.nextReserveDenom, '件') + (s.nextReserveCensored ? '（直近の月を除く）' : '') });
+      });
       draw('mFix', function (el) { C.meter(el, { label: '固定化率（3回目到達）', help: '分母は「実際に2回来店したお客様」、分子は「そのうち3回目の予約に到達したお客様」（受付待ちを含み、キャンセルは数えず、キャンセル後に取り直せば数える）。「2回目まで来てくれた方が、その来店で次を取れたか」という接客の成果を測る指標で、リピート率とは分母の基準が異なります。', value: s.fixationRate / 100, display: pct(s.fixationRate), target: G.fix, sub: frac(s.fixNumer, s.fixDenom, '人') + ' ・ 目安 ' + pct(G.fix * 100, 0) }); });
       draw('cFunnel', function (el) {
         C.funnel(el, {
@@ -1019,14 +1043,14 @@
     html += card({
       col: 'col-6', title: '定着（リピート・常連化）', icon: 'repeat', color: 'var(--cat-repeat)',
       sub: '直近3ヶ月' + (lm.length ? '（' + monthJa(lm[0]) + '〜' + monthJa(lm[lm.length - 1]) + '）' : '') + 'に初回担当したお客様が対象' +
-        (A.meta.completedOnly ? '。会計明細だけのデータでは「これからの予約」が見えないため、最近のお客様の分だけ実際より低く出ます' : ''),
+        (A.meta.completedOnly ? '。' + noFutureCause().why + 'ため、最近のお客様の分だけ実際より低く出ます' : ''),
       body: '<div class="cell-list"><div id="stMeterRepeat"></div><div id="stMeterFix"></div></div>'
     });
     html += card({ col: 'col-6', title: '自己ベスト・自分の推移', icon: 'star', color: 'var(--cat-repeat)', sub: '他のスタッフとは比べず、自分の過去と比べます', body: personalBestBlock(st) + sgPanel(st) });
     html += card({ col: 'col-6', title: '月ごとの予約数（何回目か）', icon: 'reservations', color: color, tag: '件', sub: '実績＋予約。濃いほど回数の多いお客様' + help('月ごとの来店・予約を、そのお客様にとって何回目か（新規／2回目／3回目／4回目以上）で積み上げ。会計済みの実績と受付待ちの予約を合わせた予約ベース。'), body: chartBox('cOneRes', 240) });
     html += card({ col: 'col-6', title: '月ごとの売上（実績＋予約）' , icon: 'yen', color: color, tag: moneyTag, sub: '濃い色＝実績、薄い色＝受付待ちの予約', body: chartBox('cOneRev', 240) });
     html += card({ col: 'col-6', title: '客単価の推移', icon: 'tag', color: 'var(--cat-spend)', tag: moneyTag, sub: esc(name) + '（色）とお店全体（灰色）' + help('月ごとの客単価（予約ベース＝（実績＋予約）÷ 件数）。灰色の線はお店全体の同じ指標で、比べる目安として表示しています。'), body: chartBox('cOneSpend', 230) });
-    html += card({ col: 'col-6', title: '次回予約率の推移', icon: 'repeat', color: 'var(--cat-repeat)', tag: '%', sub: esc(name) + '（色）とお店全体（灰色）。来店5件未満の月は表示しません' + (A.meta.completedOnly ? '　※直近の月は再来待ちのため表示しません' : '') + help('来店（会計済み）のうち、その後に何らかの予約・来店があった割合の月次推移。' + (A.meta.completedOnly ? '会計明細だけのデータでは、月末から30日経っていない月は再来待ちのため表示しません。' : '集計途中の今月も含みます。') + '灰色の線はお店全体。'), body: chartBox('cOneNext', 230) });
+    html += card({ col: 'col-6', title: '次回予約率の推移', icon: 'repeat', color: 'var(--cat-repeat)', tag: '%', sub: esc(name) + '（色）とお店全体（灰色）。来店5件未満の月は表示しません' + (A.meta.completedOnly ? '　※直近の月は再来待ちのため表示しません' : '') + help('来店（会計済み）のうち、その後に何らかの予約・来店があった割合の月次推移。' + (A.meta.completedOnly ? noFutureCause().why + 'ため、月末から30日経っていない月は再来待ちとして表示しません。' : '集計途中の今月も含みます。') + '灰色の線はお店全体。'), body: chartBox('cOneNext', 230) });
     html += card({ col: 'col-12', title: '月ごとのリピート率・固定化率（初回月別）', icon: 'repeat', color: 'var(--cat-repeat)', tag: '%',
       sub: '初回担当した月ごとのお客様が、2回目・3回目に到達した割合　※印は集計途中の今月' + help('初回来店した月ごとに、このスタッフが担当した新規のお客様を母数として、リピート率＝2回目の予約に到達した割合、固定化率＝実際に2回来店した方のうち3回目の予約に到達した割合。母数5人未満の月と、固定化率の母数が育つ前の直近の月（月末から来店周期の中央値・最低30日）は表示しません。'),
       body: chartBox('cOneCohort', 230) });
@@ -1118,8 +1142,9 @@
       { label: '店販顧客比率', help: '直近3ヶ月に担当した来店のお客様のうち、店販を購入した人の割合。対象5人未満は率を出しません。', fmt: function (st) { return st.avgRecent.retailVisitCustomers >= MIN_DEN ? pctOrDash(st.avgRecent.retailCustomerRatio, 1) : '—'; },
         sub: function (st) { return st.avgRecent.retailVisitCustomers ? frac(st.avgRecent.retailBuyers, st.avgRecent.retailVisitCustomers, '人') : ''; } }
     ];
-    // 4人以上だと1画面に収めると数字が潰れるため、表を横にスクロールさせ、左の項目名の列は固定する
-    var vs = '<div class="table-wrap"><table class="vs-table' + (staff.length > 3 ? ' many' : '') + '"><thead><tr><th></th>' +
+    // 4人以上だと1画面に収めると数字が潰れるため、表を横にスクロールさせ、左の項目名の列は固定する。
+    // 3人以下でも、名前や金額が長くて入りきらないときは同じ形にする（下の fitVs で実際の幅を測る）。
+    var vs = '<div class="table-wrap" id="vsWrap"><table class="vs-table' + (staff.length > 3 ? ' many' : '') + '"><thead><tr><th></th>' +
       staff.map(function (st) { return '<th><i class="vs-dot" style="background:' + staffColor(st.name) + '"></i>' + esc(st.name) + '</th>'; }).join('') + '</tr></thead><tbody>' +
       vsMetrics.map(function (mt) {
         return '<tr><td>' + mt.label + (mt.help ? help(mt.help) : '') + '</td>' + staff.map(function (st) {
@@ -1141,6 +1166,18 @@
     if (staff.some(function (st) { return st.utilization; })) html += card({ col: 'col-6', title: '施術時間の稼働率', icon: 'clock', color: 'var(--cat-new)', tag: '%', sub: '確定した月のみ', body: chartBox('cStaffUtil', 230) });
 
     mount('staff', head + '<div class="grid">' + html + '</div>');
+    // 3人以下の比較表は画面幅に収める形（列を等分）だが、3人でも 320〜390px では金額が隣の列と
+    // くっついたり切れたりする。実際に入りきらないときだけ横スクロールの形（.many）に切り替える。
+    // 画面の幅・向きが変わったときも、グラフの描き直し（draw）と一緒に測り直す。
+    var fitVs = function () {
+      var w = document.getElementById('vsWrap'); if (!w || staff.length > 3) return;
+      var t = w.querySelector('table'); if (!t) return;
+      t.classList.remove('many');
+      var over = t.scrollWidth > w.clientWidth + 1 || Array.prototype.some.call(t.querySelectorAll('th, td'), function (c) { return c.scrollWidth > c.clientWidth + 1; });
+      if (over) t.classList.add('many');
+    };
+    fitVs();
+    draw('vsWrap', fitVs);
 
     var activeMonths = A.store.monthly.filter(function (m) {
       return staff.some(function (st) { var x = st.monthly.filter(function (y) { return y.m === m.m; })[0]; return x && x.res; });
@@ -1216,7 +1253,7 @@
       sgRow('来店 / 月', sg.visits, function (v) { return (Math.round(v * 10) / 10).toFixed(1).replace(/\.0$/, '') + '件'; }, null,
         base + '「平均」は確定した月ごとの来店件数の平均。') +
       sgRow('次回予約率', sg.nextRes, function (v) { return pct(v * 100, 0); }, function (g) { return F.int(g.num) + '/' + F.int(g.den) + '件'; },
-        base + '「平均」は対象の月の「次の予約があった来店」の合計 ÷ 来店件数の合計（件数で重み付け）。来店5件未満の月と、会計明細のみで再来待ちの月は除きます。') +
+        base + '「平均」は対象の月の「次の予約があった来店」の合計 ÷ 来店件数の合計（件数で重み付け）。来店5件未満の月と、これからの予約がデータに無いときの再来待ちの月は除きます。') +
       '</div>';
   }
   // 自己ベスト（確定した月の最高記録。自分の過去と比べるだけで他スタッフとは比べない）
@@ -1245,7 +1282,8 @@
     draw('cDow', function (el) {
       C.columns(el, {
         groups: t.dayOfWeek.map(function (d) { return d.d; }),
-        series: [{ name: meta.name, color: cvar(meta.color), values: t.dayOfWeek.map(function (d) { return meta.pct ? d[trendMetric] * 100 : d[trendMetric]; }) }],
+        // 次回予約率が出せない曜日（直近の月の来店しか無い＝再来待ち）は null（棒を描かない）
+        series: [{ name: meta.name, color: cvar(meta.color), values: t.dayOfWeek.map(function (d) { var v = d[trendMetric]; return v == null ? null : meta.pct ? v * 100 : v; }) }],
         valueFmt: meta.fmt, yFmt: meta.pct ? function (v) { return v.toFixed(0) + '%'; } : F.compact, yMax: meta.max, height: 250
       });
     });
@@ -1257,20 +1295,21 @@
   function renderRFM() {
     var A = state.analytics, r = A.rfm;
     var upcoming = r.customers.filter(function (c) { return c.hasUpcoming; }).length;
-    // 会計明細だけ（これからの予約がデータに無い）なら、予約の有無は「無い」ではなく「分からない」
+    // これからの予約がデータに無い（会計明細だけ・今日までの予約データ）なら、予約の有無は「無い」ではなく「分からない」
     var noBook = A.meta.completedOnly;
     var noBookWhy = A.meta.hasReservationRows ? 'データに今日より後の予約が入っていません' : '会計明細には予約が含まれません';
+    var nfc = noFutureCause();
     var html = '<div class="view-title">顧客</div><div class="view-lead">来店されたお客様 ' + F.int(r.total) + '人を、最終来店(R)・来店回数(F)・累計売上(M)で9つのグループに分けています。' + taxLead() + dataStamp() + '</div>';
     html += '<div class="tiles t4">' +
       tile({ icon: 'person', color: 'var(--cat-store)', label: 'お客様', value: F.int(r.total) + '<span class="u">人</span>', sub: '全期間に来店された方' }) +
       (noBook
         ? tile({ icon: 'reservations', color: 'var(--cat-visits)', label: '次の予約あり', value: '—', sub: noBookWhy,
-            help: 'これからの来店予定（受付待ち・集計基準日より後）の予約が入っているお客様の人数。' + noBookWhy + 'ため、数えられません。' })
+            help: 'これからの来店予定（受付待ち・集計基準日より後）の予約が入っているお客様の人数。' + nfc.why + 'ため、数えられません。' })
         : tile({ icon: 'reservations', color: 'var(--cat-visits)', label: '次の予約あり', value: F.int(upcoming) + '<span class="u">人</span>', sub: r.total ? '来店されたお客様の ' + pct(upcoming / r.total * 100, 0) : '' ,
             help: 'これからの来店予定（受付待ち・集計基準日より後）の予約が入っているお客様。' })) +
       tile({ icon: 'phone', color: 'var(--cat-sales)', label: '呼び戻し候補', value: F.int(r.callbackCount) + '<span class="u">人</span>', sub: noBook ? '周期を過ぎた方（予約の有無は不明）' : '周期を過ぎて、次の予約なし',
         help: '最終来店からの日数が、そのお客様の来店周期（来店2回以上の方は本人の間隔の中央値、1回の方はお店全体の中央値。同じ日の2件目は間隔に数えません。お店全体でも別の日に2回来店した方がまだいないときは、周期が無いので判定しません）の1.5倍を超えていて、<b>これからの予約が入っていない</b>お客様。すでに次の予約が入っている方は、周期を過ぎていても候補に入れません。' +
-          (noBook ? '<br>いまのデータは' + noBookWhy + '。そのため、すでに次の予約を入れている方を見分けられず、周期を過ぎた方をすべて候補にしています。' : '') }) +
+          (noBook ? '<br>' + nfc.why + 'ため、すでに次の予約を入れている方を見分けられず、周期を過ぎた方をすべて候補にしています。' : '') }) +
       tile({ icon: 'clock', color: 'var(--cat-new)', label: '来店周期', value: cycleValue(A.store.visitCycleMedianDays), sub: cycleSub(A.store.visitCycleMedianDays) }) +
       '</div>';
 
@@ -1359,7 +1398,7 @@
       { k: 'M', label: 'M', unit: '(¥)', help: '累計売上（Monetary）。' },
       { k: 'seg', label: 'グループ', help: 'R・F の点数の組み合わせから決まる9つのグループ。' },
       { k: 'callback', label: '呼び戻し', help: noBook
-          ? '「周期超過」＝最終来店からの日数が、そのお客様の来店周期の1.5倍を超えている方。会計明細だけのデータでは次の予約の有無が見えないため、予約が入っている方も含みます。それ以外は本人の来店周期の目安を表示。'
+          ? '「周期超過」＝最終来店からの日数が、そのお客様の来店周期の1.5倍を超えている方。' + noFutureCause().why + 'ため、次の予約の有無が見えず、予約が入っている方も含みます。それ以外は本人の来店周期の目安を表示。'
           : '「対象」＝最終来店からの日数が、そのお客様の来店周期の1.5倍を超えていて、これからの予約が無い方。「予約」＝次の予約が入っている方（日付つき）。それ以外は本人の来店周期の目安を表示。' }
     ];
     // 見出しは列見出し（th）のまま並べ替えの状態（aria-sort）を持ち、並べ替えは中の <button> で行う。
@@ -1599,6 +1638,9 @@
     // 取得元（シート／公開URL）なのかを、推測ではなく取得した事実そのもので示す。
     // 特に「データに含まれる最新の日付」は、シートがどこまでのデータを持っているかを
     // 集計を通さずに表すため、同期が止まっていればここに直接現れる。
+    // 経路ごとの取得結果は、表の外（表の下）に書く。表の中の1行にすると、横にスクロールする
+    // 表の全幅で折り返すため、スマホでは1行目の後半（どの経路を採用したか）が画面の外に出ていた。
+    var routeNotes = [];
     var diagRows = ['yoyaku', 'kaikei'].map(function (sl) {
       var s3 = state.sources[sl];
       var err = state.sheetErrors[sl];
@@ -1626,14 +1668,14 @@
         '<td' + (d3.kind === 'export' ? '' : ' style="color:var(--status-warning);font-weight:700"') + '>' +
           (d3.kind === 'export' ? '常に最新' : d3.kind === 'gviz' ? 'キャッシュ有' : '公開スナップ') + '</td></tr>' +
         // 取得経路ごとの結果。片方の経路だけが古い内容を返している場合、
-        // ここに並べて出ることで「どちらが古いのか」が一目で分かる。
+        // 並べて出ることで「どちらが古いのか」が一目で分かる（表の下に書く）。
         ((d3.routes && d3.routes.length > 1)
-          ? '<tr><td></td><td colspan="5" class="wrap" style="text-align:left;font-size:13px;color:var(--ink-muted)">経路ごとの取得結果： ' +
+          ? (routeNotes.push('<p class="note-inline diag-routes"><b>' + esc(slotJa[sl]) + '</b>の経路ごとの取得結果： ' +
             d3.routes.map(function (rt) {
               return esc(KIND_JA[rt.kind] || rt.kind) + '＝' +
                 (rt.error ? '読めず' : rt.latest ? esc(ymdNumJa(rt.latest)) : rt.rows !== null ? F.int(rt.rows) + '件' : '—') +
                 (rt.used ? '（採用）' : '');
-            }).join(' ／ ') + '</td></tr>'
+            }).join(' ／ ') + '</p>'), '')
           : '');
     }).join('');
     if (diagRows) {
@@ -1642,7 +1684,7 @@
         sub: '「更新しても変わらない」ときは、ここで取得元とダッシュボードのどちらの問題か切り分けられます',
         body: '<div class="table-wrap"><table class="kate-table diag-table">' +
           '<thead><tr><th>シート</th><th>取得件数</th><th>データ内の最新日</th><th>シートの更新日時</th><th>取得時刻</th><th>取得経路</th></tr></thead>' +
-          '<tbody>' + diagRows + '</tbody></table></div>' +
+          '<tbody>' + diagRows + '</tbody></table></div>' + routeNotes.join('') +
           '<div class="note-inline" style="margin-top:10px">' +
           '「取得時刻」は更新のたびに必ず新しくなります。それでも<b>「データ内の最新日」が進まない場合、原因はシート側</b>です（このダッシュボードは取得できた内容をそのまま表示しています）。' +
           '</div>' +
@@ -1735,10 +1777,10 @@
         '<li><b>固定化率</b>：実際に2回来店した顧客のうち、3回目の予約に到達した割合（受付待ちを含み、キャンセルは数えず取り直せば数える）。リピート率は予約ベース（2回目の予約に到達した割合）で、分母の基準が異なる。</li>' +
         '<li><b>スタッフ比較</b>：表内の数値はすべて直近3ヶ月（今月を含まない確定3ヶ月）平均。リピート率・固定化率は、そのスタッフが直近3ヶ月に初回担当した顧客のコホートが対象。分母が5人（件）未満の率は「—」。</li>' +
         '<li><b>今月と先月の同じ時期（ホーム）</b>：今月＝集計基準日の月の1日〜基準日の会計済み（実績）。先月の同じ時期＝先月の1日〜同じ日。予約込み＝実績＋今月中の受付待ち（基準日より後）の予約金額。</li>' +
-        '<li><b>月ごとの数字</b>：会計済み（実績）のみ。直近3ヶ月＝確定3ヶ月の月平均（来店のあった月数で割る）、先月＝その月の合計、今月＝1日〜基準日の合計。会計明細だけのデータでは、月末から30日経っていない月の来店を次回予約率から除きます（再来待ち）。</li>' +
+        '<li><b>月ごとの数字</b>：会計済み（実績）のみ。直近3ヶ月＝確定3ヶ月の月平均（来店のあった月数で割る）、先月＝その月の合計、今月＝1日〜基準日の合計。これからの予約がデータに無いとき（会計明細だけ、または今日までの期間で出力した予約データ）は、月末から30日経っていない月の来店を次回予約率から除きます（再来待ち）。</li>' +
         '<li><b>月の売上目標</b>：スプレッドシートの「目標」タブ（税抜）。達成率＝実績 ÷ 目標（100%に届くまでは最大99%と表示）、目標ペース＝目標 ×（基準日の日 ÷ その月の日数）。</li>' +
         '<li><b>来店周期</b>：同じお客様の、別の日の来店どうしの間隔の中央値（同じ日の2件目は間隔に数えない）。</li>' +
-        '<li><b>呼び戻し候補</b>：最終来店からの日数が本人の来店周期（1回だけの方はお店全体の中央値）の1.5倍を超え、<b>これからの予約が入っていない</b>お客様（会計明細だけのデータでは予約の有無が見えないため、周期を過ぎた方すべて）。</li>' +
+        '<li><b>呼び戻し候補</b>：最終来店からの日数が本人の来店周期（1回だけの方はお店全体の中央値）の1.5倍を超え、<b>これからの予約が入っていない</b>お客様（これからの予約がデータに無いときは予約の有無が見えないため、周期を過ぎた方すべて）。</li>' +
         '<li><b>次の一手</b>：リピート率（目安70%）・固定化率（目安60%）のうち、その率の分母が20人以上のものから、目安との差がいちばん大きい1つ。判定できた率がすべて目安以上なら「達成」と表示（分母が足りず判定していない率については達成とは書かない）。会計明細だけのデータでは提案を出さない。</li>' +
         '<li><b>育てた常連</b>：初回を担当したお客様のうち、実際に2回来店して3回目のご予約（受付待ちを含む）まで進んだ方の人数（全期間の累計）。</li>' +
         '<li><b>自分の推移・自己ベスト</b>：確定した月（今月を除く）で比べる。客単価・次回予約率は件数で重み付けした平均で、来店5件未満の月は除く。</li>' +

@@ -5,9 +5,10 @@
  *   顧客（呼び戻し候補だけ表示も）／データ（管理画面・成功と失敗のトースト）と、
  *   未接続の警告バナー（data/shared-link.json がある端末）。
  *
- *  1. 見えている HTML の文字（SVG は除く）ごとに、計算後の文字色と、実際にその下に
- *     塗られている背景（祖先の背景色を、半透明・opacity も含めてページの背景の上に
- *     重ねたもの）のコントラスト比を出す。
+ *  1. 見えている HTML の文字ごとに、計算後の文字色と、実際にその下に塗られている背景
+ *     （祖先の背景色を、半透明・opacity も含めてページの背景の上に重ねたもの）の
+ *     コントラスト比を出す。グラフ（SVG）の文字は、文字の塗りと、その下に描かれている
+ *     図形（棒・ヒートマップのマス・面）の塗りをカードの地に重ねた色で同じように測る。
  *     通常の文字は 4.5:1 以上、大きい文字（24px 以上、または 18.66px 以上で太さ 700 以上）は 3:1 以上。
  *     閉じている <details> は開いて測り、入力欄の値・placeholder も同じ基準で測る。
  *     背景画像・グラデーションの上の文字は計算できないので、数えて件数を表示する（スキップ）。
@@ -188,6 +189,41 @@ function pageAudit(opts) {
       if (res.skipped) { out.skipped.push(item); return; }
       judge(item, res, size >= 24 || (size >= 18.66 && weight >= 700) ? 3 : 4.5);
     });
+    // グラフ（SVG）の文字（目盛り・棒の上の数字・ヒートマップの数字・リングの中央など）。
+    // 文字の塗り（fill × fill-opacity × opacity）と、その下に塗られている図形を測る:
+    // カードの地（SVG の親の背景）の上に、文字より前に描かれていて文字の中心を含む図形
+    // （isPointInFill で判定する棒・マス・面・扇形）の塗りを下から順に重ねた色が背景。
+    // 塗りがグラデーション（url(#…)）の図形の上の文字は計算できないので、スキップに数える。
+    Array.prototype.forEach.call(root.querySelectorAll('svg text'), function (t) {
+      var txt = (t.textContent || '').replace(/\s+/g, ' ').trim(); if (!txt) return;
+      var rc = t.getBoundingClientRect(); if (rc.width <= 0.5 || rc.height <= 0.5) return;
+      var tcs = getComputedStyle(t); if (tcs.visibility !== 'visible' || tcs.display === 'none') return;
+      var svg = t.ownerSVGElement; if (!svg || clippedAway(svg)) return;
+      var alphaChain = function (e) { var a = 1; for (var x = e; x && x !== svg.parentElement; x = x.parentElement) { var o = parseFloat(getComputedStyle(x).opacity); if (isFinite(o)) a *= o; } return a; };
+      if (/^url\(/.test(tcs.fill)) return;
+      var tf = parseColor(tcs.fill); tf.a *= (isFinite(parseFloat(tcs.fillOpacity)) ? parseFloat(tcs.fillOpacity) : 1) * alphaChain(t);
+      if (tf.a <= 0.01) return;
+      var base = paint(svg, null);
+      var size = parseFloat(tcs.fontSize), weight = parseInt(tcs.fontWeight, 10) || 400;
+      var item = { sel: 'svg ' + desc(svg.parentElement) + ' > text', text: txt.slice(0, 28), size: Math.round(size * 10) / 10, weight: weight };
+      if (base.skipped || base.opacity <= 0.01) { if (base.skipped) out.skipped.push(item); return; }
+      var B = { r: base.bg.r / 255, g: base.bg.g / 255, b: base.bg.b / 255, a: 1 }, unknown = false;
+      var cx0 = rc.left + rc.width / 2, cy0 = rc.top + rc.height / 2;
+      Array.prototype.forEach.call(svg.querySelectorAll('rect, path, circle, ellipse, polygon'), function (sh) {
+        if (!(sh.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING)) return;   // 文字より後（上）に描く図形は除く
+        var scs = getComputedStyle(sh);
+        if (scs.fill === 'none' || scs.display === 'none' || scs.visibility !== 'visible') return;
+        var m = sh.getScreenCTM(); if (!m || !sh.isPointInFill) return;
+        var pt = new DOMPoint(cx0, cy0).matrixTransform(m.inverse());
+        if (!sh.isPointInFill(pt)) return;
+        if (/^url\(/.test(scs.fill)) { unknown = true; return; }
+        var c = parseColor(scs.fill); c.a *= (isFinite(parseFloat(scs.fillOpacity)) ? parseFloat(scs.fillOpacity) : 1) * alphaChain(sh);
+        if (c.a > 0.001) B = over(pm(c), B);
+      });
+      if (unknown) { out.skipped.push(item); return; }
+      out.svg = (out.svg || 0) + 1;
+      judge(item, { fg: unpm(over(pm(tf), B)), bg: unpm(B) }, size >= 24 || (size >= 18.66 && weight >= 700) ? 3 : 4.5);
+    });
     return out;
   }
   function judge(item, res, need) {   // out は上の var（関数全体で有効）
@@ -259,8 +295,10 @@ function pageAudit(opts) {
     const f = failures.get(key);
     if (f.where.indexOf(where) === -1) f.where.push(where);
   }
+  let svgMeasured = 0;
   function record(scope, res) {
     pass += res.pass;
+    svgMeasured += res.svg || 0;
     res.fail.forEach(function (f) {
       fail++;
       addFail([scope.scheme, f.sel, f.text, f.fg, f.bg, f.size, f.weight].join('|'),
@@ -433,6 +471,7 @@ function pageAudit(opts) {
     console.log('  背景画像・グラデーションの上の文字（スキップ）: 0件');
   }
   failures.forEach(function (f) { console.log('  \x1b[31mFAIL\x1b[0m  ' + f.line + '   — ' + f.where.join(', ')); });
+  console.log('  うちグラフ（SVG）の文字: ' + svgMeasured + '件');
   console.log('\nSUMMARY  ' + pass + ' pass · ' + fail + ' fail');
   process.exit(fail ? 1 : 0);
 })().catch(function (e) { console.error('CONTRAST AUDIT: unexpected error', e); server.close(); process.exit(1); });

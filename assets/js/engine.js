@@ -332,8 +332,15 @@
       var eff = nextByCust[r.custKey]; if (!eff) return false;
       return eff.some(function (d) { return d > r.date; });
     }
-    var nextReserveCount = visitedRows.filter(function (r) { return r.date && visitGotNext(r); }).length;
-    var nextReserveRate = actualVisits ? nextReserveCount / actualVisits : 0;
+    // これからの予約が無いデータ（会計明細だけ・今日までの予約データ）では、月末から30日
+    // 経っていない月の来店は「次の来店がまだ来ていないだけ」で次回予約なしに数えられる
+    // （右打ち切り）。月ごとの数字・ホームと同じく、その月の来店を分子・分母から除く。
+    // 予約データ（これからの予約あり）では monthImmature が常に false なので値は変わらない。
+    var nextMature = visitedRows.filter(function (r) { return !(r.date && monthImmature(r.ym)); });
+    var nextReserveCount = nextMature.filter(function (r) { return r.date && visitGotNext(r); }).length;
+    var nextReserveDen = nextMature.length;
+    var nextReserveCensored = nextReserveDen < actualVisits;
+    var nextReserveRate = nextReserveDen ? nextReserveCount / nextReserveDen : (nextReserveCensored ? null : 0);
 
     // ---- Visit cycle (median gap between consecutive visits) ----------------
     // Also keep each customer's OWN median gap (for the M27 callback list below) —
@@ -1013,11 +1020,14 @@
     byDow[0] = [];
     var dayOfWeek = [1, 2, 3, 4, 5, 6, 0].map(function (d) {
       var vis = visitedRows.filter(function (r) { return r.dow === d && r.date; });
-      var nextCnt = vis.filter(function (r) { return visitGotNext(r); }).length;
+      // 次回予約率だけは、打ち切りの月（上の nextMature と同じ）の来店を除いて数える
+      var visN = vis.filter(function (r) { return !monthImmature(r.ym); });
+      var nextCnt = visN.filter(function (r) { return visitGotNext(r); }).length;
       var spend = vis.length ? Math.round(vis.reduce(function (s, r) { return s + r.kaikei; }, 0) / vis.length) : 0;
       var acqOnDay = visitedCusts.filter(function (c) { return c.firstVisitDow === d; });
       var ltvDay = acqOnDay.length ? Math.round(acqOnDay.reduce(function (s, c) { return s + c.M; }, 0) / acqOnDay.length) : 0;
-      return { d: WEEK[d], visits: vis.length, nextRes: vis.length ? nextCnt / vis.length : 0, spend: spend, ltv: ltvDay };
+      return { d: WEEK[d], visits: vis.length, nextRes: visN.length ? nextCnt / visN.length : (vis.length ? null : 0),
+        nextNum: nextCnt, nextDen: visN.length, nextCensored: visN.length < vis.length, spend: spend, ltv: ltvDay };
     });
 
     // ---- Trend: monthly cohort (repeat + LTV) -------------------------------
@@ -1152,12 +1162,12 @@
         avgSpendActual: Math.round(avgSpendActual),
         customers: baseN,
         repeatRate: round(repeatRate * 100, 1), fixationRate: round(fixationRate * 100, 1),
-        nextReserveRate: round(nextReserveRate * 100, 1), visitCycleMedianDays: visitCycleMedianDays,
+        nextReserveRate: nextReserveRate == null ? null : round(nextReserveRate * 100, 1), visitCycleMedianDays: visitCycleMedianDays,
         // 分母・分子（UI 明示用）: リピート率 = 2回予約到達 ÷ 来店客、固定化率 =
         // 実来店2回目&3回予約 ÷ 実来店2回目、次回予約取得率 = 次回確保来店 ÷ 来店。
         repeatNumer: funnel[1] ? funnel[1].people : 0, repeatDenom: baseN,
         fixNumer: fix3Reserve, fixDenom: fix2Visit,
-        nextReserveNumer: nextReserveCount, nextReserveDenom: actualVisits,
+        nextReserveNumer: nextReserveCount, nextReserveDenom: nextReserveDen, nextReserveCensored: nextReserveCensored,
         maturity: { applied: !hasFuture, days: REPEAT_MATURITY_DAYS, matureCustomers: matureN, totalCustomers: baseN },
         funnel: funnel, churn: churn, cancel: cancel, route: route, retail: retail,
         ltv: { current: Math.round(ltv.current), predicted: Math.round(ltv.predicted), expectedVisits: round(ltv.expectedVisits, 2), observedVisits: round(ltv.observedVisits, 2) },

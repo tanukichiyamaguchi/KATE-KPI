@@ -284,7 +284,9 @@ b, strong { font-weight: 600; }
 .botnav button .t-ico svg { width: 26px; height: 26px; }
 .botnav button.active { color: var(--accent-ink); }   /* 11px の文字なので塗りの --accent（3.8:1）ではなく文字の青 */
 .botnav button:active { opacity: .5; }
-@media (max-width: 767px) { .botnav { display: flex; } .app { padding-bottom: 96px; } }
+/* 下のタブバーは画面に固定なので、キーボードで移ったフォーカス先がその下に隠れないよう、
+ * スクロールで寄せるときの下の余白（scroll-padding-bottom）をタブバーの高さ＋12px にする */
+@media (max-width: 767px) { .botnav { display: flex; } .app { padding-bottom: 96px; } html { scroll-padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px)); } }
 .t-ico svg .fill-on { opacity: 0; transition: opacity .2s; }
 .active > .t-ico svg .fill-on { opacity: 1; }
 
@@ -326,7 +328,7 @@ b, strong { font-weight: 600; }
 .card-title .ct-ico svg { width: 15px; height: 15px; }
 .card-sub { font-size: 14px; color: var(--ink-muted); line-height: 1.55; margin: 2px 0 10px; }
 .card-sub b { color: var(--ink-secondary); }
-.card-tag { font-size: 12px; color: var(--ink-secondary); font-weight: 700; padding: 3px 9px; border-radius: 980px; background: var(--surface-2); white-space: nowrap; flex: none; }
+.card-tag { font-size: 13px; color: var(--ink-secondary); font-weight: 700; padding: 3px 9px; border-radius: 980px; background: var(--surface-2); white-space: nowrap; flex: none; }
 .cell-list > * + * { border-top: 0.5px solid var(--border-strong); padding-top: 12px; margin-top: 12px; }
 
 /* iOS の入力欄 */
@@ -453,7 +455,7 @@ b, strong { font-weight: 600; }
 .kate-funnel-conv { font-size: 13px; color: var(--ink-muted); padding: 5px 0 6px; display: flex; align-items: center; gap: 3px 6px; flex-wrap: wrap; }
 .kate-funnel-conv .kate-arrow { color: var(--ink-muted); }
 .kate-funnel-conv b { color: var(--ink-primary); font-variant-numeric: tabular-nums; }
-.kate-funnel-conv .kate-funnel-frac { font-style: normal; font-size: 12px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.kate-funnel-conv .kate-funnel-frac { font-style: normal; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 
 /* ---- Horizontal bars ------------------------------------------------------*/
 .kate-hbars { display: flex; flex-direction: column; gap: 14px; }
@@ -518,16 +520,20 @@ details[open] > summary .chev { transform: rotate(45deg); }
 .vs-table tbody tr { border-bottom: 0.5px solid var(--border-strong); }
 .vs-table tbody tr:last-child { border-bottom: 0; }
 .vs-table td b { font-weight: 700; }
-.vs-table td .vs-frac { display: block; font-size: 12px; color: var(--ink-muted); font-weight: 500; margin-top: 2px; white-space: nowrap; }
+.vs-table td .vs-frac { display: block; font-size: 13px; color: var(--ink-muted); font-weight: 500; margin-top: 2px; white-space: nowrap; }
 
 /* ---- 期間の表（直近3ヶ月・先月・今月） ----------------------------------------*/
 .ptable { width: 100%; border-collapse: collapse; font-size: 16px; }
 .ptable th, .ptable td { padding: 11px 8px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ptable thead th { font-size: 13px; color: var(--ink-muted); font-weight: 600; border-bottom: 0.5px solid var(--border-strong); line-height: 1.3; vertical-align: bottom; }
-.ptable thead th small { display: block; font-weight: 500; font-size: 12px; }
+.ptable thead th small { display: block; font-weight: 500; font-size: 13px; }
 .ptable th:first-child, .ptable td:first-child { text-align: left; padding-left: 0; color: var(--ink-secondary); font-weight: 500; white-space: normal; }
 .ptable td { font-weight: 600; }
-.ptable td small { display: block; font-size: 12px; color: var(--ink-muted); font-weight: 500; }
+.ptable td small { display: block; font-size: 13px; color: var(--ink-muted); font-weight: 500; }
+/* 表の下の注記（※） */
+.pt-note { margin: 8px 0 0; font-size: 13px; line-height: 1.55; color: var(--ink-muted); font-weight: 500; }
+/* 診断の表の下の「経路ごとの取得結果」 */
+.diag-routes { display: block; margin: 8px 0 0; overflow-wrap: anywhere; }
 .ptable tbody tr + tr td { border-top: 0.5px solid var(--border-strong); }
 .ptable td.cur { color: var(--ink-primary); }
 @media (max-width: 420px) { .ptable { font-size: 15px; } .ptable th, .ptable td { padding: 10px 4px; } .ptable th:first-child, .ptable td:first-child { width: 27%; font-size: 14px; } }
@@ -637,6 +643,8 @@ table.kate-table { width: 100%; border-collapse: collapse; font-size: 15px; min-
   .vs-table { table-layout: fixed; width: 100%; }
   .vs-table th:first-child, .vs-table td:first-child { white-space: normal; word-break: keep-all; overflow-wrap: normal; width: 38%; }
   .vs-table td .vs-frac { font-size: 11px; white-space: normal; overflow-wrap: anywhere; }
+  /* スマホ幅では表の中の注記とタグを 12px に（表を画面に収めるため。README の「表・チップ」の例外） */
+  .ptable thead th small, .ptable td small, .card-tag { font-size: 12px; }
   table.kate-table { font-size: 12.5px; table-layout: fixed; }
   .kate-table th, .kate-table td { padding: 8px 5px; overflow: hidden; }
   .kate-table td:first-child { white-space: normal; overflow-wrap: break-word; word-break: break-word; }

@@ -1452,6 +1452,53 @@ h('■ Fixture KK: 自分の推移（件数で重み付け・5件未満の月は
 }
 
 // ============================================================================
+// Fixture KK2 — 自分の推移の「件数で重み付け」と「±3%未満は横ばい」を、単純平均では
+// 通らない数字で固定する（KK は対象の月がすべて10件で、重み付けと単純平均が同じ値になる）。
+// R: 1月 20件×¥5,000（次回あり6件）・2月 5件×¥9,000（5件）・4月 5件×¥4,000（0件）・
+//    5月 20件×¥7,000（16件）。
+//  客単価: (100,000+45,000+20,000+140,000)/50 = ¥6,100（単純平均なら ¥6,250）
+//          前半（1・2月）(145,000/25)=¥5,800 → 後半（4・5月）(160,000/25)=¥6,400 → 上向き
+//          （単純平均なら 前半 ¥7,000 → 後半 ¥5,500 で下向きになる）
+//  次回予約率: 27/50 = 0.54（単純平均なら 0.525）、前半 11/25=0.44 → 後半 16/25=0.64
+// ============================================================================
+h('■ Fixture KK2: 自分の推移（月の件数が違う → 重み付けと単純平均で値が変わる）');
+{
+  const rows = []; let n = 0;
+  [['2026-01-10', 20, 5000, 6], ['2026-02-10', 5, 9000, 5], ['2026-04-10', 5, 4000, 0], ['2026-05-10', 20, 7000, 16]].forEach(function (p) {
+    for (let i = 0; i < p[1]; i++) {
+      n++; const k = 'R' + n;
+      rows.push(rec({ staff: 'R', custKey: k, name: k, date: p[0], kaikeiTotal: p[2] }));
+      if (i < p[3]) rows.push(rec({ staff: 'R', custKey: k, name: k, date: '2026-07-20', status: '受付待ち', yoyakuTotal: 5000 }));
+    }
+  });
+  rows.push(rec({ staff: 'R', custKey: 'RZ', name: 'RZ', date: '2026-07-03', kaikeiTotal: 5000 }));
+  const sg = engine.compute(rows, { asOf: '2026-07-03' }).staff[0].selfGrowth;
+  check('客単価の平均 ¥6,100（件数で重み付け。単純平均の ¥6,250 ではない）', sg.spend.avg, 6100);
+  check('客単価: 前半 ¥5,800 → 後半 ¥6,400', sg.spend.early * 10000 + sg.spend.late, 5800 * 10000 + 6400);
+  check('客単価: 上向き（単純平均なら下向きになる数字）', sg.spend.dir === 'up' ? 1 : 0, 1);
+  check('次回予約率の平均 0.54（27/50）', sg.nextRes.avg, 0.54, 1e-12);
+  check('次回予約率: 前半 0.44 → 後半 0.64', sg.nextRes.early * 100 + sg.nextRes.late, 44.64, 1e-9);
+}
+
+// ±3%未満は横ばい（README「自分の推移」）。2ヶ月だけの方は、前半＝1ヶ月目・後半＝2ヶ月目。
+h('■ Fixture KK3: 自分の推移の向き（±3%未満は横ばい）');
+{
+  const rows = [];
+  [['F1', 5100], ['U1', 5200], ['D1', 4800]].forEach(function (p) {
+    for (let i = 0; i < 10; i++) {
+      rows.push(rec({ staff: p[0], custKey: p[0] + 'a' + i, name: p[0] + 'a' + i, date: '2026-04-10', kaikeiTotal: 5000 }));
+      rows.push(rec({ staff: p[0], custKey: p[0] + 'b' + i, name: p[0] + 'b' + i, date: '2026-05-10', kaikeiTotal: p[1] }));
+    }
+  });
+  rows.push(rec({ staff: 'F1', custKey: 'FZ', name: 'FZ', date: '2026-07-20', status: '受付待ち', yoyakuTotal: 5000 }));
+  rows.push(rec({ staff: 'F1', custKey: 'FY', name: 'FY', date: '2026-07-03', kaikeiTotal: 5000 }));
+  const by = {}; engine.compute(rows, { asOf: '2026-07-03' }).staff.forEach(function (st) { by[st.name] = st.selfGrowth.spend; });
+  check('¥5,000 → ¥5,100（+2%）は横ばい', by.F1 && by.F1.dir === 'flat' ? 1 : 0, 1);
+  check('¥5,000 → ¥5,200（+4%）は上向き', by.U1 && by.U1.dir === 'up' ? 1 : 0, 1);
+  check('¥5,000 → ¥4,800（−4%）は下向き', by.D1 && by.D1.dir === 'down' ? 1 : 0, 1);
+}
+
+// ============================================================================
 // Fixture LL — 次の一手: 判定した指標だけ「達成」と言う／会計明細のみでは提案しない
 // ============================================================================
 h('■ Fixture LL: 次の一手（met / met-partial / censored / insufficient）');

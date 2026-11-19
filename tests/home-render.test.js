@@ -158,6 +158,8 @@ function rec(o) {
     check('momo 月ごとの数字: 新規', pc && pc['新規'].join(), '43人,35人,3人');
     check('momo 月ごとの数字: 客単価（今月）', pc && pc['客単価'][2], '¥6,928');
     check('momo 月ごとの数字: 次回予約率（分子/分母つき）', pc && pc['次回予約率'].join(), '61%|172/280件,73%|67/92件,73%|8/11件');
+    // 店販売上は直近3ヶ月だけ月平均（3ヶ月の合計 ¥13,000 を月平均の欄に出さない）
+    check('momo 月ごとの数字: 店販売上（直近3ヶ月は月平均）', pc && pc['店販売上'] && pc['店販売上'].join(), '¥4,333,¥7,000,¥0');
     await p.click('#staffSeg button[data-k="__compare"]');
     await p.waitForTimeout(500);
     check('比較に切り替えると比較表が出る', await p.$$eval('.vs-table', function (n) { return n.length; }), 1);
@@ -169,6 +171,19 @@ function rec(o) {
     check('お店 月ごとの数字: 来店（直近3ヶ月の月平均・先月・今月）', sc && sc['来店'].join(), '118件,167件,16件');
     check('お店 月ごとの数字: 新規', sc && sc['新規'].join(), '66人,104人,8人');
     check('お店 月ごとの数字: 売上', sc && sc['売上'].join(), '¥713,252,¥1,056,774,¥125,410');
+    check('お店 月ごとの数字: 店販売上（直近3ヶ月は月平均）', sc && sc['店販売上'] && sc['店販売上'].join(), '¥5,333,¥10,000,¥10,000');
+
+    // 顧客一覧の「予約 M/D」は、そのお客様のいちばん早い予約の日付（月の取り違え・日付のずれを見る）
+    await p.evaluate(function () { location.hash = '#rfm'; });
+    await p.waitForTimeout(500);
+    const chipOf = function (name) {
+      return p.evaluate(function (nm) {
+        var rows = Array.prototype.filter.call(document.querySelectorAll('#rfmTable tbody tr'), function (tr) { return tr.cells[0].textContent.trim() === nm; });
+        return rows.length === 1 ? rows[0].cells[5].textContent.trim() : 'rows=' + rows.length;
+      }, name);
+    };
+    check('顧客一覧: 鈴木芽依 は「予約 8/10」（基準日と違う月の予約）', await chipOf('鈴木芽依'), '予約 8/10');
+    check('顧客一覧: 前田愛 は「予約 7/9」（日と月の数字が違う）', await chipOf('前田愛'), '予約 7/9');
 
     // データタブの目標カード
     await p.evaluate(function () { location.hash = '#data'; });
@@ -267,18 +282,45 @@ function rec(o) {
     check('予約込みの見込みは「—」と理由', store && /予約込みの見込み\s*—/.test(store) && /会計明細には予約が含まれないため/.test(store), true);
     const nx = await text(p, '[data-kpi="home-store-next"]');
     check('今月の次回予約率は「—（再来待ち）」で、0%と出さない', nx && /—/.test(nx) && /再来待ち/.test(nx) && !/0%/.test(nx), true);
-    check('次の一手は提案を出さない', /会計明細だけのデータでは/.test(await text(p, '[data-kpi="home-me-next-hint"]')), true);
+    check('次の一手は提案を出さない（会計明細だけのデータの理由）', /会計明細だけのデータには「これからの予約」が含まれないため/.test(await text(p, '[data-kpi="home-me-next-hint"]')), true);
     await p.evaluate(function () { location.hash = '#overview'; });
     await p.waitForTimeout(500);
     const sc = await periodCells(p, '[data-kpi="rev-periods"]');
     check('お店の月ごとの数字: 先月・今月の次回予約率は「再来待ち」', sc && sc['次回予約率'][1] === '—|再来待ち' && sc['次回予約率'][2] === '—|再来待ち', true);
-    check('お店の月ごとの数字: 直近3ヶ月は30日経った月だけ（直近の月を除く）', sc && /・直近の月を除く$/.test(sc['次回予約率'][0]), true);
+    check('お店の月ごとの数字: 直近3ヶ月は30日経った月だけ（セルは「※」・説明は表の下）', sc && /件※$/.test(sc['次回予約率'][0]), true);
+    check('お店の月ごとの数字: 表の下に「直近の月の来店を除いています」の注記', /直近の月の来店を除いています/.test(await p.evaluate(function () { var t = document.querySelector('[data-kpi="rev-periods"]'); var n = t && t.closest('.table-wrap').nextElementSibling; return n ? n.textContent : ''; })), true);
     await p.evaluate(function () { location.hash = '#rfm'; });
     await p.waitForTimeout(500);
     const rfm = await p.evaluate(function () { return document.querySelector('#view-rfm').textContent.replace(/\s+/g, ' '); });
     check('顧客: 「次の予約あり 0人」と書かない', !/次の予約あり\s*i?\s*0人/.test(rfm) && /次の予約あり\s*i?\s*—/.test(rfm), true);
     check('顧客: 呼び戻しは「予約の有無は不明」', /周期を過ぎた方（予約の有無は不明）/.test(rfm), true);
     check('顧客: 一覧の印は「周期超過」（「対象」と断定しない）', await p.$$eval('#rfmTable .chip.down', function (n) { return n.length > 0 && n.every(function (c) { return c.textContent === '周期超過'; }); }), true);
+    check('コンソールエラーなし', o.errors.length, 0);
+    if (o.errors.length) console.log('    ' + o.errors.join('\n    '));
+    await o.ctx.close();
+  }
+
+  console.log('\n\x1b[1m■ 予約データ（今日までの期間で出力・これからの予約が無い）\x1b[0m');
+  {
+    // キャンセル・過去の受付待ちを含む「予約データ」だが、今日より後の行が無い。会計明細ではないので
+    // 「会計明細のみ」「予約データを連携すると」とは書かず、出力期間に未来を含めるよう案内する。
+    const rows = sampleRows().filter(function (r) { return r.date <= '2026-07-03'; });
+    const o = await open(browser, { me: 'momo', data: recordsCsv(rows), noTargets: true });
+    const p = o.page;
+    const home = await p.evaluate(function () { return document.querySelector('#view-home').textContent.replace(/\s+/g, ' '); });
+    check('ホーム: 「会計明細」と書かない', /会計明細/.test(home), false);
+    check('ホーム: 次回予約率は「再来待ち（今後の予約がデータに無いため）」', /再来待ち（今後の予約がデータに無いため）/.test(await text(p, '[data-kpi="home-store-next"]')), true);
+    const hint = await text(p, '[data-kpi="home-me-next-hint"]');
+    check('次の一手: 理由は「データに今日より後の予約が入っていない」', /データに今日より後の予約が入っていないため/.test(hint), true);
+    check('次の一手: 直し方は出力期間（「予約データを連携すると」と書かない）', /予約データを出力する期間に/.test(hint) && !/予約データを連携すると/.test(hint), true);
+    await p.evaluate(function () { location.hash = '#overview'; });
+    await p.waitForTimeout(500);
+    const note = await p.evaluate(function () { var t = document.querySelector('[data-kpi="rev-periods"]'); var n = t && t.closest('.table-wrap').nextElementSibling; return n ? n.textContent : ''; });
+    check('お店の月ごとの数字: 注記の理由も「今日より後の予約が入っていない」', /データに今日より後の予約が入っていないため/.test(note) && !/会計明細/.test(note), true);
+    await p.click('#storeSeg button[data-k="repeat"]');
+    await p.waitForTimeout(500);
+    const meter = await p.evaluate(function () { var m = document.querySelector('#mNext'); return m ? m.textContent.replace(/\s+/g, ' ') : ''; });
+    check('お店＞リピート: 次回予約取得率は直近の月を除いた値（「直近の月を除く」）', /（直近の月を除く）/.test(meter), true);
     check('コンソールエラーなし', o.errors.length, 0);
     if (o.errors.length) console.log('    ' + o.errors.join('\n    '));
     await o.ctx.close();

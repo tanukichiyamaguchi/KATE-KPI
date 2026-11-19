@@ -271,7 +271,9 @@ const JST = function (s) { return new Date(s + '+09:00'); };
   // ---- 取得内容の診断（更新しても変わらないときの切り分け材料）--------------
   const diag = await page.evaluate(function () {
     var c = [...document.querySelectorAll('#view-data .gsec')].find(function (g) { return /取得したデータの中身/.test(g.textContent); });
-    return c ? [...c.querySelectorAll('tbody tr')].map(function (r) { return [...r.children].map(function (td) { return td.textContent.trim(); }).join('|'); }) : null;
+    // 表の行に加えて、表の下の「経路ごとの取得結果」（.diag-routes。スマホで画面外に折り返さないよう表の外に置く）も読む
+    return c ? [...c.querySelectorAll('tbody tr')].map(function (r) { return [...r.children].map(function (td) { return td.textContent.trim(); }).join('|'); })
+      .concat([...c.querySelectorAll('.diag-routes')].map(function (n) { return n.textContent.trim(); })) : null;
   });
   check('診断テーブルを表示する', Array.isArray(diag) && diag.length >= 1, true);
   const dataRow = (diag || []).find(function (r) { return /件/.test(r) && /2026年/.test(r); }) || '';
@@ -486,7 +488,8 @@ const JST = function (s) { return new Date(s + '+09:00'); };
     await pg.waitForSelector('#sheetRefreshNow', { timeout: 5000 });
     const rows = await pg.evaluate(function () {
       var g = [...document.querySelectorAll('#view-data .gsec')].find(function (x) { return /取得したデータの中身/.test(x.textContent); });
-      return g ? [...g.querySelectorAll('tbody tr')].map(function (r) { return r.textContent.replace(/\s+/g, ' ').trim(); }) : [];
+      // 表の行と、表の下の「経路ごとの取得結果」（.diag-routes）
+      return g ? [...g.querySelectorAll('tbody tr, .diag-routes')].map(function (r) { return r.textContent.replace(/\s+/g, ' ').trim(); }) : [];
     });
     const alert = await pg.evaluate(function () {
       var el = document.querySelector('#sheetAlert');

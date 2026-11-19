@@ -436,6 +436,22 @@ function run(TAX) {
   eq(pre + 'store.month.cur.nextRate', E.store.month.cur.nextRate, mWant.nextRate);
   eq(pre + 'store.month.cur.nextCensored', E.store.month.cur.nextCensored, mWant.nextCensored);
   eq(pre + 'store.month.prevFull.nextRate', E.store.month.prevFull.nextRate, pWant.nextRate);
+  // お店全体の次回予約取得率（「リピート」のメーター）と曜日別の次回予約率も、打ち切りの月の来店を除く
+  {
+    const m = recs.filter(r => !immature(r.ym)), n = m.filter(gotNext).length;
+    eq(pre + 'store.nextReserveNumer', E.store.nextReserveNumer, n);
+    eq(pre + 'store.nextReserveDenom', E.store.nextReserveDenom, m.length);
+    eq(pre + 'store.nextReserveRate(%)', E.store.nextReserveRate, Math.round(n / m.length * 1000) / 10);
+    eq(pre + 'store.nextReserveCensored', E.store.nextReserveCensored, m.length < recs.length);
+    const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+    [1, 2, 3, 4, 5, 6, 0].forEach((d, i) => {
+      const v = recs.filter(r => r.d.getDay() === d), mv = v.filter(r => !immature(r.ym)), nv = mv.filter(gotNext).length;
+      const got = E.trend.dayOfWeek[i];
+      eq(pre + 'dayOfWeek ' + WEEK[d] + ' 来店数（全期間・除かない）', got.visits, v.length);
+      eq(pre + 'dayOfWeek ' + WEEK[d] + ' nextRes', got.nextRes, mv.length ? nv / mv.length : (v.length ? null : 0));
+      eq(pre + 'dayOfWeek ' + WEEK[d] + ' nextDen', got.nextDen, mv.length);
+    });
+  }
   // お店の月次の次回予約率: 打ち切りの月は null
   E.store.monthly.forEach(mo => {
     const v = recs.filter(r => r.ym === mo.m);

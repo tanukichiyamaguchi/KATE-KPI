@@ -163,11 +163,20 @@
     if (!tip) { tip = el('div', 'kate-tip'); tip.setAttribute('role', 'status'); document.body.appendChild(tip); }
     return tip;
   }
+  // 浮かぶ説明（ツールチップ・ⓘ）を置いてよい左右の端。本文と同じ余白（.app の左右の padding）で、
+  // iPhone の横向きではノッチ・ダイナミックアイランドを避けた幅になる。読めなければ 8px。
+  function edgeGutters() {
+    var a = global.document && global.document.querySelector('.app');
+    var cs = a && global.getComputedStyle ? global.getComputedStyle(a) : null;
+    var l = cs ? parseFloat(cs.paddingLeft) : NaN, r = cs ? parseFloat(cs.paddingRight) : NaN;
+    return { l: Math.max(8, isFinite(l) ? l : 8), r: Math.max(8, isFinite(r) ? r : 8) };
+  }
   function showTip(html, x, y) {
     var t = tooltip(); t.innerHTML = html; t.style.opacity = '1'; t.style.transform = 'translateY(0)';
     var r = t.getBoundingClientRect();
     var left = x - r.width / 2, top = y - r.height - 14;
-    left = Math.max(8, Math.min(left, global.innerWidth - r.width - 8));
+    var g = edgeGutters();
+    left = Math.max(g.l, Math.min(left, global.innerWidth - r.width - g.r));
     if (top < 8) top = y + 18;
     t.style.left = left + 'px'; t.style.top = top + 'px';
   }
@@ -967,7 +976,7 @@
   global.KATE.charts = {
     lineArea: lineArea, columns: columns, columnClusters: columnClusters, donut: donut, funnel: funnel, heatmap: heatmap,
     hbars: hbars, scatter: scatter, gauge: gauge, meter: meter, sparkline: sparkline, countUp: countUp, ring: ring,
-    fmt: { int: fmtInt, yen: fmtYen, compact: fmtCompact, pct: fmtPct }, seriesColor: seriesColor, cssVar: cssVar,
+    fmt: { int: fmtInt, yen: fmtYen, compact: fmtCompact, pct: fmtPct }, seriesColor: seriesColor, cssVar: cssVar, edgeGutters: edgeGutters,
     // テスト用（tests/charts.test.js）。アプリからは使わない。
     _scale: { niceScale: niceScale, tickValues: tickValues, axisFmt: axisFmt, labelFmt: labelFmt },
     _color: { parse: parseColor, contrast: contrastRatio, blend: blendOver, readableInk: readableInk },
